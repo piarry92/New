@@ -18,7 +18,8 @@ Es läuft im Browser und braucht nur Python, sonst nichts.
 | Dienstleister | Firmen, Ansprechpartner, Telefon, Notdienst, E-Mail |
 | Zähler | Zählerstände erfassen, Verbrauch je Monat als Diagramm |
 | Dokumente | Dateien hochladen und Objekt, Anlage oder Störmeldung zuordnen |
-| Einstellungen | Zugänge mit drei Rollen (Administrator, Bearbeiten, Nur lesen), Passwort ändern, Liste der letzten Änderungen |
+| Zugänge & Rechte | Anmeldung für alle. Drei Rollen: Administrator (darf alles), Benutzer, Zuschauer (sieht alles, ändert nichts). Rechte je Rolle per Häkchen an- und abwählen, zusätzlich je Zugang eigene Rechte. Sperren, Passwort setzen, Liste der letzten Änderungen |
+| Einstellungen | Eigenes Passwort, eigene Rechte ansehen, eigene Symbole, Adresse für QR-Codes |
 
 Jede Liste lässt sich mit einem Klick als Excel-Liste (CSV) speichern. Die Suche oben findet alles.
 
@@ -52,6 +53,17 @@ erscheint eine einfache Seite zum Melden mit Beschreibung, Fotos, Name und Konta
 Etiketten: einzeln auf der Anlagenseite oder als Bogen für ein ganzes Objekt oder einen Plan („QR-Etiketten“).
 Wichtig: In den Einstellungen die Adresse eintragen, unter der das Programm vom Handy aus erreichbar ist, und erst
 dann drucken. „Neuen Code erzeugen“ macht den alten Code ungültig.
+
+## Zugänge und Rechte
+
+Ohne Anmeldung sieht niemand etwas. Ausnahme: die Meldeseite hinter dem QR-Code, und auch die nur, wenn ein
+Administrator „Melden ohne Anmeldung“ einschaltet (ab Werk aus).
+
+Rechte, die sich an- und abwählen lassen: Objekte und Anlagen ändern, Pläne bearbeiten, Störmeldungen anlegen,
+Störmeldungen bearbeiten, Wartungsplan ändern, Wartungen erledigen, Verträge und Dienstleister, Zähler, Dokumente
+hochladen, Excel-Export, Löschen, Zugänge verwalten, Einstellungen. Der Server prüft jedes Recht bei jeder Änderung,
+nicht nur die Oberfläche. Nach 5 falschen Passwörtern ist die Anmeldung 15 Minuten gesperrt. Es bleibt immer
+mindestens ein Administrator.
 
 ## Starten
 

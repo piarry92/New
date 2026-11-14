@@ -194,7 +194,7 @@ async function planListe(ziel, filter = {}) {
   };
   ziel.innerHTML = `<div class="werkzeug">
     ${filter.objekt_id ? "" : `<select data-pobj><option value="">Alle Objekte</option>${(S.cache.objekte || []).map((o) => `<option value="${o.id}">${esc(anzeige("objekte", o))}</option>`).join("")}</select>`}
-    ${darfAendern() ? `<button class="knopf haupt-k" data-pneu>${icon("plus")} Grundriss hochladen</button>` : ""}</div><div data-pk></div>`;
+    ${darf("plaene_bearbeiten") ? `<button class="knopf haupt-k" data-pneu>${icon("plus")} Grundriss hochladen</button>` : ""}</div><div data-pk></div>`;
   const s = ziel.querySelector("[data-pobj]");
   if (s) s.onchange = zeichnen;
   const n = ziel.querySelector("[data-pneu]");
@@ -212,7 +212,7 @@ DETAIL.plaene = async (el, id, q) => {
   await Promise.all(["objekte", "plaene", "symbole"].map((r) => lade(r)));
   let daten = await api("GET", `plaene/${id}/anlagen`);
   const plan = daten.plan;
-  const aendern = darfAendern();
+  const aendern = darf("plaene_bearbeiten");
   const ansicht = { s: 1, x: 0, y: 0, aus: new Set(), suche: "", modus: null, offen: null };
 
   el.innerHTML = seitenkopf(plan.titel, [refText("objekte", plan.objekt_id), plan.gebaeude, plan.etage].filter(Boolean).join(" · "),
@@ -319,7 +319,7 @@ DETAIL.plaene = async (el, id, q) => {
         ${a.hersteller || a.typ ? `<div class="klein">${esc([a.hersteller, a.typ].filter(Boolean).join(" "))}</div>` : ""}
       </div>
       <div class="pp-knoepfe"><a class="knopf klein haupt-k" href="#/anlagen/${a.id}">Anlage öffnen</a><a class="knopf klein" href="#/anlagen/${a.id}?reiter=1">Wartungsplan</a>
-        ${aendern ? `<button class="knopf klein" data-p="stoer">Störung melden</button><button class="knopf klein" data-p="weg">Vom Plan nehmen</button>` : ""}</div>
+        ${darf("tickets_anlegen") ? `<button class="knopf klein" data-p="stoer">Störung melden</button>` : ""}${aendern ? `<button class="knopf klein" data-p="weg">Vom Plan nehmen</button>` : ""}</div>
       ${aendern ? '<div class="klein" style="margin-top:6px">Zum Verschieben das Symbol ziehen.</div>' : ""}`;
     popup.hidden = false;
     popup.onclick = async (e) => {

@@ -261,6 +261,7 @@ CREATE TABLE IF NOT EXISTS benutzer (
     email TEXT NOT NULL UNIQUE COLLATE NOCASE,
     passwort TEXT NOT NULL,
     rolle TEXT NOT NULL DEFAULT 'benutzer',
+    rechte TEXT,
     aktiv INTEGER NOT NULL DEFAULT 1,
     erstellt TEXT
 );
@@ -350,6 +351,9 @@ def db_anlegen() -> None:
         for r in con.execute("SELECT id FROM anlagen WHERE qr_token IS NULL OR qr_token=''").fetchall():
             con.execute("UPDATE anlagen SET qr_token=? WHERE id=?", (neuer_qr_token(), r["id"]))
         con.execute('CREATE UNIQUE INDEX IF NOT EXISTS "ux_anlagen_qr" ON anlagen(qr_token)')
+        if "rechte" not in {r["name"] for r in con.execute("PRAGMA table_info(benutzer)")}:
+            con.execute("ALTER TABLE benutzer ADD COLUMN rechte TEXT")
+        con.execute("UPDATE benutzer SET rolle='zuschauer' WHERE rolle='lesen'")
         vorhanden = {r["name"] for r in con.execute("PRAGMA table_info(wartung_historie)")}
         for spalte, typ in (("lat", "REAL"), ("lon", "REAL"), ("checkliste", "TEXT")):
             if spalte not in vorhanden:
@@ -555,7 +559,7 @@ def neuer_qr_token() -> str:
     return secrets.token_urlsafe(12)
 
 
-EINSTELLUNGEN_STANDARD = {"basis_url": "", "oeffentlich_melden": "1"}
+EINSTELLUNGEN_STANDARD = {"basis_url": "", "oeffentlich_melden": "0"}
 
 
 def einstellung(con, schluessel: str) -> str:
@@ -616,6 +620,115 @@ def plan_anlagen(con, pid: int) -> dict:
     return {"plan": plan,
             "platziert": [a for a in alle if a["plan_id"] == pid],
             "frei": [a for a in alle if not a["plan_id"]]}
+
+
+# ---------------------------------------------------------------------------
+# Rollen und Rechte
+# ---------------------------------------------------------------------------
+ROLLEN = {"admin": "Administrator", "benutzer": "Benutzer", "zuschauer": "Zuschauer"}
+RECHTE = [
+    ("anlagen_bearbeiten", "Objekte und Anlagen anlegen und ändern", "Bestand"),
+    ("plaene_bearbeiten", "Grundrisse hochladen, Symbole setzen und verschieben", "Bestand"),
+    ("tickets_anlegen", "Störmeldungen und Mängel anlegen", "Störungen"),
+    ("tickets_bearbeiten", "Störmeldungen bearbeiten, Status ändern, Notizen", "Störungen"),
+    ("wartung_planen", "Wartungsplan: Aufgaben anlegen und ändern", "Wartung"),
+    ("wartung_erledigen", "Wartungen und Prüfungen als erledigt melden", "Wartung"),
+    ("vertraege_bearbeiten", "Verträge und Dienstleister bearbeiten", "Verwaltung"),
+    ("zaehler_erfassen", "Zähler anlegen und Zählerstände erfassen", "Verwaltung"),
+    ("dokumente_hochladen", "Dokumente und Fotos hochladen", "Verwaltung"),
+    ("export", "Listen nach Excel exportieren", "Verwaltung"),
+    ("loeschen", "Einträge löschen", "Verwaltung"),
+    ("benutzer_verwalten", "Zugänge und Rechte verwalten, Änderungsverlauf sehen", "System"),
+    ("einstellungen", "Einstellungen ändern (QR-Adresse, Melden ohne Anmeldung)", "System"),
+]
+RECHTE_KEYS = [r[0] for r in RECHTE]
+RECHTE_STANDARD = {
+    "benutzer": {k: k not in ("loeschen", "benutzer_verwalten", "einstellungen") for k in RECHTE_KEYS},
+    "zuschauer": {k: k == "export" for k in RECHTE_KEYS},
+}
+
+
+def rollen_rechte(con) -> dict:
+    r = con.execute("SELECT wert FROM einstellungen WHERE schluessel='rechte_rollen'").fetchone()
+    gespeichert = {}
+    if r and r["wert"]:
+        try:
+            gespeichert = json.loads(r["wert"])
+        except ValueError:
+            gespeichert = {}
+    erg = {}
+    for rolle, std in RECHTE_STANDARD.items():
+        eigen = gespeichert.get(rolle, {}) if isinstance(gespeichert.get(rolle), dict) else {}
+        erg[rolle] = {k: bool(eigen.get(k, v)) for k, v in std.items()}
+    return erg
+
+
+def benutzer_abweichungen(b) -> dict:
+    try:
+        d = json.loads(b["rechte"] or "{}") if "rechte" in b.keys() else {}
+    except (ValueError, TypeError):
+        d = {}
+    return {k: bool(v) for k, v in d.items() if k in RECHTE_KEYS} if isinstance(d, dict) else {}
+
+
+def effektive_rechte(con, b) -> dict:
+    if not b:
+        return {}
+    if b["rolle"] == "admin":
+        return {k: True for k in RECHTE_KEYS}
+    basis = rollen_rechte(con).get(b["rolle"], RECHTE_STANDARD["zuschauer"])
+    return {**basis, **benutzer_abweichungen(b)}
+
+
+RESSOURCE_RECHT = {
+    "objekte": "anlagen_bearbeiten", "anlagen": "anlagen_bearbeiten", "plaene": "plaene_bearbeiten",
+    "symbole": "plaene_bearbeiten", "wartungen": "wartung_planen", "vertraege": "vertraege_bearbeiten",
+    "dienstleister": "vertraege_bearbeiten", "zaehler": "zaehler_erfassen", "ablesungen": "zaehler_erfassen",
+    "dokumente": "dokumente_hochladen",
+}
+
+
+def benoetigtes_recht(m: str, teile: list[str]) -> str | None:
+    t0 = teile[0] if teile else ""
+    if m == "GET":
+        if t0 == "export":
+            return "export"
+        if t0 in ("verlauf", "benutzer", "rechte"):
+            return "benutzer_verwalten"
+        return None
+    if t0 == "benutzer":
+        return None if teile[-1] == "passwort" else "benutzer_verwalten"
+    if t0 == "rechte":
+        return "benutzer_verwalten"
+    if t0 == "einstellungen":
+        return "einstellungen"
+    if m == "DELETE":
+        return "loeschen"
+    if t0 == "wartungen" and len(teile) == 3 and teile[2] == "erledigt":
+        return "wartung_erledigen"
+    if t0 == "tickets":
+        return "tickets_anlegen" if len(teile) == 1 and m == "POST" else "tickets_bearbeiten"
+    if t0 == "anlagen" and len(teile) == 3 and teile[2] == "position":
+        return "plaene_bearbeiten"
+    return RESSOURCE_RECHT.get(t0)
+
+
+_fehlversuche: dict[str, list[float]] = {}
+
+
+def anmelde_bremse(schluessel: str, fehlgeschlagen: bool | None = None) -> None:
+    """Nach 5 falschen Versuchen in 15 Minuten wird die Anmeldung kurz gesperrt."""
+    import time
+    jetzt_s = time.time()
+    liste = [t for t in _fehlversuche.get(schluessel, []) if jetzt_s - t < 900]
+    if fehlgeschlagen is None:
+        if len(liste) >= 5:
+            raise Fehler(429, "Zu viele falsche Versuche. Bitte in 15 Minuten noch einmal versuchen.")
+    elif fehlgeschlagen:
+        liste.append(jetzt_s)
+    else:
+        liste = []
+    _fehlversuche[schluessel] = liste
 
 
 _qr_zeiten: dict[str, list[float]] = {}
@@ -1064,7 +1177,7 @@ class Handler(BaseHTTPRequestHandler):
         if erstes == "status" and m == "GET":
             b = self.angemeldet(con)
             erster_start = con.execute("SELECT COUNT(*) FROM benutzer").fetchone()[0] == 0
-            return self.json({"benutzer": self.oeffentlich(b), "einrichten": erster_start})
+            return self.json({"benutzer": self.oeffentlich(b, con), "einrichten": erster_start})
 
         if erstes == "einrichten" and m == "POST":
             if con.execute("SELECT COUNT(*) FROM benutzer").fetchone()[0]:
@@ -1075,10 +1188,14 @@ class Handler(BaseHTTPRequestHandler):
 
         if erstes == "anmelden" and m == "POST":
             d = self.body()
-            r = con.execute("SELECT * FROM benutzer WHERE email=? AND aktiv=1",
-                            ((d.get("email") or "").strip(),)).fetchone()
+            email = (d.get("email") or "").strip()
+            schluessel = email.lower() + "|" + self.client_address[0]
+            anmelde_bremse(schluessel)
+            r = con.execute("SELECT * FROM benutzer WHERE email=? AND aktiv=1", (email,)).fetchone()
             if not r or not passwort_pruefen(d.get("passwort") or "", r["passwort"]):
+                anmelde_bremse(schluessel, True)
                 raise Fehler(401, "E-Mail oder Passwort stimmt nicht.")
+            anmelde_bremse(schluessel, False)
             return self.anmelden_antwort(con, r["id"])
 
         if erstes == "abmelden" and m == "POST":
@@ -1091,9 +1208,33 @@ class Handler(BaseHTTPRequestHandler):
         if not b:
             raise Fehler(401, "Bitte anmelden.")
         self.benutzer = b
+        self.rechte = effektive_rechte(con, b)
+        recht = benoetigtes_recht(m, teile)
+        if recht and not self.rechte.get(recht):
+            text = dict((k, t) for k, t, _ in RECHTE)[recht]
+            raise Fehler(403, f"Dafür fehlt dir das Recht: {text}.")
+
+        if erstes == "rechte":
+            if m == "GET":
+                return self.json({"liste": [{"key": k, "text": t, "gruppe": g} for k, t, g in RECHTE],
+                                  "rollen": rollen_rechte(con), "rollennamen": ROLLEN})
+            if m == "PUT":
+                d = self.body()
+                rolle = d.get("rolle")
+                if rolle not in RECHTE_STANDARD:
+                    raise Fehler(400, "Diese Rolle lässt sich nicht ändern. Administratoren haben immer alle Rechte.")
+                neu = d.get("rechte") or {}
+                if not isinstance(neu, dict):
+                    raise Fehler(400, "Rechte sind ungültig.")
+                alle = rollen_rechte(con)
+                alle[rolle].update({k: bool(v) for k, v in neu.items() if k in RECHTE_KEYS})
+                con.execute("INSERT OR REPLACE INTO einstellungen VALUES ('rechte_rollen', ?)", (json.dumps(alle),))
+                protokollieren(con, b, "Rechte geändert", "rollen", None, ROLLEN[rolle])
+                return self.json(rollen_rechte(con))
 
         if erstes == "schema":
-            return self.json({"ressourcen": RESSOURCEN, "medien_einheit": {
+            return self.json({"ressourcen": RESSOURCEN, "rechte": [{"key": k, "text": x, "gruppe": g} for k, x, g in RECHTE],
+                              "medien_einheit": {
                 "Strom": "kWh", "Wasser": "m³", "Wärme": "MWh", "Kälte": "MWh", "Gas": "m³", "Weitere": ""}})
         if erstes == "dashboard":
             return self.json(dashboard(con))
@@ -1159,8 +1300,6 @@ class Handler(BaseHTTPRequestHandler):
             if m == "GET":
                 return self.json({k: einstellung(con, k) for k in EINSTELLUNGEN_STANDARD})
             if m == "PUT":
-                if b["rolle"] != "admin":
-                    raise Fehler(403, "Nur für Administratoren.")
                 d = self.body()
                 if "basis_url" in d:
                     url = str(d["basis_url"] or "").strip().rstrip("/")
@@ -1244,8 +1383,6 @@ class Handler(BaseHTTPRequestHandler):
             neu.pop("pfad", None)
             return self.json(neu)
         if m == "DELETE":
-            if b["rolle"] != "admin":
-                raise Fehler(403, "Löschen dürfen nur Administratoren.")
             abh = self.abhaengige(con, name, rid)
             if abh:
                 raise Fehler(409, f"Kann nicht gelöscht werden, es hängen noch Einträge daran: {abh}.")
@@ -1419,8 +1556,8 @@ class Handler(BaseHTTPRequestHandler):
         if len(teile) == 3 and teile[2] == "meldung" and m == "POST":
             if not b and not offen:
                 raise Fehler(403, "Meldungen ohne Anmeldung sind abgeschaltet. Bitte anmelden.")
-            if b and b["rolle"] == "lesen":
-                raise Fehler(403, "Du hast nur Leserechte.")
+            if b and not effektive_rechte(con, b).get("tickets_anlegen"):
+                raise Fehler(403, "Dafür fehlt dir das Recht: Störmeldungen und Mängel anlegen.")
             if not b:
                 qr_bremse(self.client_address[0])
             d = self.body()
@@ -1537,8 +1674,13 @@ class Handler(BaseHTTPRequestHandler):
             "Content-Security-Policy": "sandbox", "Cache-Control": "private, no-store"})
 
     # --- Benutzer --------------------------------------------------------
-    def oeffentlich(self, b):
-        return None if not b else {"id": b["id"], "name": b["name"], "email": b["email"], "rolle": b["rolle"]}
+    def oeffentlich(self, b, con=None):
+        if not b:
+            return None
+        aus = {"id": b["id"], "name": b["name"], "email": b["email"], "rolle": b["rolle"]}
+        if con is not None:
+            aus["rechte"] = effektive_rechte(con, b)
+        return aus
 
     def benutzer_anlegen(self, con, d: dict, rolle: str) -> int:
         name = (d.get("name") or "").strip()
@@ -1548,7 +1690,7 @@ class Handler(BaseHTTPRequestHandler):
             raise Fehler(400, "Bitte Name und E-Mail angeben.")
         if len(pw) < 8:
             raise Fehler(400, "Das Passwort braucht mindestens 8 Zeichen.")
-        if rolle not in ("admin", "benutzer", "lesen"):
+        if rolle not in ROLLEN:
             raise Fehler(400, "Rolle ist ungültig.")
         try:
             cur = con.execute("INSERT INTO benutzer (name, email, passwort, rolle, erstellt) VALUES (?,?,?,?,?)",
@@ -1564,7 +1706,7 @@ class Handler(BaseHTTPRequestHandler):
         con.execute("INSERT INTO sitzungen (token, benutzer_id, ablauf) VALUES (?,?,?)",
                     (hashlib.sha256(t.encode()).hexdigest(), bid, ablauf))
         b = zeile(con.execute("SELECT * FROM benutzer WHERE id=?", (bid,)).fetchone())
-        return self.json({"benutzer": self.oeffentlich(b)}, extra={
+        return self.json({"benutzer": self.oeffentlich(b, con)}, extra={
             "Set-Cookie": f"cafm={t}; Path=/; Max-Age={SITZUNG_TAGE * 86400}; HttpOnly; SameSite=Strict"})
 
     def benutzer_api(self, con, m: str, teile: list[str]):
@@ -1577,25 +1719,47 @@ class Handler(BaseHTTPRequestHandler):
                 raise Fehler(400, "Das neue Passwort braucht mindestens 8 Zeichen.")
             con.execute("UPDATE benutzer SET passwort=? WHERE id=?", (passwort_hash(d["neu"]), b["id"]))
             return self.json({"ok": True})
-        if b["rolle"] != "admin":
-            raise Fehler(403, "Nur für Administratoren.")
         if len(teile) == 1 and m == "GET":
-            return self.json([self.oeffentlich(dict(r)) | {"aktiv": r["aktiv"]}
-                              for r in con.execute("SELECT * FROM benutzer ORDER BY name")])
+            return self.json([self.oeffentlich(r, con) | {"aktiv": r["aktiv"], "abweichungen": benutzer_abweichungen(r)}
+                              for r in con.execute("SELECT * FROM benutzer ORDER BY name COLLATE NOCASE")])
         if len(teile) == 1 and m == "POST":
             d = self.body()
+            if d.get("rolle") == "admin" and b["rolle"] != "admin":
+                raise Fehler(403, "Nur ein Administrator kann Administratoren anlegen.")
             bid = self.benutzer_anlegen(con, d, d.get("rolle") or "benutzer")
             protokollieren(con, b, "angelegt", "benutzer", bid, d.get("email"))
             return self.json({"id": bid}, 201)
         if len(teile) == 2 and m == "PUT":
             bid = self.id(teile[1])
             d = self.body()
-            if bid == b["id"] and (d.get("rolle", "admin") != "admin" or d.get("aktiv", 1) in (0, False)):
-                raise Fehler(400, "Du kannst dir die Administratorrechte nicht selbst nehmen.")
+            ziel = con.execute("SELECT * FROM benutzer WHERE id=?", (bid,)).fetchone()
+            if not ziel:
+                raise Fehler(404, "Zugang nicht gefunden.")
+            if bid == b["id"] and ((b["rolle"] == "admin" and d.get("rolle", "admin") != "admin")
+                                   or d.get("aktiv", 1) in (0, False)):
+                raise Fehler(400, "Du kannst dir die Administratorrechte nicht selbst nehmen oder dich selbst sperren.")
+            if ziel["rolle"] == "admin" and b["rolle"] != "admin":
+                raise Fehler(403, "Einen Administrator kann nur ein Administrator ändern.")
+            if d.get("rolle") == "admin" and b["rolle"] != "admin":
+                raise Fehler(403, "Nur ein Administrator kann andere zu Administratoren machen.")
             if "rolle" in d:
-                if d["rolle"] not in ("admin", "benutzer", "lesen"):
+                if d["rolle"] not in ROLLEN:
                     raise Fehler(400, "Rolle ist ungültig.")
+                if ziel["rolle"] == "admin" and d["rolle"] != "admin":
+                    andere = con.execute("SELECT COUNT(*) FROM benutzer WHERE rolle='admin' AND aktiv=1 AND id<>?",
+                                         (bid,)).fetchone()[0]
+                    if not andere:
+                        raise Fehler(400, "Es muss mindestens ein aktiver Administrator bleiben.")
                 con.execute("UPDATE benutzer SET rolle=? WHERE id=?", (d["rolle"], bid))
+            if "rechte" in d:
+                neu = d["rechte"]
+                if neu is None:
+                    con.execute("UPDATE benutzer SET rechte=NULL WHERE id=?", (bid,))
+                elif isinstance(neu, dict):
+                    sauber = {k: bool(v) for k, v in neu.items() if k in RECHTE_KEYS}
+                    con.execute("UPDATE benutzer SET rechte=? WHERE id=?", (json.dumps(sauber) if sauber else None, bid))
+                else:
+                    raise Fehler(400, "Rechte sind ungültig.")
             if "aktiv" in d:
                 con.execute("UPDATE benutzer SET aktiv=? WHERE id=?", (1 if d["aktiv"] else 0, bid))
                 if not d["aktiv"]:
@@ -1607,17 +1771,6 @@ class Handler(BaseHTTPRequestHandler):
             protokollieren(con, b, "geändert", "benutzer", bid)
             return self.json({"ok": True})
         raise Fehler(404, "Nicht gefunden.")
-
-
-class LeseSchutz(Handler):
-    """Rolle 'lesen' darf nichts aendern."""
-
-    def api(self, con, m, teile, q):
-        if m != "GET" and teile and teile[0] not in ("anmelden", "abmelden", "einrichten", "status"):
-            b = self.angemeldet(con)
-            if b and b["rolle"] == "lesen" and not (teile[0] == "benutzer" and teile[-1] == "passwort"):
-                raise Fehler(403, "Du hast nur Leserechte.")
-        return super().api(con, m, teile, q)
 
 
 def main():
@@ -1632,7 +1785,7 @@ def main():
     if a.demo:
         with db() as con:
             beispieldaten(con)
-    srv = ThreadingHTTPServer((a.host, a.port), LeseSchutz)
+    srv = ThreadingHTTPServer((a.host, a.port), Handler)
     print(f"Casa CAFM läuft: http://{'localhost' if a.host in ('127.0.0.1', '0.0.0.0') else a.host}:{a.port}")
     print("Beenden mit Strg+C.")
     try:

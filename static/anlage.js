@@ -197,7 +197,8 @@ DETAIL.anlagen = async (el, id, q) => {
     api("GET", `anlagen/${id}`), api("GET", `dokumente?anlage_id=${id}&kategorie=Foto`), api("GET", `anlagen/${id}/aktivitaet`),
     api("GET", `tickets?anlage_id=${id}&offen=1`), api("GET", `wartungsplan?jahr=${new Date().getFullYear()}&anlage_id=${id}`)]);
   const wart = await api("GET", `wartungen?anlage_id=${id}`);
-  const aendern = darfAendern();
+  const aendern = darf("anlagen_bearbeiten");
+  const plusErlaubt = ["tickets_anlegen", "dokumente_hochladen", "wartung_planen"].some(darf);
   const felder = Object.fromEntries(S.schema.anlagen.felder.map((f) => [f.name, f]));
   const naechste = wart.filter((w) => w.aktiv && w.naechste).map((w) => w.naechste).sort()[0];
   const hatPruefung = wart.some((w) => w.aktiv && w.art === "Prüfung"), hatWartung = wart.some((w) => w.aktiv && w.art === "Wartung");
@@ -209,7 +210,7 @@ DETAIL.anlagen = async (el, id, q) => {
     return `<button class="fz" data-feld="${n}" ${aendern ? "" : "disabled"}><span class="fz-l">${esc(f.label.replace(" (statt Planzeichen)", "").replace(" (Arbeitsbereich)", ""))}</span>
       <span class="fz-w">${anzeigeWert || (aendern ? '<span class="fz-neu">+ Hinzufügen</span>' : '<span class="klein">–</span>')}</span>${aendern ? '<span class="fz-p">›</span>' : ""}</button>`;
   };
-  const titelbild = fotos.length ? "" : `<div class="galerie-leer">${symbolVon(a, 72)}<span>${aendern ? "Noch kein Foto. Tippe auf +, um eins hinzuzufügen." : "Noch kein Foto."}</span></div>`;
+  const titelbild = fotos.length ? "" : `<div class="galerie-leer">${symbolVon(a, 72)}<span>${darf("dokumente_hochladen") ? "Noch kein Foto. Tippe auf +, um eins hinzuzufügen." : "Noch kein Foto."}</span></div>`;
 
   el.innerHTML = `<a class="zurueck" href="#/objekte/${a.objekt_id}">← ${esc(refText("objekte", a.objekt_id))}</a>
   <div class="akte">
@@ -218,10 +219,12 @@ DETAIL.anlagen = async (el, id, q) => {
         ${fotos.length ? `<div class="galerie" id="gal">${fotos.map((f) => `<a href="/api/dokumente/${f.id}/datei" target="_blank" rel="noopener" class="gal-bild"><img src="/api/dokumente/${f.id}/datei" alt="${esc(f.titel)}" loading="lazy"></a>`).join("")}</div>
           ${fotos.length > 1 ? `<div class="gal-punkte" id="galp">${fotos.map((_, i) => `<span class="${i ? "" : "an"}"></span>`).join("")}</div>` : ""}` : titelbild}
         <div class="gal-symbol">${symbolVon(a, 40)}</div>
-        ${aendern ? `<button class="rund-plus" id="aplus" aria-label="Hinzufügen">${icon("plus")}</button>
+        ${plusErlaubt ? `<button class="rund-plus" id="aplus" aria-label="Hinzufügen">${icon("plus")}</button>
           <div class="plus-menue" id="pmenue" hidden>
-            <button data-m="mangel">Mangel melden</button><button data-m="foto">Foto hinzufügen</button><button data-m="meldung">Störmeldung (ausführlich)</button>
-            <button data-m="aufgabe">Wartungsaufgabe anlegen</button><button data-m="vorschlag">Wartungsplan vorschlagen</button><button data-m="dok">Dokument hochladen</button>
+            ${darf("tickets_anlegen") ? '<button data-m="mangel">Mangel melden</button>' : ""}${darf("dokumente_hochladen") ? '<button data-m="foto">Foto hinzufügen</button>' : ""}
+            ${darf("tickets_anlegen") ? '<button data-m="meldung">Störmeldung (ausführlich)</button>' : ""}
+            ${darf("wartung_planen") ? '<button data-m="aufgabe">Wartungsaufgabe anlegen</button><button data-m="vorschlag">Wartungsplan vorschlagen</button>' : ""}
+            ${darf("dokumente_hochladen") ? '<button data-m="dok">Dokument hochladen</button>' : ""}
           </div>` : ""}
       </div>
       <div class="akte-titel">
@@ -234,7 +237,7 @@ DETAIL.anlagen = async (el, id, q) => {
         ${aendern && !a.nummer ? '<button class="knopf klein" data-feld="nummer">+ Anlagennummer</button>' : ""}
       </div>
     </div>
-    ${(a.pruefung_pflicht && !hatPruefung) || (a.wartung_pflicht && !hatWartung) ? `<div class="warnung">Für diese Anlage ist eine gesetzlich autorisierte ${a.pruefung_pflicht && !hatPruefung ? "Prüfung" : "Wartung"} vorgeschrieben, im Wartungsplan steht aber keine. ${aendern ? '<button class="knopf klein" id="wvor">Wartungsplan vorschlagen</button>' : ""}</div>` : ""}
+    ${(a.pruefung_pflicht && !hatPruefung) || (a.wartung_pflicht && !hatWartung) ? `<div class="warnung">Für diese Anlage ist eine gesetzlich autorisierte ${a.pruefung_pflicht && !hatPruefung ? "Prüfung" : "Wartung"} vorgeschrieben, im Wartungsplan steht aber keine. ${darf("wartung_planen") ? '<button class="knopf klein" id="wvor">Wartungsplan vorschlagen</button>' : ""}</div>` : ""}
     <div class="akte-raster">
       <div>
         <div class="feldliste karte">${ZEILEN.map(zeile).join("")}</div>
@@ -255,7 +258,7 @@ DETAIL.anlagen = async (el, id, q) => {
   </div>`;
 
   qrKarte(el.querySelector("#qrk"), a);
-  if (q.get("mangel") === "1" && aendern) {
+  if (q.get("mangel") === "1" && darf("tickets_anlegen")) {
     history.replaceState(null, "", `#/anlagen/${a.id}`);
     setTimeout(() => mangelDialog(a), 50);
   }
@@ -310,7 +313,7 @@ DETAIL.anlagen = async (el, id, q) => {
 
   /* Auf Plan setzen */
   const ap = el.querySelector("#aufplan");
-  if (ap && aendern) {
+  if (ap && darf("plaene_bearbeiten")) {
     const pl = await api("GET", `plaene?objekt_id=${a.objekt_id}`);
     ap.innerHTML += pl.length ? `<div class="werkzeug" style="margin:0"><select id="apsel">${pl.map((p) => `<option value="${p.id}">${esc([p.titel, p.etage].filter(Boolean).join(" · "))}</option>`).join("")}</select><button class="knopf haupt-k" id="apgo">Auf Plan setzen</button></div>`
       : '<button class="knopf" id="apneu">Grundriss hochladen</button>';
@@ -330,7 +333,7 @@ DETAIL.anlagen = async (el, id, q) => {
 };
 
 function anlagenWartungsplan(ziel, a, wart, plan) {
-  const aendern = darfAendern();
+  const aendern = darf("wartung_planen");
   const proId = Object.fromEntries(plan.aufgaben.map((p) => [p.id, p]));
   ziel.innerHTML = `<div class="werkzeug">${aendern ? `<button class="knopf haupt-k" data-wneu>${icon("plus")} Wartungsaufgabe</button><button class="knopf" data-wvor>Wartungsplan vorschlagen</button>` : ""}
     <a class="knopf" href="#/wartungen?anlage=${a.id}">In der Gesamtübersicht zeigen</a><span class="anzahl">${wart.length} Aufgaben</span></div>
@@ -339,7 +342,7 @@ function anlagenWartungsplan(ziel, a, wart, plan) {
       <td>${esc(w.art)}</td><td class="zahl">${zahl(w.intervall_monate)} M.</td><td class="klein">${esc(w.rechtsgrundlage || "")}</td>
       ${proId[w.id] ? monatsZellen(proId[w.id]) : MONATE.map(() => '<td class="mzelle"></td>').join("")}
       <td>${datum(w.naechste)} ${faelligMarke(w.naechste, w.aktiv)}</td>
-      <td>${aendern && w.aktiv ? `<button class="knopf klein" data-erl="${w.id}">Erledigt</button>` : ""}</td></tr>`).join("")}</tbody></table></div>
+      <td>${darf("wartung_erledigen") && w.aktiv ? `<button class="knopf klein" data-erl="${w.id}">Erledigt</button>` : ""}</td></tr>`).join("")}</tbody></table></div>
       <div class="legende plan-legende"><span style="--c:var(--ok)">✓ erledigt</span><span style="--c:var(--hellgrau)">● geplant</span><span style="--c:var(--bald)">bald fällig</span><span style="--c:var(--ueber)">überfällig</span></div>`
     : `<div class="karte leer">Für diese Anlage gibt es noch keinen Wartungsplan.${aendern ? " Lass dir einen Vorschlag machen oder leg eine Aufgabe an." : ""}</div>`}`;
   ziel.onclick = async (e) => {
@@ -361,7 +364,7 @@ DETAIL.wartungen = async (el, id) => {
   const p = plan.aufgaben.find((x) => x.id === w.id);
   const liste = (w.taetigkeiten || "").split("\n").map((x) => x.trim()).filter(Boolean);
   el.innerHTML = seitenkopf(w.titel, `${w.art} · ${refText("objekte", w.objekt_id)}`,
-    `${darfAendern() ? '<button class="knopf haupt-k" id="erl">Als erledigt melden</button><button class="knopf" id="bearb">Bearbeiten</button>' : ""}`,
+    `${darf("wartung_erledigen") ? '<button class="knopf haupt-k" id="erl">Als erledigt melden</button>' : ""}${darf("wartung_planen") ? '<button class="knopf" id="bearb">Bearbeiten</button>' : ""}`,
     a ? [`#/anlagen/${a.id}?reiter=1`, a.bezeichnung] : ["#/wartungen", "Wartungsplan"]) + `
     <div class="raster k4">
       <div class="karte kennzahl ${tageBis(w.naechste) < 0 ? "rot" : tageBis(w.naechste) <= 30 ? "gelb" : ""}"><div class="wert">${datum(w.naechste)}</div><div class="text">nächste Fälligkeit ${faelligMarke(w.naechste, w.aktiv)}</div></div>
@@ -404,7 +407,7 @@ SEITEN.wartungen = async (el, _, q) => {
       <select data-f="art"><option value="">Alle Arten</option><option>Wartung</option><option>Prüfung</option><option>Inspektion</option><option>Begehung</option></select>
       <label class="check-k"><input type="checkbox" data-f="pflicht"> nur gesetzlich vorgeschrieben</label>
       <input type="search" data-f="suche" placeholder="Anlage oder Aufgabe suchen">
-      <button class="knopf" id="wcsv">${icon("export")} Excel</button><button class="knopf" onclick="print()">Drucken</button>
+      ${darf("export") ? `<button class="knopf" id="wcsv">${icon("export")} Excel</button>` : ""}<button class="knopf" onclick="print()">Drucken</button>
     </div><div id="wk"></div><div id="wi"></div>`;
   const inhalt = el.querySelector("#wi"), kz = el.querySelector("#wk");
   let daten = null;
@@ -457,7 +460,7 @@ SEITEN.wartungen = async (el, _, q) => {
       : '<div class="karte leer">Keine Aufgaben für diese Auswahl.</div>'}
       ${daten.ohne_plan.length && !z.anlage ? `<div class="abstand"></div><div class="karte"><h3>Anlagen ohne Wartungsplan</h3><ul class="liste-einfach">${daten.ohne_plan.map((a) =>
         `<li>${symbolVon(a, 24)}<a href="#/anlagen/${a.id}?reiter=1"><b>${esc(a.bezeichnung)}</b><br><span class="klein">${esc([refText("objekte", a.objekt_id), a.gewerk, a.standort].filter(Boolean).join(" · "))}</span></a>
-        ${darfAendern() ? `<span class="rechts"><button class="knopf klein" data-vor="${a.id}">Wartungsplan vorschlagen</button></span>` : ""}</li>`).join("")}</ul></div>` : ""}`;
+        ${darf("wartung_planen") ? `<span class="rechts"><button class="knopf klein" data-vor="${a.id}">Wartungsplan vorschlagen</button></span>` : ""}</li>`).join("")}</ul></div>` : ""}`;
   };
   inhalt.addEventListener("click", async (e) => {
     const v = e.target.closest("[data-vor]");
@@ -475,7 +478,7 @@ SEITEN.wartungen = async (el, _, q) => {
   el.querySelector('[data-f="suche"]').addEventListener("input", (e) => { clearTimeout(st); st = setTimeout(() => { z.suche = e.target.value.trim().toLowerCase(); zeichnen(); }, 200); });
   el.querySelectorAll("[data-j]").forEach((b) => b.onclick = () => { z.jahr += Number(b.dataset.j); laden(); });
   el.querySelectorAll("[data-ans]").forEach((b) => b.onclick = () => { z.ansicht = b.dataset.ans; zeichnen(); });
-  el.querySelector("#wcsv").onclick = () => {
+  if (el.querySelector("#wcsv")) el.querySelector("#wcsv").onclick = () => {
     const kopf = ["Objekt", "Anlagennummer", "Anlage", "Aufgabe", "Art", "Intervall (Monate)", "Grundlage", ...MONATE.map((m) => `${m} ${z.jahr}`), "Nächste Fälligkeit", "Gesetzlich"];
     const zellen = (w) => MONATE.map((_, i) => {
       const mm = String(i + 1).padStart(2, "0");

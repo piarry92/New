@@ -12,7 +12,14 @@ const datum = (iso) => (iso ? iso.slice(0, 10).split("-").reverse().join(".") : 
 const zahl = (v, st = 0) => (v == null || v === "" ? "" : Number(v).toLocaleString("de-DE", { minimumFractionDigits: st, maximumFractionDigits: st || 3 }));
 const geld = (v) => (v == null || v === "" ? "" : Number(v).toLocaleString("de-DE", { style: "currency", currency: "EUR" }));
 const groesse = (b) => (b > 1048576 ? zahl(b / 1048576, 1) + " MB" : zahl(Math.ceil(b / 1024)) + " KB");
-const darfAendern = () => S.ich && S.ich.rolle !== "lesen";
+const ROLLENNAMEN = { admin: "Administrator", benutzer: "Benutzer", zuschauer: "Zuschauer" };
+const darf = (r) => !!(S.ich && S.ich.rechte && S.ich.rechte[r]);
+const RECHT_RES = { objekte: "anlagen_bearbeiten", anlagen: "anlagen_bearbeiten", plaene: "plaene_bearbeiten", symbole: "plaene_bearbeiten",
+  wartungen: "wartung_planen", vertraege: "vertraege_bearbeiten", dienstleister: "vertraege_bearbeiten", zaehler: "zaehler_erfassen",
+  ablesungen: "zaehler_erfassen", dokumente: "dokumente_hochladen" };
+const darfNeu = (res) => (res === "tickets" ? darf("tickets_anlegen") : darf(RECHT_RES[res]));
+const darfAendernRes = (res) => (res === "tickets" ? darf("tickets_bearbeiten") : darf(RECHT_RES[res]));
+const darfAendern = () => !!(S.ich && Object.entries(S.ich.rechte || {}).some(([k, v]) => v && k !== "export"));
 const istAdmin = () => S.ich && S.ich.rolle === "admin";
 
 async function api(methode, pfad, daten) {
@@ -46,6 +53,7 @@ const ICONS = {
   kalender: '<rect x="3" y="5" width="18" height="16" rx="1"/><path d="M3 10h18M8 3v4M16 3v4"/>',
   vertraege: '<path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 13h7M9 17h5"/>',
   dienstleister: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6 6 0 0 1 3.5 6"/>',
+  zugaenge: '<rect x="4" y="11" width="16" height="10" rx="1"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
   zaehler: '<circle cx="12" cy="13" r="8"/><path d="M12 13l4-4M8 5l-1-2M16 5l1-2"/>',
   dokumente: '<path d="M3 6h7l2 2h9v12H3z"/>',
   plaene: '<path d="M3 5l6-2 6 2 6-2v16l-6 2-6-2-6 2z"/><path d="M9 3v16M15 5v16"/>',
@@ -146,6 +154,7 @@ const NAV = [
   ["zaehler", "Zähler", "#/zaehler"],
   ["dokumente", "Dokumente", "#/dokumente"],
   "-",
+  ["zugaenge", "Zugänge & Rechte", "#/zugaenge", "benutzer_verwalten"],
   ["einstellungen", "Einstellungen", "#/einstellungen"],
 ];
 
@@ -154,9 +163,9 @@ function rahmen() {
   <div class="rahmen">
     <aside class="seite" id="seite">
       <div class="logo"><img src="/logo-negativ.png" alt="Casa Concept Consulting"><span>CAFM</span></div>
-      <nav id="nav">${NAV.map((n) => n === "-" ? '<div class="trenner"></div>' :
+      <nav id="nav">${NAV.filter((n) => n === "-" || !n[3] || darf(n[3])).map((n) => n === "-" ? '<div class="trenner"></div>' :
         `<a href="${n[2]}" data-nav="${n[0]}">${icon(n[0])}<span>${n[1]}</span><span class="zahl" data-zahl="${n[0]}" hidden></span></a>`).join("")}</nav>
-      <div class="ich">${esc(S.ich.name)}<br><span class="klein">${esc({ admin: "Administrator", benutzer: "Bearbeiten", lesen: "Nur lesen" }[S.ich.rolle])}</span> · <button id="abmelden">Abmelden</button></div>
+      <div class="ich">${esc(S.ich.name)}<br><span class="klein">${esc(ROLLENNAMEN[S.ich.rolle] || S.ich.rolle)}</span> · <button id="abmelden">Abmelden</button></div>
     </aside>
     <div class="haupt">
       <header class="kopf">
@@ -320,7 +329,7 @@ async function bearbeiten(ressource, z = null, vorgabe = {}) {
   await refsLaden(ressource);
   const r = S.schema[ressource];
   const knoepfe = [{ text: "Abbrechen" }];
-  if (z && istAdmin()) knoepfe.unshift({
+  if (z && darf("loeschen")) knoepfe.unshift({
     text: "Löschen", klasse: "gefahr", aktion: async () => {
       if (!confirm(`${r.einzahl} wirklich löschen? Das lässt sich nicht rückgängig machen.`)) return false;
       await api("DELETE", `${ressource}/${z.id}`);
@@ -358,8 +367,8 @@ async function tabelle(ziel, ressource, opt = {}) {
       <input type="search" placeholder="In ${esc(r.label)} suchen" data-q>
       ${hatObjekt ? `<select data-objekt><option value="">Alle Objekte</option>${(S.cache.objekte || []).map((o) => `<option value="${o.id}">${esc(anzeige("objekte", o))}</option>`).join("")}</select>` : ""}
       ${extraFilter ? `<select data-extra>${extraFilter.optionen.map(([w, t]) => `<option value="${w}" ${w === zustand.extra ? "selected" : ""}>${esc(t)}</option>`).join("")}</select>` : ""}
-      ${darfAendern() && opt.neu !== false ? `<button class="knopf haupt-k" data-neu>${icon("plus")} ${esc(r.einzahl)}</button>` : ""}
-      ${opt.export !== false ? `<a class="knopf" href="/api/export/${ressource}" title="Als Excel-Liste (CSV) speichern">${icon("export")} Excel</a>` : ""}
+      ${darfNeu(ressource) && opt.neu !== false ? `<button class="knopf haupt-k" data-neu>${icon("plus")} ${esc(r.einzahl)}</button>` : ""}
+      ${opt.export !== false && darf("export") ? `<a class="knopf" href="/api/export/${ressource}" title="Als Excel-Liste (CSV) speichern">${icon("export")} Excel</a>` : ""}
       <span class="anzahl" data-anzahl></span>
     </div>
     <div class="tabelle-wrap"><table><thead><tr>${spalten.map((f) => `<th class="${["money", "number"].includes(f.typ) && f.name !== "baujahr" ? "zahl" : ""}">${esc(f.label)}</th>`).join("")}</tr></thead><tbody data-body><tr><td class="leer" colspan="${spalten.length}">Wird geladen …</td></tr></tbody></table></div>`;
@@ -386,7 +395,7 @@ async function tabelle(ziel, ressource, opt = {}) {
     if (!tr) return;
     const z = daten.find((x) => x.id === Number(tr.dataset.id));
     if (DETAIL[ressource]) { location.hash = `#/${ressource}/${z.id}`; return; }
-    if (!darfAendern()) return;
+    if (!darfAendernRes(ressource)) return;
     if (await bearbeiten(ressource, z)) { await laden(); opt.nachAenderung && opt.nachAenderung(); }
   });
   let t;
@@ -443,7 +452,7 @@ SEITEN.start = async (el) => {
   const summe = Object.values(st).reduce((a, b) => a + b, 0) || 1;
   el.innerHTML = seitenkopf(`Guten ${new Date().getHours() < 11 ? "Morgen" : new Date().getHours() < 18 ? "Tag" : "Abend"}, ${S.ich.name.split(" ")[0]}`,
     new Date().toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long", year: "numeric" }),
-    darfAendern() ? `<button class="knopf haupt-k" id="neuTicket">${icon("plus")} Störmeldung</button>` : "") + `
+    darf("tickets_anlegen") ? `<button class="knopf haupt-k" id="neuTicket">${icon("plus")} Störmeldung</button>` : "") + `
   <div class="raster k4">
     <a class="karte kennzahl ${k.tickets_offen ? "orange" : ""}" href="#/tickets"><div class="wert">${k.tickets_offen}</div><div class="text">offene Störmeldungen${k.tickets_notfall ? `, davon <b>${k.tickets_notfall} Notfall</b>` : ""}</div></a>
     <a class="karte kennzahl ${k.wartung_ueberfaellig ? "rot" : ""}" href="#/wartungen?f=ueber"><div class="wert">${k.wartung_ueberfaellig}</div><div class="text">Wartungen und Prüfungen überfällig</div></a>
@@ -560,7 +569,7 @@ DETAIL.dokumente = async (el, id) => {
   el.innerHTML = seitenkopf(z.titel, z.kategorie || "Dokument",
     `<a class="knopf haupt-k" href="/api/dokumente/${z.id}/datei" target="_blank" rel="noopener">Öffnen</a>
      <a class="knopf" href="/api/dokumente/${z.id}/datei" download>Herunterladen</a>
-     ${darfAendern() ? '<button class="knopf" id="bearb">Bearbeiten</button>' : ""}`, ["#/dokumente", "Dokumente"]) +
+     ${darf("dokumente_hochladen") ? '<button class="knopf" id="bearb">Bearbeiten</button>' : ""}`, ["#/dokumente", "Dokumente"]) +
     `<div class="karte">${stammdaten("dokumente", z)}</div>`;
   const b = document.getElementById("bearb");
   if (b) b.onclick = async () => { const e = await bearbeiten("dokumente", z); if (e === "geloescht") location.hash = "#/dokumente"; else if (e) route(); };
@@ -575,7 +584,7 @@ DETAIL.objekte = async (el, id, q) => {
   const plaene = await api("GET", `plaene?objekt_id=${id}`);
   const ueber = wart.filter((w) => w.aktiv && tageBis(w.naechste) < 0).length;
   el.innerHTML = seitenkopf(o.name, o.kuerzel + (o.ort ? " · " + o.ort : ""),
-    `${darfAendern() ? '<button class="knopf" id="bearb">Stammdaten bearbeiten</button>' : ""}<button class="knopf" id="oqr">QR-Etiketten</button><button class="knopf" onclick="print()">Drucken</button>`, ["#/objekte", "Objekte"]) + `
+    `${darf("anlagen_bearbeiten") ? '<button class="knopf" id="bearb">Stammdaten bearbeiten</button>' : ""}<button class="knopf" id="oqr">QR-Etiketten</button><button class="knopf" onclick="print()">Drucken</button>`, ["#/objekte", "Objekte"]) + `
     <div class="raster k4">
       <div class="karte kennzahl orange"><div class="wert">${tick.length}</div><div class="text">offene Störmeldungen</div></div>
       <div class="karte kennzahl ${ueber ? "rot" : ""}"><div class="wert">${ueber}</div><div class="text">überfällige Termine</div></div>
@@ -607,8 +616,8 @@ DETAIL.tickets = async (el, id) => {
   const naechster = { "Neu": "In Arbeit", "In Arbeit": "Erledigt", "Warten auf Dienstleister": "Erledigt", "Erledigt": "Abgeschlossen" }[t.status];
   const dl = (S.cache.dienstleister || []).find((d) => d.id === t.dienstleister_id);
   el.innerHTML = seitenkopf(t.titel, `${t.nummer} · ${refText("objekte", t.objekt_id)}`,
-    `${darfAendern() && naechster ? `<button class="knopf haupt-k" id="weiter">Status: ${esc(naechster)}</button>` : ""}
-     ${darfAendern() ? '<button class="knopf" id="bearb">Bearbeiten</button>' : ""}`, ["#/tickets", "Störmeldungen"]) + `
+    `${darf("tickets_bearbeiten") && naechster ? `<button class="knopf haupt-k" id="weiter">Status: ${esc(naechster)}</button>` : ""}
+     ${darf("tickets_bearbeiten") ? '<button class="knopf" id="bearb">Bearbeiten</button>' : ""}`, ["#/tickets", "Störmeldungen"]) + `
     <div class="raster k2">
       <div class="karte"><div style="display:flex;gap:8px;margin-bottom:14px">${prioMarke(t.prioritaet)} ${ticketMarke(t.status)}</div>${stammdaten("tickets", t, ["titel", "nummer", "status", "prioritaet", ...(dl ? ["dienstleister_id"] : [])])}
         ${dl ? `<div class="abstand"></div><h3>Dienstleister</h3><b>${esc(dl.firma)}</b><br>${dl.ansprechpartner ? esc(dl.ansprechpartner) + "<br>" : ""}${dl.telefon ? `<a href="tel:${esc(dl.telefon.replace(/\s/g, ""))}">${esc(dl.telefon)}</a><br>` : ""}${dl.notdienst ? `Notdienst: <a href="tel:${esc(dl.notdienst.replace(/\s/g, ""))}">${esc(dl.notdienst)}</a><br>` : ""}${dl.email ? `<a href="mailto:${esc(dl.email)}?subject=${encodeURIComponent(t.nummer + " " + t.titel)}">${esc(dl.email)}</a>` : ""}` : ""}
@@ -617,7 +626,7 @@ DETAIL.tickets = async (el, id) => {
         const sys = k.text.startsWith("Status: ");
         return `<div class="kommentar ${sys ? "system" : ""}"><div class="wer">${esc(k.autor)} · ${datum(k.zeit)} ${k.zeit.slice(11, 16)}</div>${esc(k.text)}</div>`;
       }).join("") || '<p class="klein">Noch kein Eintrag.</p>'}</div>
-      ${darfAendern() ? '<form id="kf" class="formular" style="margin-top:14px;grid-template-columns:1fr"><label>Notiz hinzufügen<textarea name="text" required placeholder="z. B. Firma beauftragt, Termin am …"></textarea></label><div><button class="knopf haupt-k">Hinzufügen</button></div></form>' : ""}
+      ${darf("tickets_bearbeiten") ? '<form id="kf" class="formular" style="margin-top:14px;grid-template-columns:1fr"><label>Notiz hinzufügen<textarea name="text" required placeholder="z. B. Firma beauftragt, Termin am …"></textarea></label><div><button class="knopf haupt-k">Hinzufügen</button></div></form>' : ""}
       </div>
     </div><div id="r"></div>`;
   const b = document.getElementById("bearb");
@@ -649,7 +658,7 @@ DETAIL.zaehler = async (el, id) => {
   const letzte = v.ablesungen[0];
   const jahr = Object.entries(v.monate).filter(([m]) => m.startsWith(String(new Date().getFullYear()))).reduce((a, [, x]) => a + x, 0);
   el.innerHTML = seitenkopf(z.bezeichnung || z.nummer, `${z.medium} · ${refText("objekte", z.objekt_id)}`,
-    `${darfAendern() ? '<button class="knopf haupt-k" id="abl">Zählerstand erfassen</button><button class="knopf" id="bearb">Bearbeiten</button>' : ""}`, ["#/zaehler", "Zähler"]) + `
+    `${darf("zaehler_erfassen") ? '<button class="knopf haupt-k" id="abl">Zählerstand erfassen</button><button class="knopf" id="bearb">Bearbeiten</button>' : ""}`, ["#/zaehler", "Zähler"]) + `
     <div class="raster k4">
       <div class="karte kennzahl orange"><div class="wert">${letzte ? zahl(letzte.stand) : "–"}</div><div class="text">letzter Stand ${esc(z.einheit || "")}${letzte ? ` am ${datum(letzte.datum)}` : ""}</div></div>
       <div class="karte kennzahl"><div class="wert">${zahl(jahr, 0)}</div><div class="text">${esc(z.einheit || "")} Verbrauch ${new Date().getFullYear()}</div></div>
@@ -658,13 +667,13 @@ DETAIL.zaehler = async (el, id) => {
     <div class="karte"><h3>Verbrauch je Monat (${esc(z.einheit || "")})</h3>${balkenDiagramm(v.monate, z.einheit || "")}</div><div class="abstand"></div>
     <div class="raster k2"><div class="karte">${stammdaten("zaehler", z, ["bezeichnung"])}</div>
     <div class="tabelle-wrap"><table><thead><tr><th>Datum</th><th class="zahl">Stand</th><th class="zahl">Verbrauch</th><th>Notiz</th></tr></thead><tbody>${v.ablesungen.map((a) =>
-      `<tr class="${darfAendern() ? "klickbar" : ""}" data-id="${a.id}"><td>${datum(a.datum)}</td><td class="zahl">${zahl(a.stand)}</td><td class="zahl">${a.verbrauch == null ? "" : zahl(a.verbrauch)}</td><td>${esc(a.notiz)}</td></tr>`).join("") || '<tr><td colspan="4" class="leer">Noch keine Ablesung.</td></tr>'}</tbody></table></div></div>`;
+      `<tr class="${darf("zaehler_erfassen") ? "klickbar" : ""}" data-id="${a.id}"><td>${datum(a.datum)}</td><td class="zahl">${zahl(a.stand)}</td><td class="zahl">${a.verbrauch == null ? "" : zahl(a.verbrauch)}</td><td>${esc(a.notiz)}</td></tr>`).join("") || '<tr><td colspan="4" class="leer">Noch keine Ablesung.</td></tr>'}</tbody></table></div></div>`;
   const b = document.getElementById("bearb");
   if (b) b.onclick = async () => { const e = await bearbeiten("zaehler", z); if (e === "geloescht") location.hash = "#/zaehler"; else if (e) route(); };
   const ab = document.getElementById("abl");
   if (ab) ab.onclick = async () => { if (await bearbeiten("ablesungen", null, { zaehler_id: z.id, datum: heute() })) route(); };
   el.querySelectorAll("tr[data-id]").forEach((tr) => tr.onclick = async () => {
-    if (!darfAendern()) return;
+    if (!darf("zaehler_erfassen")) return;
     const a = v.ablesungen.find((x) => x.id === Number(tr.dataset.id));
     if (await bearbeiten("ablesungen", a)) route();
   });
@@ -713,20 +722,22 @@ SEITEN.einstellungen = async (el) => {
       <label>Bisheriges Passwort<input type="password" name="alt" required autocomplete="current-password"></label>
       <label>Neues Passwort (mindestens 8 Zeichen)<input type="password" name="neu" required minlength="8" autocomplete="new-password"></label>
       <div><button class="knopf haupt-k">Ändern</button></div></form></div>
-    ${istAdmin() ? '<div class="karte"><h3>Zugänge</h3><div id="bl"></div><div class="abstand"></div><button class="knopf haupt-k" id="neuB">' + icon("plus") + ' Zugang anlegen</button></div>' : ""}
+    <div class="karte"><h3>Dein Zugang</h3><p><b>${esc(S.ich.name)}</b><br><span class="klein">${esc(S.ich.email)} · Rolle: ${esc(ROLLENNAMEN[S.ich.rolle] || S.ich.rolle)}</span></p>
+      <ul class="rechte-kurz">${(S.rechteListe || []).map((r) => `<li class="${S.ich.rechte[r.key] ? "an" : "aus"}">${S.ich.rechte[r.key] ? "✓" : "–"} ${esc(r.text)}</li>`).join("")}</ul>
+      ${darf("benutzer_verwalten") ? '<a class="knopf haupt-k" href="#/zugaenge">Zugänge und Rechte verwalten</a>' : '<p class="klein">Fehlt dir ein Recht? Frag einen Administrator.</p>'}</div>
   </div>
   <div class="abstand"></div><div class="karte"><h3>Eigene Symbole für Pläne</h3><div id="syml"></div>
-    ${darfAendern() ? '<div class="abstand"></div><button class="knopf haupt-k" id="symNeuE">' + icon("plus") + ' Eigenes Symbol aus Bild</button>' : ""}</div>
-  ${istAdmin() ? `<div class="abstand"></div><div class="karte"><h3>QR-Codes und Mängelmeldung</h3><form id="qre" class="formular" style="grid-template-columns:1fr" onsubmit="return false">
+    ${darf("plaene_bearbeiten") ? '<div class="abstand"></div><button class="knopf haupt-k" id="symNeuE">' + icon("plus") + ' Eigenes Symbol aus Bild</button>' : ""}</div>
+  ${darf("einstellungen") ? `<div class="abstand"></div><div class="karte"><h3>QR-Codes und Mängelmeldung</h3><form id="qre" class="formular" style="grid-template-columns:1fr" onsubmit="return false">
     <label>Adresse des Programms für QR-Codes<input name="basis_url" type="url" placeholder="z. B. https://cafm.ccc-frankfurt.com oder http://192.168.1.20:8080"></label>
     <p class="klein">Diese Adresse steht in jedem QR-Code. Sie muss vom Handy aus erreichbar sein. Leer heißt: die Adresse, unter der du das Programm gerade geöffnet hast. Nach einer Änderung die Etiketten neu drucken.</p>
     <label class="check"><input type="checkbox" name="oeffentlich_melden"> Mängel über den QR-Code auch ohne Anmeldung melden lassen (z. B. Mieter, Dienstleister)</label>
     <div><button class="knopf haupt-k" id="qrspeichern">Speichern</button></div></form></div>` : ""}
-  ${istAdmin() ? '<div class="abstand"></div><div class="karte"><h3>Letzte Änderungen</h3><div id="vl" class="tabelle-wrap" style="box-shadow:none"></div></div>' : ""}`;
+`;
   const ladeSym = async () => {
     const liste = await lade("symbole", true);
     el.querySelector("#syml").innerHTML = liste.length ? `<ul class="liste-einfach">${liste.map((x) => `<li>${eigenesSymbol(x.id, 36)}<div><b>${esc(x.name)}</b><br><span class="klein">${esc([x.gewerk, x.beschreibung].filter(Boolean).join(" · "))}</span></div>
-      ${darfAendern() ? `<span class="rechts"><button class="knopf klein" data-sbearb="${x.id}">Angaben</button> <button class="knopf klein" data-sbild="${x.id}">Bild ersetzen</button></span>` : ""}</li>`).join("")}</ul>`
+      ${darf("plaene_bearbeiten") ? `<span class="rechts"><button class="knopf klein" data-sbearb="${x.id}">Angaben</button> <button class="knopf klein" data-sbild="${x.id}">Bild ersetzen</button></span>` : ""}</li>`).join("")}</ul>`
       : '<p class="klein">Noch keine eigenen Symbole. Lade ein Bild hoch, zum Beispiel ein Symbol für Rauchmelder oder Wasserzähler. Danach steht es im Plan links zum Ziehen bereit.</p>';
   };
   await ladeSym();
@@ -744,47 +755,13 @@ SEITEN.einstellungen = async (el) => {
     try { await api("POST", "benutzer/passwort", Object.fromEntries(new FormData(e.target))); melde("Passwort geändert."); e.target.reset(); }
     catch (err) { melde(err.message, true); }
   };
-  if (!istAdmin()) return;
+  if (!darf("einstellungen")) return;
   const qe = el.querySelector("#qre"), ein = await einstellungenLaden(true);
   qe.basis_url.value = ein.basis_url || ""; qe.oeffentlich_melden.checked = ein.oeffentlich_melden === "1";
   el.querySelector("#qrspeichern").onclick = async () => {
     try { EINST = await api("PUT", "einstellungen", { basis_url: qe.basis_url.value, oeffentlich_melden: qe.oeffentlich_melden.checked ? 1 : 0 }); melde("Gespeichert."); }
     catch (err) { melde(err.message, true); }
   };
-  const rollen = { admin: "Administrator", benutzer: "Bearbeiten", lesen: "Nur lesen" };
-  const ladeB = async () => {
-    const bl = await api("GET", "benutzer");
-    el.querySelector("#bl").innerHTML = `<ul class="liste-einfach">${bl.map((b) => `<li><div><b>${esc(b.name)}</b>${b.aktiv ? "" : ' <span class="marke m-arbeit">gesperrt</span>'}<br><span class="klein">${esc(b.email)}</span></div>
-      <span class="rechts"><select data-rolle="${b.id}">${Object.entries(rollen).map(([k, t]) => `<option value="${k}" ${k === b.rolle ? "selected" : ""}>${t}</option>`).join("")}</select>
-      <button class="knopf klein" data-sperr="${b.id}" data-aktiv="${b.aktiv}">${b.aktiv ? "Sperren" : "Freigeben"}</button>
-      <button class="knopf klein" data-pw="${b.id}">Passwort</button></span></li>`).join("")}</ul>`;
-  };
-  await ladeB();
-  el.querySelector("#bl").addEventListener("change", async (e) => {
-    const s = e.target.closest("[data-rolle]");
-    if (!s) return;
-    try { await api("PUT", `benutzer/${s.dataset.rolle}`, { rolle: s.value }); melde("Rolle geändert."); } catch (err) { melde(err.message, true); }
-    ladeB();
-  });
-  el.querySelector("#bl").addEventListener("click", async (e) => {
-    const s = e.target.closest("[data-sperr]"), p = e.target.closest("[data-pw]");
-    try {
-      if (s) { await api("PUT", `benutzer/${s.dataset.sperr}`, { aktiv: s.dataset.aktiv === "1" ? 0 : 1 }); ladeB(); }
-      if (p) { const n = prompt("Neues Passwort (mindestens 8 Zeichen):"); if (n) { await api("PUT", `benutzer/${p.dataset.pw}`, { passwort: n }); melde("Passwort gesetzt."); } }
-    } catch (err) { melde(err.message, true); }
-  });
-  el.querySelector("#neuB").onclick = async () => {
-    const ok = await dialog("Zugang anlegen", `<div class="dfehler"></div><form class="formular" onsubmit="return false">
-      <label><span class="pflicht">Name</span><input name="name" required></label><label><span class="pflicht">E-Mail</span><input name="email" type="email" required></label>
-      <label><span class="pflicht">Erstes Passwort</span><input name="passwort" type="text" minlength="8" required></label>
-      <label>Rolle<select name="rolle">${Object.entries(rollen).map(([k, t]) => `<option value="${k}" ${k === "benutzer" ? "selected" : ""}>${t}</option>`).join("")}</select></label></form>`,
-      [{ text: "Abbrechen" }, { text: "Anlegen", klasse: "haupt-k", aktion: async (hg) => api("POST", "benutzer", Object.fromEntries(new FormData(hg.querySelector("form")))) }]);
-    if (ok) { melde("Zugang angelegt."); ladeB(); }
-  };
-  const vl = await api("GET", "verlauf");
-  const namen = Object.fromEntries(Object.entries(S.schema).map(([k, r]) => [k, r.einzahl]));
-  el.querySelector("#vl").innerHTML = `<table><thead><tr><th>Zeit</th><th>Wer</th><th>Was</th><th>Bereich</th><th>Info</th></tr></thead><tbody>${vl.slice(0, 60).map((v) =>
-    `<tr><td>${datum(v.zeit)} ${v.zeit.slice(11, 16)}</td><td>${esc(v.benutzer)}</td><td>${esc(v.aktion)}</td><td>${esc(namen[v.tabelle] || v.tabelle || "")}${v.datensatz && DETAIL[v.tabelle] && v.aktion !== "gelöscht" ? ` <a href="#/${v.tabelle}/${v.datensatz}">öffnen</a>` : ""}</td><td>${esc(v.info)}</td></tr>`).join("")}</tbody></table>`;
 };
 
 /* ---------- Router ---------- */
@@ -812,6 +789,7 @@ async function start() {
   const s = await api("GET", "schema");
   S.schema = s.ressourcen;
   S.einheiten = s.medien_einheit;
+  S.rechteListe = s.rechte || [];
   rahmen();
   window.onhashchange = route;
   const qrZiel = new URLSearchParams(location.search).get("qr");

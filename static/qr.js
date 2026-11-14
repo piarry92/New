@@ -81,7 +81,7 @@ async function qrKarte(ziel, a) {
       <div class="qr-link"><input type="text" readonly value="${esc(url)}" aria-label="Link"><button class="knopf klein" data-qr="kopie">Kopieren</button></div>
       ${adresseLokal() ? '<div class="warnung klein">Die Adresse ist „localhost“. Handys erreichen das nicht. Ein Administrator trägt unter Einstellungen die richtige Adresse ein.</div>' : ""}
       <div class="qr-knoepfe"><button class="knopf haupt-k klein" data-qr="druck">Etikett drucken</button>
-      ${darfAendern() ? '<button class="knopf klein" data-qr="mangel">Mangel melden</button><button class="knopf klein" data-qr="neu">Neuen Code erzeugen</button>' : ""}</div></div></div>`;
+      ${darf("tickets_anlegen") ? '<button class="knopf klein" data-qr="mangel">Mangel melden</button>' : ""}${darf("anlagen_bearbeiten") ? '<button class="knopf klein" data-qr="neu">Neuen Code erzeugen</button>' : ""}</div></div></div>`;
   ziel.onclick = async (e) => {
     const k = e.target.closest("[data-qr]");
     if (!k) return;

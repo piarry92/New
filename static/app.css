@@ -452,3 +452,18 @@ table.jplan.gross td:last-child { white-space: nowrap; }
 .qr-danke .haken { width: 64px; height: 64px; border-radius: 50%; background: var(--ok); color: #fff; font-size: 34px; display: flex; align-items: center; justify-content: center; margin: 6px auto 10px; }
 .qr-mitarbeiter { text-align: center; }
 @media (max-width: 900px) { .qr-karte { flex-direction: column; } }
+
+/* Zugänge und Rechte */
+.rechte-matrix td.mitte, .rechte-matrix th.mitte { text-align: center; width: 120px; }
+.rechte-matrix tr.gruppe td { background: var(--orange-zart); color: var(--orange-dunkel); font-weight: 700; font-size: 13px; }
+.haken { width: 20px; height: 20px; accent-color: var(--orange); cursor: pointer; }
+.haken:disabled { cursor: default; opacity: .6; }
+.rechts-knoepfe { white-space: nowrap; text-align: right; }
+.rechte-liste { display: flex; flex-direction: column; }
+.rl-gruppe { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--grau); margin: 12px 0 4px; }
+.rl-zeile { display: flex; align-items: center; gap: 10px; padding: 7px 4px; border-bottom: 1px solid var(--zartgrau); cursor: pointer; }
+.rl-zeile span:nth-child(2) { flex: 1; }
+.rechte-kurz { list-style: none; padding: 0; margin: 10px 0 14px; font-size: 14px; }
+.rechte-kurz li { padding: 3px 0; }
+.rechte-kurz li.aus { color: var(--grau); }
+.rechte-kurz li.an { color: var(--anthrazit); }
