@@ -2,7 +2,7 @@
 "use strict";
 
 const GLOCKE = '<svg class="icon" viewBox="0 0 24 24"><path d="M18 16v-5a6 6 0 0 0-12 0v5l-2 2h16z"/><path d="M10 20a2 2 0 0 0 4 0"/></svg>';
-const B_ICON = { zuweisung: "👤", bald: "⏰", ueber: "⚠️", info: "ℹ️" };
+const B_ICON = { zuweisung: "👤", bald: "⏰", ueber: "⚠️", info: "ℹ️", pruefung: "🛡️", bestaetigt: "✅", rueckfrage: "❓" };
 let bBekannt = null, bTakt = null;
 
 function glockeEinbauen() {
@@ -66,6 +66,11 @@ async function benachrichtigungenLaden() {
     });
   }
   bBekannt = new Set(ungelesen.map((b) => b.id));
+  try {
+    const p = await api("GET", "pruefungen?status=offen");
+    const z = document.querySelector('[data-zahl="pruefungen"]');
+    if (z) { z.textContent = p.offen_fuer_mich; z.hidden = !p.offen_fuer_mich; }
+  } catch (e) { /* egal */ }
 }
 
 /* Übersicht: eigene Rundgänge und Checklisten oben anzeigen */

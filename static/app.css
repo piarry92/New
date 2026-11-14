@@ -1016,3 +1016,13 @@ html[data-theme="dark"] .pk-zeile { background: #16171A; }
 @media (max-width: 700px) {
   .glocke-panel { position: fixed; left: 10px; right: 10px; top: 62px; width: auto; max-width: none; }
 }
+.pruef-block { border-radius: 12px; padding: 12px 14px; margin-top: 12px; border: 1px solid var(--rand); background: var(--flaeche); }
+.pruef-block.offen { border-color: #F0DC9A; background: #FFF8E1; }
+.pruef-block.bestaetigt { border-color: #BFE3C8; background: #EEF8F0; }
+.pruef-block.rueckfrage { border-color: #F2C2CC; background: #FDECEF; }
+.pruef-block div { margin-top: 4px; }
+.pruef-kom { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; font-size: 13px; font-weight: 600; color: var(--text-2); }
+.pruef-kom textarea { min-height: 70px; border: 1px solid var(--rand-stark); border-radius: 9px; padding: 8px 10px; background: var(--weiss); color: var(--anthrazit); }
+html[data-theme="dark"] .pruef-block.offen { background: #2E2710; border-color: #4A3E14; }
+html[data-theme="dark"] .pruef-block.bestaetigt { background: #18331F; border-color: #2A5A36; }
+html[data-theme="dark"] .pruef-block.rueckfrage { background: #3E1520; border-color: #6A2433; }

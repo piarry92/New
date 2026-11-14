@@ -49,6 +49,7 @@ async function checklisteBearbeiten(c, vorgabe = {}) {
     <label><span>Fällig um</span><input name="faellig_uhrzeit" type="time" value="${esc(c.faellig_uhrzeit || "08:00")}"></label>
     <label><span>Erinnern vorher</span><span class="vorwarn"><input name="erinnern_vorher" type="number" min="0" max="365" step="1" value="${c.erinnern_vorher ?? 1}">
       <select name="erinnern_einheit"><option ${c.erinnern_einheit === "Stunden" ? "selected" : ""}>Stunden</option><option ${c.erinnern_einheit !== "Stunden" ? "selected" : ""}>Tage</option></select></span></label>
+    <label><span>Prüfung nach Abschluss durch</span><select name="pruefer_id"><option value="">Objektleiter des Objekts</option>${S.personen.map((p) => `<option value="${p.id}" ${p.id === Number(c.pruefer_id) ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select></label>
     <label><span>Zuständig (Text, freiwillig)</span><input name="zustaendig" value="${esc(c.zustaendig || "")}" placeholder="z. B. Haustechnik"></label>
     <label class="check"><input type="checkbox" name="aktiv" ${c.aktiv ? "checked" : ""}> Aktiv</label>
     <label class="check"><input type="checkbox" name="unterschrift_pflicht" ${c.unterschrift_pflicht !== 0 ? "checked" : ""}> Unterschrift beim Abschließen erforderlich</label>
@@ -65,7 +66,7 @@ async function checklisteBearbeiten(c, vorgabe = {}) {
       const fm = hg.querySelector("form");
       const daten = { titel: fm.titel.value, art: fm.art.value, rhythmus: fm.rhythmus.value, objekt_id: fm.objekt_id.value || null,
         anlage_id: fm.art.value === "Anlage" ? (fm.anlage_id.value || null) : null, zustaendig: fm.zustaendig.value || null, aktiv: fm.aktiv.checked ? 1 : 0,
-        zustaendig_id: fm.zustaendig_id.value || null, faellig_uhrzeit: fm.faellig_uhrzeit.value || "08:00",
+        zustaendig_id: fm.zustaendig_id.value || null, pruefer_id: fm.pruefer_id.value || null, faellig_uhrzeit: fm.faellig_uhrzeit.value || "08:00",
         erinnern_vorher: fm.erinnern_vorher.value === "" ? 0 : fm.erinnern_vorher.value, erinnern_einheit: fm.erinnern_einheit.value,
         unterschrift_pflicht: fm.unterschrift_pflicht.checked ? 1 : 0, checkpoints_pflicht: fm.art.value === "Rundgang" && fm.checkpoints_pflicht.checked ? 1 : 0,
         punkte: punkte.filter((x) => (x.text || "").trim()) };
@@ -205,16 +206,21 @@ DETAIL.checklisten = async (el, id, q) => {
     <div class="raster k4">
       <div class="karte kennzahl ${info.naechste && tageBis(info.naechste) < 0 ? "rot" : info.naechste && tageBis(info.naechste) <= 1 ? "gelb" : ""}"><div class="wert">${info.naechste ? datum(info.naechste) : "–"}</div><div class="text">nächste Durchführung · ${esc(c.rhythmus || "")}</div></div>
       <div class="karte kennzahl"><div class="wert">${liste.length}</div><div class="text">Durchgänge</div></div>
-      <div class="karte kennzahl"><div class="wert cl-wer">${c.zustaendig_id ? `<span class="avatar mini">${esc(initialen(personName(c.zustaendig_id)))}</span>${esc(personName(c.zustaendig_id))}` : "–"}</div><div class="text">zugewiesen · ${esc(vorwarnText(c) || "keine Erinnerung")}${info.naechste_zeit ? ` · fällig ${info.naechste_zeit.slice(11, 16)} Uhr` : ""}</div></div>
+      <div class="karte kennzahl"><div class="wert cl-wer">${c.zustaendig_id ? `<span class="avatar mini">${esc(initialen(personName(c.zustaendig_id)))}</span>${esc(personName(c.zustaendig_id))}` : "–"}</div><div class="text">zugewiesen · ${esc(vorwarnText(c) || "keine Erinnerung")}${c.pruefer_id ? ` · Prüfung: ${esc(personName(c.pruefer_id))}` : " · Prüfung: Objektleiter"}${info.naechste_zeit ? ` · fällig ${info.naechste_zeit.slice(11, 16)} Uhr` : ""}</div></div>
       <div class="karte kennzahl ${liste[0] && liste[0].abweichungen ? "orange" : ""}"><div class="wert">${liste[0] ? liste[0].abweichungen : "–"}</div><div class="text">Abweichungen beim letzten Mal</div></div>
     </div><div class="abstand"></div>
     <div class="raster k2"><div class="karte"><h3>Prüfpunkte</h3><ol class="cl-punkte">${punkte.map((p) => `<li>${p.bereich ? `<span class="klein">${esc(p.bereich)} · </span>` : ""}<b>${esc(p.text)}</b>
         <span class="klein">${p.typ === "zahl" ? `Wert${p.einheit ? " in " + esc(p.einheit) : ""}${p.min != null || p.max != null ? ` · Soll ${p.min ?? "…"} bis ${p.max ?? "…"}` : ""}` : p.typ === "text" ? "Text" : "Abhaken"}${p.pflicht ? "" : " · freiwillig"}${p.anlage_id ? " · " + esc(refText("anlagen", p.anlage_id)) : ""}</span></li>`).join("")}</ol></div>
       <div class="karte"><h3>Verlauf</h3>${liste.length ? `<ul class="liste-einfach">${liste.map((d) => `<li class="klickbar-li" data-d="${d.id}"><span><b>${datum(d.zeit)} ${d.zeit.slice(11, 16)}</b><br><span class="klein">${esc(d.wer || "")}${d.bemerkung ? " · " + esc(d.bemerkung.slice(0, 60)) : ""}</span></span>
-        <span class="rechts">${d.abweichungen ? `<span class="marke m-ueber">${d.abweichungen} Abweichung${d.abweichungen > 1 ? "en" : ""}</span>` : '<span class="marke m-ok">alles i. O.</span>'}</span></li>`).join("")}</ul>` : '<p class="klein">Noch nicht durchgeführt.</p>'}</div></div>`;
+        <span class="rechts">${d.abweichungen ? `<span class="marke m-ueber">${d.abweichungen} Abweichung${d.abweichungen > 1 ? "en" : ""}</span>` : '<span class="marke m-ok">alles i. O.</span>'} ${pruefMarke(d)}</span></li>`).join("")}</ul>` : '<p class="klein">Noch nicht durchgeführt.</p>'}</div></div>`;
   const b = el.querySelector("#cbearb");
   if (b) b.onclick = async () => { const e = await checklisteBearbeiten(c); if (e === "geloescht") location.hash = zurueck[0]; else if (e) route(); };
-  el.querySelectorAll("[data-d]").forEach((li) => li.onclick = () => durchgangAnsehen(Number(li.dataset.d)));
+  el.querySelectorAll("[data-d]").forEach((li) => li.onclick = async () => { if (await durchgangAnsehen(Number(li.dataset.d))) route(); });
+  if (q.get("durchgang")) {
+    const did = Number(q.get("durchgang"));
+    history.replaceState(null, "", `#/checklisten/${c.id}`);
+    setTimeout(async () => { if (await durchgangAnsehen(did)) route(); }, 50);
+  }
   if (c.art === "Rundgang") {
     const box = document.createElement("div");
     box.className = "karte cp-karte";
@@ -357,7 +363,8 @@ function unterschriftsfeld(box, name) {
 }
 
 async function durchgangAnsehen(did) {
-  const d = await api("GET", `durchgaenge/${did}`);
+  const [d] = await Promise.all([api("GET", `durchgaenge/${did}`), personenLaden()]);
+  const darfPruefen = d.pruef_status === "offen" && (d.pruefer_id === S.ich.id || darf("benutzer_verwalten"));
   let bereich = null;
   const html = `<p><b>${datum(d.zeit)} ${d.zeit.slice(11, 16)}</b> · ${esc(d.wer || "")} · ${d.abweichungen ? `<span class="marke m-ueber">${d.abweichungen} Abweichungen</span>` : '<span class="marke m-ok">alles i. O.</span>'}</p>
     <table class="cl-ergebnis"><tbody>${d.ergebnisse.map((e) => {
@@ -371,8 +378,20 @@ async function durchgangAnsehen(did) {
     ${d.bemerkung ? `<p><b>Bemerkung:</b> ${esc(d.bemerkung)}</p>` : ""}
     ${d.checkpoints.length ? `<p><b>Checkpoints:</b> ${d.checkpoints.map((cp) => `${esc(cp.bereich)} ${cp.zeit ? `<span class="marke m-ok">${cp.zeit.slice(11, 16)}</span>` : '<span class="marke m-ueber">nicht gescannt</span>'}`).join(" · ")}</p>` : ""}
     ${d.unterschrift ? `<div class="us-anzeige"><img src="${d.unterschrift}" alt="Unterschrift"><span>${esc(d.unterschrift_name || "")}</span></div>` : ""}
-    ${d.tickets.length ? `<p><b>Angelegte Mängel:</b> ${d.tickets.map((t) => `<a href="#/tickets/${t.id}">${esc(t.nummer)}</a>`).join(", ")}</p>` : ""}`;
-  await dialog(d.titel, html, [{ text: "Protokoll drucken", aktion: () => { protokollDrucken(d); return false; } }, { text: "Schließen", klasse: "haupt-k" }]);
+    ${d.tickets.length ? `<p><b>Angelegte Mängel:</b> ${d.tickets.map((t) => `<a href="#/tickets/${t.id}">${esc(t.nummer)}</a>`).join(", ")}</p>` : ""}
+    ${pruefBlock(d, darfPruefen)}`;
+  const knoepfe = [{ text: "Protokoll drucken", aktion: () => { protokollDrucken(d); return false; } }];
+  if (darfPruefen) {
+    const senden = (entscheidung) => async (hg) => {
+      await api("POST", `durchgaenge/${did}/pruefen`, { entscheidung, kommentar: hg.querySelector("#pkom").value });
+      melde(entscheidung === "bestaetigt" ? "Bestätigt." : "Rückfrage gesendet.");
+      return "geprueft";
+    };
+    knoepfe.push({ text: "Rückfrage stellen", aktion: senden("rueckfrage") }, { text: "Bestätigen", klasse: "haupt-k", aktion: senden("bestaetigt") });
+  } else knoepfe.push({ text: "Schließen", klasse: "haupt-k" });
+  const erg = await dialog(d.titel, `<div class="dfehler"></div>${html}`, knoepfe);
+  if (erg === "geprueft" && typeof benachrichtigungenLaden === "function") benachrichtigungenLaden();
+  return erg === "geprueft";
 }
 
 async function durchfuehren(el, c) {
@@ -534,9 +553,54 @@ function protokollDrucken(d) {
     <table><thead><tr><th>Prüfpunkt</th><th>Soll</th><th>Ergebnis</th></tr></thead><tbody>${zeilen}</tbody></table>
     ${d.bemerkung ? `<p><b>Bemerkung:</b> ${esc(d.bemerkung)}</p>` : ""}
     <div class="us"><div>${d.unterschrift ? `<img src="${d.unterschrift}" alt="">` : ""}Unterschrift ${esc(d.unterschrift_name || d.wer || "")}</div><div>Datum ${datum(d.zeit)}</div></div>
+    ${d.pruef_status && d.pruef_status !== "offen" ? `<p style="margin-top:8mm"><b>${d.pruef_status === "bestaetigt" ? "Geprüft und bestätigt" : "Rückfrage"}:</b> ${esc(d.geprueft_von || "")} am ${datum(d.geprueft_am)} ${String(d.geprueft_am || "").slice(11, 16)}${d.pruef_kommentar ? ` · ${esc(d.pruef_kommentar)}` : ""}</p>` : d.pruef_status === "offen" ? '<p style="margin-top:8mm"><b>Prüfung durch den Objektleiter:</b> noch offen</p>' : ""}
     <div class="fuss">Casa Concept Consulting GmbH &amp; Co. KG · www.ccc-frankfurt.com</div>
     <script>window.onload = () => setTimeout(() => print(), 300);<\/script></body></html>`;
   const f = window.open("", "_blank");
   if (!f) { melde("Das Druckfenster wurde blockiert. Bitte Pop-ups für diese Seite erlauben.", true); return; }
   f.document.open(); f.document.write(html); f.document.close();
 }
+
+
+/* ---------- Prüfung durch den Objektleiter ---------- */
+function pruefMarke(d) {
+  if (d.pruef_status === "offen") return '<span class="marke m-bald">zur Prüfung</span>';
+  if (d.pruef_status === "bestaetigt") return `<span class="marke m-ok" title="${esc(d.geprueft_von || "")}">✓ bestätigt</span>`;
+  if (d.pruef_status === "rueckfrage") return `<span class="marke m-ueber" title="${esc(d.geprueft_von || "")}">Rückfrage</span>`;
+  return "";
+}
+function pruefBlock(d, darfPruefen) {
+  if (!d.pruef_status) return "";
+  if (d.pruef_status === "offen") {
+    return `<div class="pruef-block offen"><b>Prüfung durch ${esc(personName(d.pruefer_id) || "den Objektleiter")}</b> · noch offen
+      ${darfPruefen ? `<label class="pruef-kom">Kommentar (bei Rückfrage Pflicht)<textarea id="pkom" placeholder="z. B. Bitte Anlagendruck nach Nachfüllen erneut messen"></textarea></label>` : ""}</div>`;
+  }
+  return `<div class="pruef-block ${d.pruef_status}"><b>${d.pruef_status === "bestaetigt" ? "✓ Geprüft und bestätigt" : "Rückfrage"}</b> von ${esc(d.geprueft_von || "")} am ${datum(d.geprueft_am)} ${String(d.geprueft_am || "").slice(11, 16)}
+    ${d.pruef_kommentar ? `<div>${esc(d.pruef_kommentar)}</div>` : ""}</div>`;
+}
+
+SEITEN.pruefungen = async (el, _, q) => {
+  await Promise.all([lade("objekte"), lade("anlagen"), personenLaden()]);
+  let status = q.get("status") || "offen", alle = false;
+  el.innerHTML = seitenkopf("Zur Prüfung", "Abgeschlossene Rundgänge und Checklisten", `<div class="umschalter"><button data-st="offen">Offen</button><button data-st="erledigt">Geprüft</button><button data-st="alle">Alle</button></div>`)
+    + `${darf("benutzer_verwalten") ? '<div class="werkzeug"><label class="check-k"><input type="checkbox" id="palle"> Auch Prüfungen anderer Objektleiter zeigen</label></div>' : ""}<div id="pinhalt"></div>`;
+  const zeichnen = async () => {
+    el.querySelectorAll("[data-st]").forEach((b) => b.classList.toggle("an", b.dataset.st === status));
+    const r = await api("GET", `pruefungen?status=${status}${alle ? "&alle=1" : ""}`);
+    el.querySelector("#pinhalt").innerHTML = r.liste.length ? `<div class="tabelle-wrap"><table><thead><tr><th>Liste</th><th>Objekt</th><th>Durchgeführt</th><th>Ergebnis</th><th>Prüfung</th><th></th></tr></thead><tbody>${r.liste.map((d) => `
+      <tr class="klickbar" data-d="${d.id}" data-c="${d.checkliste_id}"><td><span class="cl-art ${d.art === "Rundgang" ? "rg" : ""}">${d.art === "Rundgang" ? "Rundgang" : "Checkliste"}</span><br><b>${esc(d.titel)}</b>${d.anlage_id ? `<br><span class="klein">${esc(refText("anlagen", d.anlage_id))}</span>` : ""}</td>
+        <td>${esc(refText("objekte", d.objekt_id))}</td><td>${datum(d.zeit)} ${d.zeit.slice(11, 16)}<br><span class="klein">${esc(d.wer || "")}</span></td>
+        <td>${d.abweichungen ? `<span class="marke m-ueber">${d.abweichungen} Abweichung${d.abweichungen > 1 ? "en" : ""}</span>` : '<span class="marke m-ok">alles i. O.</span>'}</td>
+        <td>${pruefMarke(d)}<br><span class="klein">${esc(d.pruef_status === "offen" ? personName(d.pruefer_id) : (d.geprueft_von || ""))}</span></td>
+        <td>${d.pruef_status === "offen" && (d.pruefer_id === S.ich.id || darf("benutzer_verwalten")) ? '<button class="knopf haupt-k klein">Prüfen</button>' : '<button class="knopf klein">Ansehen</button>'}</td></tr>`).join("")}</tbody></table></div>`
+      : `<div class="karte leer">${status === "offen" ? "Nichts zu prüfen. Sobald ein Rundgang oder eine Checkliste abgeschlossen wird, für die du Objektleiter bist, erscheint sie hier." : "Keine Einträge."}</div>`;
+  };
+  el.querySelectorAll("[data-st]").forEach((b) => b.onclick = () => { status = b.dataset.st; zeichnen(); });
+  const pa = el.querySelector("#palle");
+  if (pa) pa.onchange = () => { alle = pa.checked; zeichnen(); };
+  el.querySelector("#pinhalt").addEventListener("click", async (e) => {
+    const tr = e.target.closest("tr[data-d]");
+    if (tr && await durchgangAnsehen(Number(tr.dataset.d))) zeichnen();
+  });
+  await zeichnen();
+};

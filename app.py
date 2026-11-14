@@ -41,7 +41,7 @@ SYM_PFAD = DATEN / "symbole"
 OBJ_PFAD = DATEN / "objektbilder"
 MAX_SYMBOL = 2 * 1024 * 1024
 MAX_UPLOAD = 25 * 1024 * 1024
-VERSION = "2026.11.15-6"  # muss zu VERSION in static/app.js passen
+VERSION = "2026.11.15-7"  # muss zu VERSION in static/app.js passen
 SITZUNG_TAGE = 7
 
 GEWERKE = [
@@ -92,6 +92,7 @@ RESSOURCEN: dict[str, dict] = {
             {"name": "baujahr", "label": "Baujahr", "typ": "number"},
             {"name": "eigentuemer", "label": "Eigentümer / Auftraggeber", "typ": "text"},
             {"name": "objektleiter", "label": "Objektleitung", "typ": "text", "liste": True},
+            {"name": "objektleiter_id", "label": "Objektleiter (Zugang, prüft Rundgänge und Checklisten)", "typ": "person"},
             {"name": "notiz", "label": "Notiz", "typ": "textarea"},
             {"name": "bild", "label": "Bild", "typ": "text", "nurlesen": True, "intern": True},
             {"name": "qr_token", "label": "QR-Kennung", "typ": "text", "nurlesen": True, "intern": True},
@@ -203,6 +204,7 @@ RESSOURCEN: dict[str, dict] = {
             {"name": "rhythmus", "label": "Rhythmus", "typ": "select", "optionen": list(RHYTHMUS), "standard": "bei Bedarf", "liste": True},
             {"name": "zustaendig", "label": "Zuständig", "typ": "text"},
             {"name": "zustaendig_id", "label": "Zugewiesen an", "typ": "number", "intern": True},
+            {"name": "pruefer_id", "label": "Prüfung durch", "typ": "person", "intern": True},
             {"name": "faellig_uhrzeit", "label": "Fällig um (Uhrzeit)", "typ": "text", "standard": "08:00"},
             {"name": "erinnern_vorher", "label": "Erinnern vorher", "typ": "number", "standard": 1},
             {"name": "erinnern_einheit", "label": "Einheit", "typ": "select", "optionen": ["Stunden", "Tage"], "standard": "Tage"},
@@ -337,7 +339,7 @@ RESSOURCEN: dict[str, dict] = {
     },
 }
 
-SQL_TYP = {"number": "REAL", "money": "REAL", "bool": "INTEGER", "ref": "INTEGER"}
+SQL_TYP = {"number": "REAL", "money": "REAL", "bool": "INTEGER", "ref": "INTEGER", "person": "INTEGER"}
 
 EXTRA_SQL = """
 CREATE TABLE IF NOT EXISTS benutzer (
@@ -489,9 +491,12 @@ def db_anlegen() -> None:
             con.execute("ALTER TABLE benutzer ADD COLUMN rechte TEXT")
         con.execute("UPDATE benutzer SET rolle='zuschauer' WHERE rolle='lesen'")
         vorhanden_dg = {r["name"] for r in con.execute("PRAGMA table_info(checklisten_durchgaenge)")}
-        for spalte in ("unterschrift", "unterschrift_name", "checkpoints", "start"):
+        for spalte in ("unterschrift", "unterschrift_name", "checkpoints", "start", "pruef_status", "geprueft_von", "geprueft_am", "pruef_kommentar"):
             if spalte not in vorhanden_dg:
                 con.execute(f"ALTER TABLE checklisten_durchgaenge ADD COLUMN {spalte} TEXT")
+        for spalte in ("benutzer_id", "pruefer_id"):
+            if spalte not in vorhanden_dg:
+                con.execute(f"ALTER TABLE checklisten_durchgaenge ADD COLUMN {spalte} INTEGER")
         vorhanden = {r["name"] for r in con.execute("PRAGMA table_info(wartung_historie)")}
         for spalte, typ in (("lat", "REAL"), ("lon", "REAL"), ("checkliste", "TEXT")):
             if spalte not in vorhanden:
@@ -600,7 +605,7 @@ def wert_pruefen(feld: dict, wert):
             return float(str(wert).replace(",", "."))
         except ValueError:
             raise Fehler(400, f'„{feld["label"]}“ muss eine Zahl sein.')
-    if t in ("ref",):
+    if t in ("ref", "person"):
         try:
             return int(wert)
         except (TypeError, ValueError):
@@ -1132,8 +1137,22 @@ def checkliste_durchfuehren(con, benutzer, cid: int, d: dict) -> dict:
                 "titel": e["text"][:150], "beschreibung": beschreibung, "art": "Mangel", "gefaehrdung": "mittel",
                 "status": "Neu", "gemeldet_von": benutzer["name"], "mangel": f"Durchgang {did}"})
             tickets.append(tid)
+    # Zur Prüfung an den Objektleiter
+    pruefer = c.get("pruefer_id")
+    if not pruefer:
+        o = con.execute("SELECT objektleiter_id FROM objekte WHERE id=?", (c["objekt_id"],)).fetchone()
+        pruefer = o["objektleiter_id"] if o else None
+    if pruefer and not con.execute("SELECT 1 FROM benutzer WHERE id=? AND aktiv=1", (pruefer,)).fetchone():
+        pruefer = None
+    con.execute("UPDATE checklisten_durchgaenge SET benutzer_id=?, pruefer_id=?, pruef_status=? WHERE id=?",
+                (benutzer["id"], pruefer, "offen" if pruefer else None, did))
+    if pruefer:
+        art = "Rundgang" if c["art"] == "Rundgang" else "Checkliste"
+        benachrichtigen(con, pruefer, f"pruefen:{did}", f"{art} zur Prüfung: {c['titel']}",
+                        f"von {benutzer['name']} · {len(abw)} Abweichung{'en' if len(abw) != 1 else ''}" if abw else f"von {benutzer['name']} · alles i. O.",
+                        f"#/checklisten/{cid}?durchgang={did}", "pruefung")
     protokollieren(con, benutzer, "durchgeführt", "checklisten", cid, f"{len(abw)} Abweichungen")
-    return {"ok": True, "id": did, "abweichungen": len(abw), "tickets": len(tickets)}
+    return {"ok": True, "id": did, "abweichungen": len(abw), "tickets": len(tickets), "pruefer": pruefer}
 
 
 def anlage_aktivitaet(con, aid: int) -> list[dict]:
@@ -1828,9 +1847,30 @@ class Handler(BaseHTTPRequestHandler):
         if erstes == "checklisten" and len(teile) == 3 and teile[2] == "durchgaenge" and m == "GET":
             cid = self.id(teile[1])
             return self.json([dict(r) for r in con.execute(
-                "SELECT id, zeit, wer, abweichungen, bemerkung FROM checklisten_durchgaenge WHERE checkliste_id=? ORDER BY zeit DESC LIMIT 300", (cid,))])
+                "SELECT id, zeit, wer, abweichungen, bemerkung, pruef_status, geprueft_von FROM checklisten_durchgaenge WHERE checkliste_id=? ORDER BY zeit DESC LIMIT 300", (cid,))])
         if erstes == "checklisten" and len(teile) == 3 and teile[2] == "durchgang" and m == "POST":
             return self.json(checkliste_durchfuehren(con, b, self.id(teile[1]), self.body()), 201)
+        if erstes == "durchgaenge" and len(teile) == 3 and teile[2] == "pruefen" and m == "POST":
+            return self.json(self.durchgang_pruefen(con, b, self.id(teile[1]), self.body()))
+        if erstes == "pruefungen" and m == "GET":
+            alle = self.rechte.get("benutzer_verwalten") and (q.get("alle") or [""])[0] == "1"
+            status = (q.get("status") or ["offen"])[0]
+            bed = ["d.pruef_status IS NOT NULL"]
+            werte = []
+            if status == "offen":
+                bed.append("d.pruef_status='offen'")
+            elif status == "erledigt":
+                bed.append("d.pruef_status IN ('bestaetigt','rueckfrage')")
+            if not alle:
+                bed.append("(d.pruefer_id=? OR d.benutzer_id=?)")
+                werte += [b["id"], b["id"]]
+            liste = [dict(r) for r in con.execute(
+                "SELECT d.id, d.checkliste_id, d.zeit, d.wer, d.abweichungen, d.pruef_status, d.pruefer_id, d.benutzer_id, d.geprueft_von, "
+                "d.geprueft_am, d.pruef_kommentar, c.titel, c.art, c.objekt_id, c.anlage_id FROM checklisten_durchgaenge d "
+                f"JOIN checklisten c ON c.id=d.checkliste_id WHERE {' AND '.join(bed)} ORDER BY d.zeit DESC LIMIT 300", werte)]
+            offen_fuer_mich = con.execute("SELECT COUNT(*) FROM checklisten_durchgaenge WHERE pruef_status='offen' AND pruefer_id=?",
+                                          (b["id"],)).fetchone()[0]
+            return self.json({"liste": liste, "offen_fuer_mich": offen_fuer_mich})
         if erstes == "durchgaenge" and len(teile) == 2 and m == "GET":
             r = con.execute("SELECT d.*, c.titel, c.art FROM checklisten_durchgaenge d JOIN checklisten c ON c.id=d.checkliste_id WHERE d.id=?",
                             (self.id(teile[1]),)).fetchone()
@@ -1893,6 +1933,7 @@ class Handler(BaseHTTPRequestHandler):
                     if name == "zaehler" and not sauber.get("einheit"):
                         sauber["einheit"] = {"Strom": "kWh", "Wasser": "m³", "Wärme": "MWh", "Kälte": "MWh",
                                              "Gas": "m³"}.get(sauber.get("medium"), "")
+                    self.personen_pruefen(con, res, sauber)
                     if name == "checklisten":
                         self.checkliste_pruefen(con, sauber)
                     neue_id = einfuegen(con, name, sauber)
@@ -1915,6 +1956,7 @@ class Handler(BaseHTTPRequestHandler):
             if name == "tickets" and sauber.get("status") in ("Erledigt", "Abgeschlossen") and not (
                     sauber.get("erledigt_am") or alt.get("erledigt_am")):
                 sauber["erledigt_am"] = heute().isoformat()
+            self.personen_pruefen(con, res, sauber)
             if name == "checklisten":
                 self.checkliste_pruefen(con, sauber)
                 if sauber.get("zustaendig_id") and sauber["zustaendig_id"] != alt.get("zustaendig_id"):
@@ -2126,6 +2168,39 @@ class Handler(BaseHTTPRequestHandler):
             if str(altp).startswith(str(PLAN_PFAD.resolve())) and altp.is_file():
                 altp.unlink()
         return self.json({"id": pid}, 201)
+
+    def personen_pruefen(self, con, res: dict, sauber: dict):
+        for f in res["felder"]:
+            if f["typ"] == "person" and sauber.get(f["name"]) is not None:
+                if not con.execute("SELECT 1 FROM benutzer WHERE id=? AND aktiv=1", (sauber[f["name"]],)).fetchone():
+                    raise Fehler(400, f'„{f["label"]}“: Diese Person gibt es nicht oder sie ist gesperrt.')
+
+    def durchgang_pruefen(self, con, b, did: int, d: dict):
+        r = con.execute("SELECT d.*, c.titel, c.art FROM checklisten_durchgaenge d JOIN checklisten c ON c.id=d.checkliste_id WHERE d.id=?",
+                        (did,)).fetchone()
+        if not r:
+            raise Fehler(404, "Durchgang nicht gefunden.")
+        if r["pruefer_id"] != b["id"] and not self.rechte.get("benutzer_verwalten"):
+            raise Fehler(403, "Prüfen darf nur der eingetragene Objektleiter oder ein Administrator.")
+        entscheidung = d.get("entscheidung")
+        if entscheidung not in ("bestaetigt", "rueckfrage"):
+            raise Fehler(400, "Bitte bestätigen oder eine Rückfrage stellen.")
+        kommentar = str(d.get("kommentar") or "").strip()[:2000]
+        if entscheidung == "rueckfrage" and len(kommentar) < 3:
+            raise Fehler(400, "Bitte kurz schreiben, was geklärt werden soll.")
+        con.execute("UPDATE checklisten_durchgaenge SET pruef_status=?, geprueft_von=?, geprueft_am=?, pruef_kommentar=? WHERE id=?",
+                    (entscheidung, b["name"], jetzt(), kommentar or None, did))
+        con.execute("UPDATE benachrichtigungen SET gelesen=1 WHERE schluessel=?", (f"pruefen:{did}",))
+        art = "Rundgang" if r["art"] == "Rundgang" else "Checkliste"
+        if r["benutzer_id"] and r["benutzer_id"] != b["id"]:
+            if entscheidung == "bestaetigt":
+                benachrichtigen(con, r["benutzer_id"], f"bestaetigt:{did}", f"{art} bestätigt: {r['titel']}",
+                                f"von {b['name']}" + (f" · {kommentar}" if kommentar else ""), f"#/checklisten/{r['checkliste_id']}?durchgang={did}", "bestaetigt")
+            else:
+                benachrichtigen(con, r["benutzer_id"], f"rueckfrage:{did}:{jetzt()}", f"Rückfrage zu {art}: {r['titel']}",
+                                f"{b['name']}: {kommentar}", f"#/checklisten/{r['checkliste_id']}?durchgang={did}", "rueckfrage")
+        protokollieren(con, b, "bestätigt" if entscheidung == "bestaetigt" else "Rückfrage gestellt", "checklisten", r["checkliste_id"], r["titel"])
+        return {"ok": True}
 
     def checkliste_pruefen(self, con, sauber: dict):
         if sauber.get("zustaendig_id") is not None:

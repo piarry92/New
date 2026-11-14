@@ -64,6 +64,12 @@ einen Leser aus dem Internet.
   mit Zahl: „Dir wurde … zugewiesen“, „… steht an“ (ab Beginn der Vorwarnzeit) und „… fällig“ (danach). Ein Klick
   öffnet direkt das Durchführen. Auf der Übersicht erscheint „Meine Rundgänge & Checklisten“. Auf Wunsch zusätzlich
   als Hinweis am Rechner oder Handy, solange das Programm im Browser geöffnet ist.
+- **Prüfung durch den Objektleiter:** Beim Objekt wird unter „Objektleiter (Zugang)“ eingetragen, wer prüft
+  (je Liste auch abweichend). Nach dem Abschließen geht der Durchgang automatisch „zur Prüfung“: Der Objektleiter
+  bekommt eine Benachrichtigung, sieht ihn unter „Zur Prüfung“ (mit Zahl im Menü) und kann **bestätigen** (gern mit
+  Kommentar) oder eine **Rückfrage** stellen (Kommentar Pflicht). Der Haustechniker wird über beides benachrichtigt.
+  Der Prüfvermerk steht im Verlauf und im Prüfprotokoll. Prüfen darf nur der eingetragene Objektleiter oder ein
+  Administrator.
 - **Checkpoints beim Rundgang:** Jede Station bekommt einen eigenen QR-Code (Rundgang öffnen › „QR-Etiketten
   drucken“). Der Haustechniker scannt den Code vor Ort mit der Handy-Kamera oder im Programm mit „Checkpoint
   scannen“. Zeit und Person werden festgehalten und im Protokoll gezeigt. Ist „Checkpoints müssen gescannt werden“
