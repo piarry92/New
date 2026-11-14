@@ -33,6 +33,11 @@ F002 Wandhydrant, F005 Handfeuermelder, E001/E002 Notausgang, E003 Erste Hilfe, 
 Feuerwehrplan (BMZ, FAT, FBF, FSD, RWA). Das Zeichen lässt sich bei jeder Anlage unter „Planzeichen“ ändern. Die Zeichen
 sind nachgezeichnet. Für amtliche Flucht- und Rettungspläne nach DIN ISO 23601 bitte die geprüften Originalzeichen verwenden.
 
+**Eigene Symbole:** Im Plan links unter „Eigene Symbole“ oder in den Einstellungen auf „Eigenes Symbol aus Bild“
+klicken und ein Bild wählen (PNG, JPG, WEBP oder SVG). Das Programm macht daraus ein quadratisches Symbol. Danach steht
+es links zum Ziehen bereit, genau wie die offiziellen Zeichen. Bei jeder Anlage lässt es sich unter „Eigenes Symbol“
+auswählen. Ein Symbol, das noch auf Anlagen benutzt wird, lässt sich nicht löschen.
+
 Vorhandene Anlagen ohne Platz stehen links unter „Noch nicht im Plan“. Verschieben geht durch Ziehen. Mausrad oder zwei
 Finger zoomen. Oben lassen sich einzelne Gewerke aus- und einblenden. Für PDF-Grundrisse lädt der Browser einmalig
 einen Leser aus dem Internet.

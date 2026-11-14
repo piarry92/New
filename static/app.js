@@ -783,7 +783,25 @@ SEITEN.einstellungen = async (el) => {
       <div><button class="knopf haupt-k">Ändern</button></div></form></div>
     ${istAdmin() ? '<div class="karte"><h3>Zugänge</h3><div id="bl"></div><div class="abstand"></div><button class="knopf haupt-k" id="neuB">' + icon("plus") + ' Zugang anlegen</button></div>' : ""}
   </div>
+  <div class="abstand"></div><div class="karte"><h3>Eigene Symbole für Pläne</h3><div id="syml"></div>
+    ${darfAendern() ? '<div class="abstand"></div><button class="knopf haupt-k" id="symNeuE">' + icon("plus") + ' Eigenes Symbol aus Bild</button>' : ""}</div>
   ${istAdmin() ? '<div class="abstand"></div><div class="karte"><h3>Letzte Änderungen</h3><div id="vl" class="tabelle-wrap" style="box-shadow:none"></div></div>' : ""}`;
+  const ladeSym = async () => {
+    const liste = await lade("symbole", true);
+    el.querySelector("#syml").innerHTML = liste.length ? `<ul class="liste-einfach">${liste.map((x) => `<li>${eigenesSymbol(x.id, 36)}<div><b>${esc(x.name)}</b><br><span class="klein">${esc([x.gewerk, x.beschreibung].filter(Boolean).join(" · "))}</span></div>
+      ${darfAendern() ? `<span class="rechts"><button class="knopf klein" data-sbearb="${x.id}">Angaben</button> <button class="knopf klein" data-sbild="${x.id}">Bild ersetzen</button></span>` : ""}</li>`).join("")}</ul>`
+      : '<p class="klein">Noch keine eigenen Symbole. Lade ein Bild hoch, zum Beispiel ein Symbol für Rauchmelder oder Wasserzähler. Danach steht es im Plan links zum Ziehen bereit.</p>';
+  };
+  await ladeSym();
+  el.querySelector("#syml").addEventListener("click", async (e) => {
+    const a = e.target.closest("[data-sbearb]"), b = e.target.closest("[data-sbild]");
+    const sym = (S.cache.symbole || []).find((x) => x.id === Number((a || b || {}).dataset?.sbearb || (a || b || {}).dataset?.sbild));
+    if (!sym) return;
+    if (a && await bearbeiten("symbole", sym)) ladeSym();
+    if (b && await symbolDialog(sym)) ladeSym();
+  });
+  const sne = el.querySelector("#symNeuE");
+  if (sne) sne.onclick = async () => { if (await symbolDialog()) ladeSym(); };
   el.querySelector("#pw").onsubmit = async (e) => {
     e.preventDefault();
     try { await api("POST", "benutzer/passwort", Object.fromEntries(new FormData(e.target))); melde("Passwort geändert."); e.target.reset(); }

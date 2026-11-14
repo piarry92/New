@@ -36,6 +36,8 @@ DATEN = Path(os.environ.get("CAFM_DATEN", BASIS / "daten"))
 DB_PFAD = DATEN / "cafm.sqlite"
 DOK_PFAD = DATEN / "dokumente"
 PLAN_PFAD = DATEN / "plaene"
+SYM_PFAD = DATEN / "symbole"
+MAX_SYMBOL = 2 * 1024 * 1024
 MAX_UPLOAD = 25 * 1024 * 1024
 SITZUNG_TAGE = 7
 
@@ -87,7 +89,8 @@ RESSOURCEN: dict[str, dict] = {
             {"name": "objekt_id", "label": "Objekt", "typ": "ref", "ref": "objekte", "pflicht": True, "liste": True},
             {"name": "bezeichnung", "label": "Bezeichnung", "typ": "text", "pflicht": True, "liste": True},
             {"name": "gewerk", "label": "Gewerk", "typ": "select", "optionen": GEWERKE, "liste": True},
-            {"name": "planzeichen", "label": "Planzeichen", "typ": "select", "optionen": PLANZEICHEN},
+            {"name": "planzeichen", "label": "Planzeichen (DIN EN ISO 7010)", "typ": "select", "optionen": PLANZEICHEN},
+            {"name": "symbol_id", "label": "Eigenes Symbol (statt Planzeichen)", "typ": "ref", "ref": "symbole"},
             {"name": "standort", "label": "Standort (Gebäude, Etage, Raum)", "typ": "text", "liste": True},
             {"name": "hersteller", "label": "Hersteller", "typ": "text", "liste": True},
             {"name": "typ", "label": "Typ / Modell", "typ": "text"},
@@ -112,6 +115,15 @@ RESSOURCEN: dict[str, dict] = {
             {"name": "dateiname", "label": "Datei", "typ": "text", "nurlesen": True},
             {"name": "breite", "label": "Breite (px)", "typ": "number", "nurlesen": True, "intern": True},
             {"name": "hoehe", "label": "Höhe (px)", "typ": "number", "nurlesen": True, "intern": True},
+        ],
+    },
+    "symbole": {
+        "label": "Eigene Symbole", "einzahl": "Symbol", "anzeige": ["name"], "sort": "name", "datei": True,
+        "versteckt": True,
+        "felder": [
+            {"name": "name", "label": "Name (z. B. Rauchmelder)", "typ": "text", "pflicht": True, "liste": True},
+            {"name": "gewerk", "label": "Gewerk", "typ": "select", "optionen": GEWERKE, "liste": True},
+            {"name": "beschreibung", "label": "Beschreibung", "typ": "text"},
         ],
     },
     "wartungen": {
@@ -295,6 +307,7 @@ def db_anlegen() -> None:
     DATEN.mkdir(parents=True, exist_ok=True)
     DOK_PFAD.mkdir(parents=True, exist_ok=True)
     PLAN_PFAD.mkdir(parents=True, exist_ok=True)
+    SYM_PFAD.mkdir(parents=True, exist_ok=True)
     with db() as con:
         for name, res in RESSOURCEN.items():
             spalten = ["id INTEGER PRIMARY KEY AUTOINCREMENT"]
@@ -948,6 +961,14 @@ class Handler(BaseHTTPRequestHandler):
             return self.datei(con, self.id(teile[1]))
         if erstes == "dokumente" and len(teile) == 1 and m == "POST":
             return self.hochladen(con, b)
+        if erstes == "symbole" and len(teile) == 1 and m == "POST":
+            return self.symbol_hochladen(con, b, None)
+        if erstes == "symbole" and len(teile) == 3 and teile[2] == "bild":
+            sid = self.id(teile[1])
+            if m == "GET":
+                return self.symbol_bild(con, sid)
+            if m == "PUT":
+                return self.symbol_hochladen(con, b, sid)
         if erstes == "plaene" and len(teile) == 1 and m == "POST":
             return self.plan_hochladen(con, b, None)
         if erstes == "plaene" and len(teile) == 3:
@@ -1018,8 +1039,8 @@ class Handler(BaseHTTPRequestHandler):
             abh = self.abhaengige(con, name, rid)
             if abh:
                 raise Fehler(409, f"Kann nicht gelöscht werden, es hängen noch Einträge daran: {abh}.")
-            if name in ("dokumente", "plaene") and alt.get("pfad"):
-                ordner = DOK_PFAD if name == "dokumente" else PLAN_PFAD
+            if name in ("dokumente", "plaene", "symbole") and alt.get("pfad"):
+                ordner = {"dokumente": DOK_PFAD, "plaene": PLAN_PFAD, "symbole": SYM_PFAD}[name]
                 p = (ordner / alt["pfad"]).resolve()
                 if str(p).startswith(str(ordner.resolve())) and p.is_file():
                     p.unlink()
@@ -1063,7 +1084,7 @@ class Handler(BaseHTTPRequestHandler):
         richtung = "DESC" if sort.startswith("-") else "ASC"
         sort = sort.lstrip("-")
         sql = f'SELECT * FROM "{name}"' + (" WHERE " + " AND ".join(bed) if bed else "")
-        sql += f' ORDER BY "{sort}" IS NULL, "{sort}" {richtung}, id DESC LIMIT 5000'
+        sql += f' ORDER BY "{sort}" IS NULL, "{sort}" COLLATE NOCASE {richtung}, id DESC LIMIT 5000'
         zeilen = [dict(r) for r in con.execute(sql, werte)]
         for z in zeilen:
             z.pop("pfad", None)
@@ -1166,6 +1187,52 @@ class Handler(BaseHTTPRequestHandler):
             if str(altp).startswith(str(PLAN_PFAD.resolve())) and altp.is_file():
                 altp.unlink()
         return self.json({"id": pid}, 201)
+
+    def symbol_hochladen(self, con, b, sid: int | None):
+        d = self.body()
+        try:
+            inhalt = base64.b64decode(d.get("inhalt") or "", validate=True)
+        except ValueError:
+            raise Fehler(400, "Das Bild konnte nicht gelesen werden.")
+        if not inhalt:
+            raise Fehler(400, "Bitte ein Bild auswählen.")
+        if len(inhalt) > MAX_SYMBOL:
+            raise Fehler(413, "Das Bild ist zu groß (höchstens 2 MB).")
+        endung = bild_endung(inhalt)
+        if not endung:
+            raise Fehler(400, "Bitte ein Bild als PNG, JPG, WEBP oder SVG wählen.")
+        if sid is None:
+            sauber = daten_pruefen(RESSOURCEN["symbole"], d, neu=True)
+            sid = einfuegen(con, "symbole", sauber)
+            alt_pfad = None
+            protokollieren(con, b, "angelegt", "symbole", sid, sauber.get("name"))
+        else:
+            alt = con.execute("SELECT * FROM symbole WHERE id=?", (sid,)).fetchone()
+            if not alt:
+                raise Fehler(404, "Symbol nicht gefunden.")
+            alt_pfad = alt["pfad"]
+            con.execute("UPDATE symbole SET geaendert=? WHERE id=?", (jetzt(), sid))
+            protokollieren(con, b, "Bild ersetzt", "symbole", sid)
+        pfad = f"{sid:05d}_{secrets.token_hex(6)}.{endung}"
+        (SYM_PFAD / pfad).write_bytes(inhalt)
+        con.execute("UPDATE symbole SET pfad=? WHERE id=?", (pfad, sid))
+        if alt_pfad:
+            altp = (SYM_PFAD / alt_pfad).resolve()
+            if str(altp).startswith(str(SYM_PFAD.resolve())) and altp.is_file():
+                altp.unlink()
+        return self.json(zeile(con.execute("SELECT id, name, gewerk, beschreibung, geaendert FROM symbole WHERE id=?",
+                                           (sid,)).fetchone()), 201)
+
+    def symbol_bild(self, con, sid: int):
+        r = con.execute("SELECT pfad FROM symbole WHERE id=?", (sid,)).fetchone()
+        if not r or not r["pfad"]:
+            raise Fehler(404, "Symbol nicht gefunden.")
+        p = (SYM_PFAD / r["pfad"]).resolve()
+        if not str(p).startswith(str(SYM_PFAD.resolve())) or not p.is_file():
+            raise Fehler(404, "Symbol nicht gefunden.")
+        typ = mimetypes.guess_type(p.name)[0] or "application/octet-stream"
+        self.senden(200, p.read_bytes(), typ, {"Cache-Control": "private, max-age=86400",
+                                                "Content-Security-Policy": "sandbox"})
 
     def plan_bild(self, con, pid: int):
         r = con.execute("SELECT pfad FROM plaene WHERE id=?", (pid,)).fetchone()

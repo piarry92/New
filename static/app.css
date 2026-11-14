@@ -320,3 +320,12 @@ td.zahl, th.zahl { text-align: right; white-space: nowrap; }
   .buehne { height: 180mm; box-shadow: none; background: #fff; }
   .mk { animation: none; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
+
+/* Eigene Symbole */
+.zeichen-svg.eigen { object-fit: contain; background: #fff; border-radius: 4px; }
+.p-item img { pointer-events: none; }
+.sym-neu { margin: 8px 0 10px; width: 100%; justify-content: center; }
+.sym-vorschau { display: flex; gap: 14px; align-items: center; }
+.sv-bild { width: 104px; height: 104px; flex: none; display: flex; align-items: center; justify-content: center; border: 1px dashed var(--hellgrau); border-radius: var(--radius);
+  background: repeating-conic-gradient(#EEE 0% 25%, #fff 0% 50%) 0 0 / 16px 16px; }
+.liste-einfach li > img { flex: none; align-self: center; }

@@ -30,8 +30,66 @@ const VORLAGEN = [
 ];
 
 /* Planzeichen, wenn vorhanden, sonst Kreis mit Gewerk-Kürzel */
-function symbolFuer(gewerk, planzeichen, groesse = 26) {
-  return zeichenSvg(zeichenCode(planzeichen), groesse) || symbol(gewerk);
+function symbolFuer(gewerk, planzeichen, groesse = 26, symbolId = null) {
+  return eigenesSymbol(symbolId, groesse) || zeichenSvg(zeichenCode(planzeichen), groesse) || symbol(gewerk);
+}
+/* Eigenes Symbol (hochgeladenes Bild) */
+function eigenesSymbol(id, groesse = 26) {
+  if (!id) return "";
+  const sym = (S.cache.symbole || []).find((x) => x.id === Number(id));
+  const v = sym && sym.geaendert ? encodeURIComponent(sym.geaendert) : "";
+  return `<img class="zeichen-svg eigen" src="/api/symbole/${Number(id)}/bild?v=${v}" width="${groesse}" height="${groesse}" alt="${esc(sym ? sym.name : "Symbol")}" draggable="false">`;
+}
+const symbolVon = (a, groesse = 26) => symbolFuer(a.gewerk, a.planzeichen, groesse, a.symbol_id);
+
+/* Bild in ein quadratisches PNG (256 px) umwandeln, SVG eingeschlossen */
+async function symbolBildVorbereiten(datei) {
+  if (!/^image\/(png|jpeg|webp|gif|svg\+xml)$/.test(datei.type)) throw new Error("Bitte ein Bild als PNG, JPG, WEBP oder SVG wählen.");
+  if (datei.size > 10 * 1024 * 1024) throw new Error("Das Bild ist zu groß (höchstens 10 MB).");
+  const url = URL.createObjectURL(datei);
+  try {
+    const img = await new Promise((ok, nein) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => nein(new Error("Das Bild lässt sich nicht öffnen.")); i.src = url; });
+    const G = 256, c = document.createElement("canvas");
+    c.width = c.height = G;
+    const w = img.naturalWidth || G, h = img.naturalHeight || G, f = Math.min(G / w, G / h);
+    c.getContext("2d").drawImage(img, (G - w * f) / 2, (G - h * f) / 2, w * f, h * f);
+    return c.toDataURL("image/png");
+  } finally { URL.revokeObjectURL(url); }
+}
+
+async function symbolDialog(sym = null, vorgabe = {}) {
+  const felder = sym ? [] : S.schema.symbole.felder;
+  const html = `<div class="dfehler"></div><form class="formular" onsubmit="return false">
+    <label class="breit"><span class="pflicht">Bild (PNG, JPG, WEBP oder SVG)</span><input type="file" name="datei" accept="image/png,image/jpeg,image/webp,image/svg+xml" required></label>
+    <div class="breit sym-vorschau"><div class="sv-bild" data-vorschau>${sym ? eigenesSymbol(sym.id, 96) : '<span class="klein">Vorschau</span>'}</div>
+      <p class="klein">Das Bild wird quadratisch auf 256 Pixel gebracht. Am besten wirkt ein einfaches Bild mit wenig Rand, gern mit durchsichtigem Hintergrund.</p></div>
+    ${felder.map((f) => `<label><span class="${f.pflicht ? "pflicht" : ""}">${esc(f.label)}</span>${eingabe(f, vorgabe[f.name])}</label>`).join("")}
+  </form>`;
+  let png = null;
+  const p = dialog(sym ? `Bild für „${sym.name}“ ersetzen` : "Eigenes Symbol anlegen", html, [{ text: "Abbrechen" }, {
+    text: "Speichern", klasse: "haupt-k", aktion: async (hg) => {
+      if (!png) throw new Error("Bitte ein Bild auswählen.");
+      const inhalt = png.split(",")[1];
+      const erg = sym ? await api("PUT", `symbole/${sym.id}/bild`, { inhalt }) : await api("POST", "symbole", { ...formularDaten(hg, "symbole"), inhalt });
+      melde(sym ? "Bild ersetzt." : "Symbol angelegt.");
+      return erg;
+    },
+  }]);
+  const hg = letzterDialog();
+  hg.querySelector('[name="datei"]').addEventListener("change", async (e) => {
+    const d = e.target.files[0];
+    if (!d) return;
+    try {
+      png = await symbolBildVorbereiten(d);
+      hg.querySelector("[data-vorschau]").innerHTML = `<img src="${png}" width="96" height="96" alt="">`;
+      const n = hg.querySelector('[name="name"]');
+      if (n && !n.value) n.value = d.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ");
+      hg.querySelector(".dfehler").innerHTML = "";
+    } catch (err) { png = null; hg.querySelector(".dfehler").innerHTML = `<div class="fehler">${esc(err.message)}</div>`; }
+  });
+  const erg = await p;
+  if (erg) { delete S.cache.symbole; await lade("symbole"); }
+  return erg;
 }
 
 function symbol(gewerk, extra = "") {
@@ -151,7 +209,7 @@ SEITEN.plaene = async (el) => {
 
 /* ---------- Plan-Arbeitsfläche ---------- */
 DETAIL.plaene = async (el, id, q) => {
-  await Promise.all(["objekte", "plaene"].map((r) => lade(r)));
+  await Promise.all(["objekte", "plaene", "symbole"].map((r) => lade(r)));
   let daten = await api("GET", `plaene/${id}/anlagen`);
   const plan = daten.plan;
   const aendern = darfAendern();
@@ -165,9 +223,9 @@ DETAIL.plaene = async (el, id, q) => {
       <input type="search" id="psuche" placeholder="Gerät oder Anlage suchen">
       ${aendern ? `<div class="hinweis">Zieh ein Symbol auf den Grundriss. Oder tippe es an und dann auf die Stelle im Plan. Rote und grüne Zeichen nach DIN EN ISO 7010.</div>` : ""}
       <div id="pfrei"></div>
-      ${aendern ? `<h3>Neu einfügen</h3><div id="pvorlagen">${VORLAGEN.map(([g, liste]) => `
+      ${aendern ? `<h3>Neu einfügen</h3><div id="peigen"></div><div id="pvorlagen">${VORLAGEN.map(([g, liste]) => `
         <details ${g === "Brandschutz" || g === "Flucht und Rettung" ? "open" : ""}><summary>${symbol(g)} ${esc(g)}</summary>
-        ${liste.map((v) => { const [n, z] = Array.isArray(v) ? v : [v, ""]; return `<div class="p-item" data-vorlage="${esc(n)}" data-gewerk="${esc(g)}" data-zeichen="${esc(z)}" title="${esc(z ? z.replace(/^(\S+) (.*)$/, "$2 ($1)") : n)}">${symbolFuer(g, z)}<span>${esc(n)}</span></div>`; }).join("")}</details>`).join("")}</div>` : ""}
+        ${liste.map((v) => { const [n, z] = Array.isArray(v) ? v : [v, ""]; return `<div class="p-item" data-vorlage="${esc(n)}" data-gewerk="${esc(g)}" data-zeichen="${esc(z)}" data-symbol="" title="${esc(z ? z.replace(/^(\S+) (.*)$/, "$2 ($1)") : n)}">${symbolFuer(g, z)}<span>${esc(n)}</span></div>`; }).join("")}</details>`).join("")}</div>` : ""}
     </aside>
     <section class="plan-bereich">
       <div class="plan-leiste">
@@ -218,14 +276,14 @@ DETAIL.plaene = async (el, id, q) => {
   const zeichnen = () => {
     markerEbene.innerHTML = daten.platziert.map((a) => {
       const [k, c] = stil(a.gewerk);
-      const z = zeichenSvg(zeichenCode(a.planzeichen), 32);
+      const z = eigenesSymbol(a.symbol_id, 32) || zeichenSvg(zeichenCode(a.planzeichen), 32);
       return `<button class="mk ${z ? "zeichen" : ""} ampel-${a.ampel} ${sichtbar(a) ? "" : "aus"} ${Number(q.get("anlage")) === a.id ? "hervor" : ""}" data-id="${a.id}" style="left:${a.plan_x * 100}%;top:${a.plan_y * 100}%;--c:${c}" title="${esc(a.bezeichnung)}">${z || esc(k)}</button>`;
     }).join("");
     const gewerke = [...new Set(daten.platziert.map((a) => a.gewerk || "Sonstiges"))].sort();
     el.querySelector("#ebenen").innerHTML = gewerke.map((g) => `<button class="chip ${ansicht.aus.has(g) ? "aus" : ""}" data-ebene="${esc(g)}">${symbol(g)} ${esc(g)} <span class="klein">${daten.platziert.filter((a) => (a.gewerk || "Sonstiges") === g).length}</span></button>`).join("");
     const frei = daten.frei.filter((a) => !ansicht.suche || a.bezeichnung.toLowerCase().includes(ansicht.suche));
     el.querySelector("#pfrei").innerHTML = aendern ? `<h3>Noch nicht im Plan <span class="klein">${daten.frei.length}</span></h3>${frei.length ? frei.map((a) =>
-      `<div class="p-item" data-anlage="${a.id}">${symbolFuer(a.gewerk, a.planzeichen)}<span>${esc(a.bezeichnung)}<br><span class="klein">${esc(a.standort || a.gewerk || "")}</span></span></div>`).join("") : '<p class="klein">Alle Anlagen dieses Objekts sind auf einem Plan.</p>'}` : "";
+      `<div class="p-item" data-anlage="${a.id}">${symbolVon(a)}<span>${esc(a.bezeichnung)}<br><span class="klein">${esc(a.standort || a.gewerk || "")}</span></span></div>`).join("") : '<p class="klein">Alle Anlagen dieses Objekts sind auf einem Plan.</p>'}` : "";
     if (ansicht.suche) {
       const treffer = daten.platziert.filter(sichtbar);
       if (treffer.length === 1) zentrieren(treffer[0]);
@@ -252,7 +310,7 @@ DETAIL.plaene = async (el, id, q) => {
   const popupZeigen = (a) => {
     ansicht.offen = a.id;
     popup.innerHTML = `<button class="x" data-p="zu" aria-label="Schließen">×</button>
-      <div class="pp-kopf">${symbolFuer(a.gewerk, a.planzeichen, 34)}<div><b>${esc(a.bezeichnung)}</b><br><span class="klein">${esc([a.gewerk, a.standort].filter(Boolean).join(" · "))}</span></div></div>
+      <div class="pp-kopf">${symbolVon(a, 34)}<div><b>${esc(a.bezeichnung)}</b><br><span class="klein">${esc([a.gewerk, a.standort].filter(Boolean).join(" · "))}</span></div></div>
       <div class="pp-zeilen">
         ${a.status ? `<div>Zustand ${zustandMarke(a.status)}</div>` : ""}
         <div>Störmeldungen ${a.tickets_offen ? `<span class="marke m-ueber">${a.tickets_offen} offen</span>` : '<span class="marke m-ok">keine offen</span>'}</div>
@@ -286,7 +344,7 @@ DETAIL.plaene = async (el, id, q) => {
     if (!aid) {
       const gleich = [...daten.platziert, ...daten.frei].filter((a) => a.bezeichnung.startsWith(quelle.vorlage)).length;
       const neu = await bearbeiten("anlagen", null, {
-        objekt_id: plan.objekt_id, gewerk: quelle.gewerk, planzeichen: quelle.zeichen, bezeichnung: `${quelle.vorlage} ${gleich + 1}`,
+        objekt_id: plan.objekt_id, gewerk: quelle.gewerk, planzeichen: quelle.zeichen, symbol_id: quelle.symbol_id, bezeichnung: `${quelle.vorlage} ${gleich + 1}`,
         standort: [plan.gebaeude, plan.etage].filter(Boolean).join(", "), status: "In Betrieb",
       });
       if (!neu || neu === "geloescht") return;
@@ -309,21 +367,34 @@ DETAIL.plaene = async (el, id, q) => {
     buehne.classList.add("setzmodus");
   };
 
+  /* Eigene Symbole in der Seitenleiste */
+  const eigeneZeichnen = () => {
+    const ziel = el.querySelector("#peigen");
+    if (!ziel) return;
+    const liste = (S.cache.symbole || []).filter((x) => !ansicht.suche || x.name.toLowerCase().includes(ansicht.suche));
+    ziel.innerHTML = `<details open><summary><span class="sym" style="--c:var(--orange)">★</span> Eigene Symbole</summary>
+      ${liste.map((x) => `<div class="p-item" data-vorlage="${esc(x.name)}" data-gewerk="${esc(x.gewerk || "")}" data-symbol="${x.id}" data-zeichen="" title="${esc(x.beschreibung || x.name)}">${eigenesSymbol(x.id)}<span>${esc(x.name)}</span></div>`).join("")}
+      <button class="knopf klein sym-neu" type="button" id="symneu">${icon("plus")} Eigenes Symbol aus Bild</button></details>`;
+    ziel.querySelector("#symneu").onclick = async () => { if (await symbolDialog()) eigeneZeichnen(); };
+  };
+  eigeneZeichnen();
+  el.querySelector("#psuche").addEventListener("input", () => setTimeout(eigeneZeichnen, 220));
+
   /* Ziehen aus der Seitenleiste */
   el.querySelector("#palette").addEventListener("pointerdown", (e) => {
     const item = e.target.closest(".p-item");
-    if (!item || !aendern || e.button > 0) return;
+    if (!item || !aendern || e.button > 0 || e.target.closest("button")) return;
     e.preventDefault();
     const quelle = item.dataset.anlage
-      ? (() => { const f = daten.frei.find((a) => a.id === Number(item.dataset.anlage)); return { anlage: f.id, name: f.bezeichnung, gewerk: f.gewerk, zeichen: f.planzeichen, el: item }; })()
-      : { vorlage: item.dataset.vorlage, gewerk: item.dataset.gewerk, zeichen: item.dataset.zeichen || null, name: item.dataset.vorlage, el: item };
+      ? (() => { const f = daten.frei.find((a) => a.id === Number(item.dataset.anlage)); return { anlage: f.id, name: f.bezeichnung, gewerk: f.gewerk, zeichen: f.planzeichen, symbol_id: f.symbol_id, el: item }; })()
+      : { vorlage: item.dataset.vorlage, gewerk: item.dataset.gewerk || null, zeichen: item.dataset.zeichen || null, symbol_id: Number(item.dataset.symbol) || null, name: item.dataset.vorlage, el: item };
     const start = { x: e.clientX, y: e.clientY };
     let geist = null;
     const bewegen = (ev) => {
       if (!geist && Math.hypot(ev.clientX - start.x, ev.clientY - start.y) > 6) {
         geist = document.createElement("div");
         geist.className = "geist";
-        geist.innerHTML = `${symbolFuer(quelle.gewerk, quelle.zeichen, 30)}<span>${esc(quelle.name)}</span>`;
+        geist.innerHTML = `${symbolFuer(quelle.gewerk, quelle.zeichen, 30, quelle.symbol_id)}<span>${esc(quelle.name)}</span>`;
         document.body.appendChild(geist);
       }
       if (geist) {
@@ -460,7 +531,7 @@ DETAIL.plaene = async (el, id, q) => {
     const hervor = daten.platziert.find((a) => a.id === Number(q.get("anlage")));
     if (hervor) { zentrieren(hervor); popupZeigen(hervor); }
     const setz = daten.frei.find((a) => a.id === Number(q.get("platzieren")));
-    if (setz && aendern) modusSetzen({ anlage: setz.id, name: setz.bezeichnung, gewerk: setz.gewerk, zeichen: setz.planzeichen, el: el.querySelector(`[data-anlage="${setz.id}"]`) });
+    if (setz && aendern) modusSetzen({ anlage: setz.id, name: setz.bezeichnung, gewerk: setz.gewerk, zeichen: setz.planzeichen, symbol_id: setz.symbol_id, el: el.querySelector(`[data-anlage="${setz.id}"]`) });
   };
   if (bild.complete && bild.naturalWidth) fertig(); else { bild.onload = () => { bild.onload = einpassen; fertig(); }; bild.onerror = () => melde("Der Grundriss konnte nicht geladen werden.", true); }
   const ro = new ResizeObserver(() => { if (document.body.contains(buehne)) einpassen(); else ro.disconnect(); });
@@ -472,5 +543,5 @@ function planAusschnitt(a) {
   if (!a.plan_id) return "";
   return `<a class="mini-plan" href="#/plaene/${a.plan_id}?anlage=${a.id}" title="Im Plan zeigen">
     <img src="/api/plaene/${a.plan_id}/bild" alt="">
-    <span class="mk ${zeichenCode(a.planzeichen) ? "zeichen" : ""} ampel-gruen" style="left:${a.plan_x * 100}%;top:${a.plan_y * 100}%;--c:${stil(a.gewerk)[1]}">${zeichenSvg(zeichenCode(a.planzeichen), 32) || esc(stil(a.gewerk)[0])}</span></a>`;
+    <span class="mk ${a.symbol_id || zeichenCode(a.planzeichen) ? "zeichen" : ""} ampel-gruen" style="left:${a.plan_x * 100}%;top:${a.plan_y * 100}%;--c:${stil(a.gewerk)[1]}">${eigenesSymbol(a.symbol_id, 32) || zeichenSvg(zeichenCode(a.planzeichen), 32) || esc(stil(a.gewerk)[0])}</span></a>`;
 }
