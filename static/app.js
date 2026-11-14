@@ -1,7 +1,7 @@
 /* Casa CAFM – Oberfläche (ohne Fremdbibliotheken) */
 "use strict";
 
-const VERSION = "2026.11.15-5"; // muss zu VERSION in app.py passen
+const VERSION = "2026.11.15-6"; // muss zu VERSION in app.py passen
 /* Hell- und Dunkelmodus: gemerkte Wahl, sonst wie das Gerät */
 const THEMA = (() => {
   let t = null;
@@ -214,6 +214,7 @@ function rahmen() {
   document.getElementById("abmelden").onclick = async () => { await api("POST", "abmelden"); S.ich = null; zeigeAnmeldung(); };
   document.getElementById("menue").onclick = () => document.getElementById("seite").classList.toggle("offen");
   document.getElementById("thema").onclick = themaUmschalten;
+  if (typeof glockeEinbauen === "function") glockeEinbauen();
   const kn = document.getElementById("kopfNeu");
   if (kn) kn.onclick = async (e) => { e.preventDefault(); const t = await bearbeiten("tickets", null, { art: "Mangel" }); if (t && t.id) location.hash = `#/tickets/${t.id}`; };
   document.getElementById("suchform").onsubmit = (e) => { e.preventDefault(); location.hash = "#/suche/" + encodeURIComponent(document.getElementById("suchfeld").value); };

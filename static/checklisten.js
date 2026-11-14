@@ -2,6 +2,12 @@
 "use strict";
 
 const PUNKT_TYPEN = { haken: "Abhaken (i. O. / Mangel)", zahl: "Wert eintragen (Zahl)", text: "Text eintragen" };
+async function personenLaden(neu = false) {
+  if (!S.personen || neu) { try { S.personen = await api("GET", "personen"); } catch (e) { S.personen = []; } }
+  return S.personen;
+}
+const personName = (id) => { const p = (S.personen || []).find((x) => x.id === Number(id)); return p ? p.name : ""; };
+const vorwarnText = (c) => c.erinnern_vorher != null && c.rhythmus !== "bei Bedarf" ? `Erinnerung ${zahl(c.erinnern_vorher)} ${c.erinnern_einheit === "Stunden" ? (Number(c.erinnern_vorher) === 1 ? "Stunde" : "Stunden") : (Number(c.erinnern_vorher) === 1 ? "Tag" : "Tage")} vorher` : "";
 const punkteVon = (c) => { try { return JSON.parse(c.punkte || "[]"); } catch (e) { return []; } };
 
 function faelligChecklisteMarke(c) {
@@ -12,7 +18,7 @@ function faelligChecklisteMarke(c) {
 
 /* ---------- Editor ---------- */
 async function checklisteBearbeiten(c, vorgabe = {}) {
-  await Promise.all([lade("objekte"), lade("anlagen")]);
+  await Promise.all([lade("objekte"), lade("anlagen"), personenLaden(true)]);
   const neu = !c;
   c = c ? { ...c } : { art: "Anlage", rhythmus: "monatlich", aktiv: 1, ...vorgabe };
   let punkte = c.punkte ? punkteVon(c) : (vorgabe.punkte || []);
@@ -39,7 +45,11 @@ async function checklisteBearbeiten(c, vorgabe = {}) {
     <label><span>Rhythmus</span><select name="rhythmus">${S.schema.checklisten.felder.find((f) => f.name === "rhythmus").optionen.map((r) => `<option ${r === c.rhythmus ? "selected" : ""}>${r}</option>`).join("")}</select></label>
     <label><span class="pflicht">Objekt</span><select name="objekt_id"><option value="">–</option>${S.cache.objekte.map((o) => `<option value="${o.id}" ${o.id === Number(c.objekt_id) ? "selected" : ""}>${esc(anzeige("objekte", o))}</option>`).join("")}</select></label>
     <label class="nur-anlage"><span>Anlage</span><select name="anlage_id"><option value="">–</option></select></label>
-    <label><span>Zuständig</span><input name="zustaendig" value="${esc(c.zustaendig || "")}" placeholder="z. B. Haustechnik"></label>
+    <label><span>Zugewiesen an (wird benachrichtigt)</span><select name="zustaendig_id"><option value="">– niemand –</option>${S.personen.map((p) => `<option value="${p.id}" ${p.id === Number(c.zustaendig_id) ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select></label>
+    <label><span>Fällig um</span><input name="faellig_uhrzeit" type="time" value="${esc(c.faellig_uhrzeit || "08:00")}"></label>
+    <label><span>Erinnern vorher</span><span class="vorwarn"><input name="erinnern_vorher" type="number" min="0" max="365" step="1" value="${c.erinnern_vorher ?? 1}">
+      <select name="erinnern_einheit"><option ${c.erinnern_einheit === "Stunden" ? "selected" : ""}>Stunden</option><option ${c.erinnern_einheit !== "Stunden" ? "selected" : ""}>Tage</option></select></span></label>
+    <label><span>Zuständig (Text, freiwillig)</span><input name="zustaendig" value="${esc(c.zustaendig || "")}" placeholder="z. B. Haustechnik"></label>
     <label class="check"><input type="checkbox" name="aktiv" ${c.aktiv ? "checked" : ""}> Aktiv</label>
     <label class="check"><input type="checkbox" name="unterschrift_pflicht" ${c.unterschrift_pflicht !== 0 ? "checked" : ""}> Unterschrift beim Abschließen erforderlich</label>
     <label class="check nur-rundgang"><input type="checkbox" name="checkpoints_pflicht" ${c.checkpoints_pflicht ? "checked" : ""}> Checkpoints (QR-Codes der Stationen) müssen gescannt werden</label>
@@ -55,6 +65,8 @@ async function checklisteBearbeiten(c, vorgabe = {}) {
       const fm = hg.querySelector("form");
       const daten = { titel: fm.titel.value, art: fm.art.value, rhythmus: fm.rhythmus.value, objekt_id: fm.objekt_id.value || null,
         anlage_id: fm.art.value === "Anlage" ? (fm.anlage_id.value || null) : null, zustaendig: fm.zustaendig.value || null, aktiv: fm.aktiv.checked ? 1 : 0,
+        zustaendig_id: fm.zustaendig_id.value || null, faellig_uhrzeit: fm.faellig_uhrzeit.value || "08:00",
+        erinnern_vorher: fm.erinnern_vorher.value === "" ? 0 : fm.erinnern_vorher.value, erinnern_einheit: fm.erinnern_einheit.value,
         unterschrift_pflicht: fm.unterschrift_pflicht.checked ? 1 : 0, checkpoints_pflicht: fm.art.value === "Rundgang" && fm.checkpoints_pflicht.checked ? 1 : 0,
         punkte: punkte.filter((x) => (x.text || "").trim()) };
       if (!daten.punkte.length) throw new Error("Bitte mindestens einen Prüfpunkt eintragen.");
@@ -114,6 +126,7 @@ async function checklisteBearbeiten(c, vorgabe = {}) {
 
 /* ---------- Liste in Anlage und Objekt ---------- */
 async function checklistenReiter(ziel, { objekt_id, anlage_id }) {
+  await personenLaden();
   const qs = anlage_id ? `anlage_id=${anlage_id}` : `objekt_id=${objekt_id}`;
   const liste = await api("GET", `checklisten?${qs}`);
   const planen = darf("wartung_planen"), erledigen = darf("wartung_erledigen");
@@ -124,6 +137,7 @@ async function checklistenReiter(ziel, { objekt_id, anlage_id }) {
       <div class="cl-kopf"><span class="cl-art ${c.art === "Rundgang" ? "rg" : ""}">${c.art === "Rundgang" ? "Rundgang" : "Checkliste"}</span>${faelligChecklisteMarke(c)}</div>
       <a class="cl-titel" href="#/checklisten/${c.id}">${esc(c.titel)}</a>
       <div class="klein">${esc([c.anlage_id ? refText("anlagen", c.anlage_id) : "", c.rhythmus, `${c.anzahl_punkte} Punkte`].filter(Boolean).join(" · "))}</div>
+      ${c.zustaendig_id ? `<div class="cl-person"><span class="avatar mini">${esc(initialen(personName(c.zustaendig_id)))}</span>${esc(personName(c.zustaendig_id))}${c.zustaendig_id === S.ich.id ? ' <span class="marke m-neu">du</span>' : ""}</div>` : ""}
       <div class="klein">Zuletzt: ${c.letzte ? `${datum(c.letzte)} ${c.letzte.slice(11, 16)}` : "noch nie"}${c.naechste ? ` · nächste ${datum(c.naechste)}` : ""}</div>
       <div class="cl-knoepfe">${erledigen ? `<a class="knopf haupt-k klein" href="#/checklisten/${c.id}?durchfuehren=1">Durchführen</a>` : ""}<a class="knopf klein" href="#/checklisten/${c.id}">Verlauf</a></div></div>`).join("")}</div>`
       : `<div class="karte leer">${anlage_id ? "Für diese Anlage gibt es noch keine Checkliste." : "Für dieses Objekt gibt es noch keinen Rundgang und keine Checkliste."}${planen ? " Leg oben die erste an." : ""}</div>`}`;
@@ -150,24 +164,26 @@ async function checklistenReiter(ziel, { objekt_id, anlage_id }) {
 }
 
 /* ---------- Gesamtübersicht ---------- */
-SEITEN.checklisten = async (el) => {
-  await Promise.all([lade("objekte"), lade("anlagen")]);
+SEITEN.checklisten = async (el, _, q) => {
+  await Promise.all([lade("objekte"), lade("anlagen"), personenLaden()]);
   el.innerHTML = seitenkopf("Checklisten & Rundgänge", "Kontrollen vor Ort", darf("wartung_planen") ? `<button class="knopf haupt-k" id="cneuRg">${icon("plus")} Rundgang</button><button class="knopf" id="cneuCl">${icon("plus")} Checkliste</button>` : "") + `
     <div class="werkzeug"><select id="cobj"><option value="">Alle Objekte</option>${S.cache.objekte.map((o) => `<option value="${o.id}">${esc(anzeige("objekte", o))}</option>`).join("")}</select>
       <select id="cart"><option value="">Rundgänge und Checklisten</option><option>Rundgang</option><option>Anlage</option></select>
-      <select id="cfae"><option value="">Alle</option><option value="faellig">Fällig oder überfällig</option></select></div>
+      <select id="cfae"><option value="">Alle</option><option value="faellig">Fällig oder überfällig</option></select>
+      <select id="cwer"><option value="">Alle Zuständigen</option><option value="ich" ${q && q.get("meine") ? "selected" : ""}>Mir zugewiesen</option>${S.personen.map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join("")}</select></div>
     <div class="tabelle-wrap"><table><thead><tr><th>Liste</th><th>Art</th><th>Objekt</th><th>Anlage</th><th>Rhythmus</th><th>Zuletzt</th><th>Nächste</th><th></th></tr></thead><tbody id="cbody"></tbody></table></div>`;
   const alle = await api("GET", "checklisten");
   const zeichnen = () => {
-    const o = el.querySelector("#cobj").value, a = el.querySelector("#cart").value, f = el.querySelector("#cfae").value;
-    const liste = alle.filter((c) => (!o || String(c.objekt_id) === o) && (!a || c.art === a) && (!f || (c.naechste && tageBis(c.naechste) <= 0)));
-    el.querySelector("#cbody").innerHTML = liste.map((c) => `<tr class="klickbar" data-c="${c.id}"><td><b>${esc(c.titel)}</b><br><span class="klein">${c.anzahl_punkte} Punkte${c.zustaendig ? " · " + esc(c.zustaendig) : ""}</span></td>
+    const o = el.querySelector("#cobj").value, a = el.querySelector("#cart").value, f = el.querySelector("#cfae").value, w = el.querySelector("#cwer").value;
+    const wer = w === "ich" ? S.ich.id : Number(w) || null;
+    const liste = alle.filter((c) => (!o || String(c.objekt_id) === o) && (!a || c.art === a) && (!f || (c.naechste && tageBis(c.naechste) <= 0)) && (!wer || c.zustaendig_id === wer));
+    el.querySelector("#cbody").innerHTML = liste.map((c) => `<tr class="klickbar" data-c="${c.id}"><td><b>${esc(c.titel)}</b><br><span class="klein">${c.anzahl_punkte} Punkte${c.zustaendig_id ? " · " + esc(personName(c.zustaendig_id)) : c.zustaendig ? " · " + esc(c.zustaendig) : ""}</span></td>
       <td><span class="cl-art ${c.art === "Rundgang" ? "rg" : ""}">${c.art === "Rundgang" ? "Rundgang" : "Checkliste"}</span></td><td>${esc(refText("objekte", c.objekt_id))}</td><td>${esc(c.anlage_id ? refText("anlagen", c.anlage_id) : "")}</td>
       <td>${esc(c.rhythmus || "")}</td><td>${c.letzte ? datum(c.letzte) : '<span class="klein">noch nie</span>'}</td><td>${c.naechste ? datum(c.naechste) + " " + faelligChecklisteMarke(c) : faelligChecklisteMarke(c)}</td>
       <td>${darf("wartung_erledigen") ? `<a class="knopf haupt-k klein" href="#/checklisten/${c.id}?durchfuehren=1" onclick="event.stopPropagation()">Durchführen</a>` : ""}</td></tr>`).join("") || '<tr><td colspan="8" class="leer">Keine Listen für diese Auswahl.</td></tr>';
   };
   zeichnen();
-  ["#cobj", "#cart", "#cfae"].forEach((s) => el.querySelector(s).addEventListener("change", zeichnen));
+  ["#cobj", "#cart", "#cfae", "#cwer"].forEach((s) => el.querySelector(s).addEventListener("change", zeichnen));
   el.querySelector("#cbody").addEventListener("click", (e) => { const tr = e.target.closest("tr[data-c]"); if (tr) location.hash = `#/checklisten/${tr.dataset.c}`; });
   const ob = () => Number(el.querySelector("#cobj").value) || (S.cache.objekte[0] && S.cache.objekte[0].id);
   const rg = el.querySelector("#cneuRg"), cl = el.querySelector("#cneuCl");
@@ -177,7 +193,7 @@ SEITEN.checklisten = async (el) => {
 
 /* ---------- Detail: Verlauf und Durchführen ---------- */
 DETAIL.checklisten = async (el, id, q) => {
-  await Promise.all([lade("objekte"), lade("anlagen")]);
+  await Promise.all([lade("objekte"), lade("anlagen"), personenLaden()]);
   const c = await api("GET", `checklisten/${id}`);
   if (q.get("durchfuehren") === "1" && darf("wartung_erledigen")) return durchfuehren(el, c);
   const [liste, gesamt] = await Promise.all([api("GET", `checklisten/${id}/durchgaenge`), api("GET", `checklisten?id=${id}`)]);
@@ -189,7 +205,7 @@ DETAIL.checklisten = async (el, id, q) => {
     <div class="raster k4">
       <div class="karte kennzahl ${info.naechste && tageBis(info.naechste) < 0 ? "rot" : info.naechste && tageBis(info.naechste) <= 1 ? "gelb" : ""}"><div class="wert">${info.naechste ? datum(info.naechste) : "–"}</div><div class="text">nächste Durchführung · ${esc(c.rhythmus || "")}</div></div>
       <div class="karte kennzahl"><div class="wert">${liste.length}</div><div class="text">Durchgänge</div></div>
-      <div class="karte kennzahl"><div class="wert">${punkte.length}</div><div class="text">Prüfpunkte</div></div>
+      <div class="karte kennzahl"><div class="wert cl-wer">${c.zustaendig_id ? `<span class="avatar mini">${esc(initialen(personName(c.zustaendig_id)))}</span>${esc(personName(c.zustaendig_id))}` : "–"}</div><div class="text">zugewiesen · ${esc(vorwarnText(c) || "keine Erinnerung")}${info.naechste_zeit ? ` · fällig ${info.naechste_zeit.slice(11, 16)} Uhr` : ""}</div></div>
       <div class="karte kennzahl ${liste[0] && liste[0].abweichungen ? "orange" : ""}"><div class="wert">${liste[0] ? liste[0].abweichungen : "–"}</div><div class="text">Abweichungen beim letzten Mal</div></div>
     </div><div class="abstand"></div>
     <div class="raster k2"><div class="karte"><h3>Prüfpunkte</h3><ol class="cl-punkte">${punkte.map((p) => `<li>${p.bereich ? `<span class="klein">${esc(p.bereich)} · </span>` : ""}<b>${esc(p.text)}</b>

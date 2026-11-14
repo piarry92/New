@@ -59,6 +59,11 @@ einen Leser aus dem Internet.
 - **Unterschrift:** Am Ende jedes Durchgangs mit Finger oder Maus unterschreiben, dazu der Name. Je Liste
   einstellbar, ob die Unterschrift Pflicht ist. „Protokoll drucken“ erstellt ein Prüfprotokoll im Casa-Design mit
   allen Werten, Checkpoints und Unterschrift.
+- **Zuweisen und erinnern:** Jede Liste lässt sich einer Person zuweisen (z. B. dem Haustechniker). Dazu die
+  Uhrzeit der Fälligkeit und wie viele Stunden oder Tage vorher erinnert wird. Die Person sieht oben die **Glocke**
+  mit Zahl: „Dir wurde … zugewiesen“, „… steht an“ (ab Beginn der Vorwarnzeit) und „… fällig“ (danach). Ein Klick
+  öffnet direkt das Durchführen. Auf der Übersicht erscheint „Meine Rundgänge & Checklisten“. Auf Wunsch zusätzlich
+  als Hinweis am Rechner oder Handy, solange das Programm im Browser geöffnet ist.
 - **Checkpoints beim Rundgang:** Jede Station bekommt einen eigenen QR-Code (Rundgang öffnen › „QR-Etiketten
   drucken“). Der Haustechniker scannt den Code vor Ort mit der Handy-Kamera oder im Programm mit „Checkpoint
   scannen“. Zeit und Person werden festgehalten und im Protokoll gezeigt. Ist „Checkpoints müssen gescannt werden“

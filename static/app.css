@@ -981,3 +981,38 @@ html[data-theme="dark"] .pk-zeile { background: #16171A; }
 .scanner { position: relative; border-radius: 12px; overflow: hidden; background: #000; aspect-ratio: 3 / 4; max-height: 60vh; }
 .scanner video { width: 100%; height: 100%; object-fit: cover; display: block; }
 .scan-rahmen { position: absolute; inset: 18%; border: 3px solid var(--orange); border-radius: 16px; box-shadow: 0 0 0 9999px rgba(0,0,0,.35); }
+
+/* Glocke und Benachrichtigungen */
+.glocke-wrap { position: relative; }
+.glocke { position: relative; }
+.glocke-zahl { position: absolute; top: -5px; right: -5px; min-width: 19px; height: 19px; padding: 0 5px; border-radius: 999px; background: var(--orange); color: #fff; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; border: 2px solid var(--weiss); }
+.glocke-panel { position: absolute; right: 0; top: 46px; width: 380px; max-width: calc(100vw - 24px); background: var(--weiss); border: 1px solid var(--rand); border-radius: 14px; box-shadow: var(--schatten-hoch); z-index: 60; overflow: hidden; }
+.gp-kopf { display: flex; justify-content: space-between; align-items: center; padding: 12px 14px; border-bottom: 1px solid var(--rand); }
+.gp-liste { max-height: 420px; overflow-y: auto; }
+.gp-item { display: flex; gap: 10px; width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--rand); padding: 11px 14px; cursor: pointer; color: var(--anthrazit); }
+.gp-item:hover { background: var(--flaeche); }
+.gp-item.neu { background: var(--orange-zart); }
+.gp-item.neu:hover { filter: brightness(.98); }
+.gp-icon { font-size: 18px; line-height: 1.2; }
+.gp-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; font-size: 14px; }
+.gp-text span { color: var(--text-2); font-size: 13px; }
+.gp-zeit { font-size: 12px !important; }
+.gp-leer { padding: 18px 14px; margin: 0; }
+.gp-fuss { width: 100%; border: 0; background: var(--flaeche); padding: 10px 14px; text-align: left; cursor: pointer; color: var(--orange-dunkel); font-weight: 600; }
+.vorwarn { display: flex; gap: 6px; }
+.vorwarn input { width: 90px; }
+.vorwarn select { flex: 1; }
+.avatar.mini { width: 24px; height: 24px; font-size: 10.5px; margin-right: 6px; vertical-align: middle; }
+.cl-person { display: flex; align-items: center; font-size: 13.5px; margin-top: 2px; }
+.cl-wer { font-size: 20px !important; display: flex; align-items: center; }
+.meine-aufgaben { margin-bottom: 18px; border-left: 4px solid var(--orange); }
+.ma-kopf { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.ma-kopf h3 { margin: 0; }
+.ma-liste { display: flex; flex-direction: column; }
+.ma-item { display: grid; grid-template-columns: 110px 1fr auto auto; gap: 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--rand); }
+.ma-item:last-child { border-bottom: 0; }
+.ma-item > a:not(.knopf) { text-decoration: none; color: var(--anthrazit); }
+@media (max-width: 700px) { .ma-item { grid-template-columns: 1fr auto; } .ma-item .cl-art { display: none; } }
+@media (max-width: 700px) {
+  .glocke-panel { position: fixed; left: 10px; right: 10px; top: 62px; width: auto; max-width: none; }
+}

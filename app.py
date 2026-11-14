@@ -41,7 +41,7 @@ SYM_PFAD = DATEN / "symbole"
 OBJ_PFAD = DATEN / "objektbilder"
 MAX_SYMBOL = 2 * 1024 * 1024
 MAX_UPLOAD = 25 * 1024 * 1024
-VERSION = "2026.11.15-5"  # muss zu VERSION in static/app.js passen
+VERSION = "2026.11.15-6"  # muss zu VERSION in static/app.js passen
 SITZUNG_TAGE = 7
 
 GEWERKE = [
@@ -202,6 +202,10 @@ RESSOURCEN: dict[str, dict] = {
             {"name": "anlage_id", "label": "Anlage", "typ": "ref", "ref": "anlagen", "filter": "objekt_id", "liste": True},
             {"name": "rhythmus", "label": "Rhythmus", "typ": "select", "optionen": list(RHYTHMUS), "standard": "bei Bedarf", "liste": True},
             {"name": "zustaendig", "label": "Zuständig", "typ": "text"},
+            {"name": "zustaendig_id", "label": "Zugewiesen an", "typ": "number", "intern": True},
+            {"name": "faellig_uhrzeit", "label": "Fällig um (Uhrzeit)", "typ": "text", "standard": "08:00"},
+            {"name": "erinnern_vorher", "label": "Erinnern vorher", "typ": "number", "standard": 1},
+            {"name": "erinnern_einheit", "label": "Einheit", "typ": "select", "optionen": ["Stunden", "Tage"], "standard": "Tage"},
             {"name": "punkte", "label": "Prüfpunkte", "typ": "jsonliste", "intern": True},
             {"name": "unterschrift_pflicht", "label": "Unterschrift erforderlich", "typ": "bool", "standard": 1},
             {"name": "checkpoints_pflicht", "label": "Checkpoints müssen gescannt werden", "typ": "bool", "standard": 0},
@@ -399,6 +403,18 @@ CREATE TABLE IF NOT EXISTS checkpoint_scans (
     zeit TEXT NOT NULL,
     lat REAL,
     lon REAL
+);
+CREATE TABLE IF NOT EXISTS benachrichtigungen (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    benutzer_id INTEGER NOT NULL,
+    schluessel TEXT NOT NULL,
+    zeit TEXT NOT NULL,
+    titel TEXT NOT NULL,
+    text TEXT,
+    link TEXT,
+    art TEXT,
+    gelesen INTEGER DEFAULT 0,
+    UNIQUE (benutzer_id, schluessel)
 );
 CREATE TABLE IF NOT EXISTS verlauf (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -943,6 +959,52 @@ def qr_bremse(ip: str) -> None:
         raise Fehler(429, "Zu viele Meldungen in kurzer Zeit. Bitte später noch einmal versuchen.")
     liste.append(jetzt_s)
     _qr_zeiten[ip] = liste
+
+
+def checkliste_termin(c: dict, letzte: str | None) -> dict:
+    """Nächste Fälligkeit (Datum und Uhrzeit) und ab wann erinnert wird."""
+    tage = RHYTHMUS.get(c.get("rhythmus"))
+    if not tage or not c.get("aktiv"):
+        return {"naechste": None, "naechste_zeit": None, "erinnerung_ab": None}
+    datum_ = (dt.date.fromisoformat(letzte[:10]) + dt.timedelta(days=tage)) if letzte else heute()
+    uhr = c.get("faellig_uhrzeit") or "08:00"
+    if not re.match(r"^\d{1,2}:\d{2}$", uhr):
+        uhr = "08:00"
+    h, mi = (int(x) for x in uhr.split(":"))
+    faellig = dt.datetime.combine(datum_, dt.time(min(h, 23), min(mi, 59)))
+    try:
+        vorher = float(c.get("erinnern_vorher") if c.get("erinnern_vorher") is not None else 1)
+    except (TypeError, ValueError):
+        vorher = 1
+    delta = dt.timedelta(hours=vorher) if c.get("erinnern_einheit") == "Stunden" else dt.timedelta(days=vorher)
+    return {"naechste": datum_.isoformat(), "naechste_zeit": faellig.isoformat(timespec="minutes"),
+            "erinnerung_ab": (faellig - delta).isoformat(timespec="minutes")}
+
+
+def benachrichtigen(con, benutzer_id: int, schluessel: str, titel: str, text: str = "", link: str = "", art: str = "info") -> None:
+    con.execute("INSERT OR IGNORE INTO benachrichtigungen (benutzer_id, schluessel, zeit, titel, text, link, art) VALUES (?,?,?,?,?,?,?)",
+                (benutzer_id, schluessel, jetzt(), titel[:200], text[:500], link[:200], art))
+
+
+def faellige_erinnerungen(con, benutzer_id: int) -> None:
+    """Erzeugt Erinnerungen für zugewiesene Checklisten und Rundgänge, sobald die Vorwarnzeit erreicht ist."""
+    jetzt_ = dt.datetime.now().isoformat(timespec="minutes")
+    for c in con.execute("SELECT c.*, o.kuerzel AS o_kuerzel FROM checklisten c LEFT JOIN objekte o ON o.id=c.objekt_id "
+                         "WHERE c.zustaendig_id=? AND c.aktiv=1", (benutzer_id,)).fetchall():
+        c = dict(c)
+        letzte = con.execute("SELECT MAX(zeit) FROM checklisten_durchgaenge WHERE checkliste_id=?", (c["id"],)).fetchone()[0]
+        t = checkliste_termin(c, letzte)
+        if not t["naechste_zeit"]:
+            continue
+        art = "Rundgang" if c["art"] == "Rundgang" else "Checkliste"
+        wann = f'{dt.date.fromisoformat(t["naechste"]).strftime("%d.%m.%Y")} um {t["naechste_zeit"][11:16]} Uhr'
+        link = f'#/checklisten/{c["id"]}?durchfuehren=1'
+        if jetzt_ >= t["naechste_zeit"]:
+            benachrichtigen(con, benutzer_id, f'ueber:{c["id"]}:{t["naechste_zeit"]}', f'{art} fällig: {c["titel"]}',
+                            f'{c["o_kuerzel"] or ""} · war fällig am {wann}', link, "ueber")
+        elif jetzt_ >= t["erinnerung_ab"]:
+            benachrichtigen(con, benutzer_id, f'bald:{c["id"]}:{t["naechste_zeit"]}', f'{art} steht an: {c["titel"]}',
+                            f'{c["o_kuerzel"] or ""} · fällig am {wann}', link, "bald")
 
 
 def checkpoint_stand(con, cid: int, benutzer_id: int, start: str) -> list[dict]:
@@ -1631,6 +1693,23 @@ class Handler(BaseHTTPRequestHandler):
             text = dict((k, t) for k, t, _ in RECHTE)[recht]
             raise Fehler(403, f"Dafür fehlt dir das Recht: {text}.")
 
+        if erstes == "personen" and m == "GET":
+            return self.json([{"id": r["id"], "name": r["name"], "rolle": r["rolle"]}
+                              for r in con.execute("SELECT id, name, rolle FROM benutzer WHERE aktiv=1 ORDER BY name COLLATE NOCASE")])
+        if erstes == "benachrichtigungen":
+            if m == "GET":
+                faellige_erinnerungen(con, b["id"])
+                liste = [dict(r) for r in con.execute(
+                    "SELECT * FROM benachrichtigungen WHERE benutzer_id=? ORDER BY gelesen, zeit DESC LIMIT 60", (b["id"],))]
+                return self.json({"liste": liste, "ungelesen": sum(1 for x in liste if not x["gelesen"])})
+            if m == "POST" and len(teile) == 2 and teile[1] == "gelesen":
+                d = self.body()
+                if d.get("alle"):
+                    con.execute("UPDATE benachrichtigungen SET gelesen=1 WHERE benutzer_id=?", (b["id"],))
+                else:
+                    for i in (d.get("ids") or [])[:200]:
+                        con.execute("UPDATE benachrichtigungen SET gelesen=1 WHERE benutzer_id=? AND id=?", (b["id"], int(i)))
+                return self.json({"ok": True})
         if erstes == "rechte":
             if m == "GET":
                 return self.json({"liste": [{"key": k, "text": t, "gruppe": g} for k, t, g in RECHTE],
@@ -1814,8 +1893,12 @@ class Handler(BaseHTTPRequestHandler):
                     if name == "zaehler" and not sauber.get("einheit"):
                         sauber["einheit"] = {"Strom": "kWh", "Wasser": "m³", "Wärme": "MWh", "Kälte": "MWh",
                                              "Gas": "m³"}.get(sauber.get("medium"), "")
+                    if name == "checklisten":
+                        self.checkliste_pruefen(con, sauber)
                     neue_id = einfuegen(con, name, sauber)
                     protokollieren(con, b, "angelegt", name, neue_id)
+                    if name == "checklisten" and sauber.get("zustaendig_id"):
+                        self.zuweisung_melden(con, b, neue_id, sauber)
                 return self.json(zeile(con.execute(f'SELECT * FROM "{name}" WHERE id=?', (neue_id,)).fetchone()), 201)
             raise Fehler(405, "Nicht erlaubt.")
         if len(rest) > 1:
@@ -1832,6 +1915,10 @@ class Handler(BaseHTTPRequestHandler):
             if name == "tickets" and sauber.get("status") in ("Erledigt", "Abgeschlossen") and not (
                     sauber.get("erledigt_am") or alt.get("erledigt_am")):
                 sauber["erledigt_am"] = heute().isoformat()
+            if name == "checklisten":
+                self.checkliste_pruefen(con, sauber)
+                if sauber.get("zustaendig_id") and sauber["zustaendig_id"] != alt.get("zustaendig_id"):
+                    self.zuweisung_melden(con, b, rid, {**alt, **sauber})
             if name == "tickets" and sauber.get("status") and sauber["status"] != alt["status"]:
                 con.execute("INSERT INTO ticket_kommentare (ticket_id, zeit, autor, text) VALUES (?,?,?,?)",
                             (rid, jetzt(), b["name"], f'Status: {alt["status"]} → {sauber["status"]}'))
@@ -1920,11 +2007,7 @@ class Handler(BaseHTTPRequestHandler):
                     z["anzahl_punkte"] = len(json.loads(z.get("punkte") or "[]"))
                 except ValueError:
                     z["anzahl_punkte"] = 0
-                tage = RHYTHMUS.get(z.get("rhythmus"))
-                z["naechste"] = None
-                if tage and z.get("aktiv"):
-                    basis = dt.date.fromisoformat(l[:10]) if l else heute()
-                    z["naechste"] = (basis + dt.timedelta(days=tage)).isoformat() if l else heute().isoformat()
+                z.update(checkliste_termin(z, l))
         if name == "objekte" and zeilen:
             anl = {r[0]: r[1] for r in con.execute("SELECT objekt_id, COUNT(*) FROM anlagen GROUP BY objekt_id")}
             tik = {r[0]: r[1] for r in con.execute(
@@ -2043,6 +2126,21 @@ class Handler(BaseHTTPRequestHandler):
             if str(altp).startswith(str(PLAN_PFAD.resolve())) and altp.is_file():
                 altp.unlink()
         return self.json({"id": pid}, 201)
+
+    def checkliste_pruefen(self, con, sauber: dict):
+        if sauber.get("zustaendig_id") is not None:
+            sauber["zustaendig_id"] = int(sauber["zustaendig_id"])
+            if not con.execute("SELECT 1 FROM benutzer WHERE id=? AND aktiv=1", (sauber["zustaendig_id"],)).fetchone():
+                raise Fehler(400, "Diese Person gibt es nicht oder sie ist gesperrt.")
+        if sauber.get("faellig_uhrzeit") and not re.match(r"^\d{1,2}:\d{2}$", sauber["faellig_uhrzeit"]):
+            raise Fehler(400, "Bitte die Uhrzeit als HH:MM eintragen, zum Beispiel 08:00.")
+        if sauber.get("erinnern_vorher") is not None and not 0 <= sauber["erinnern_vorher"] <= 365:
+            raise Fehler(400, "Die Vorwarnzeit muss zwischen 0 und 365 liegen.")
+
+    def zuweisung_melden(self, con, b, cid: int, c: dict):
+        art = "Rundgang" if c.get("art") == "Rundgang" else "Checkliste"
+        benachrichtigen(con, c["zustaendig_id"], f"zuweisung:{cid}:{jetzt()}", f"Dir wurde {'ein Rundgang' if art == 'Rundgang' else 'eine Checkliste'} zugewiesen: {c.get('titel')}",
+                        f"von {b['name']} · Rhythmus {c.get('rhythmus') or 'bei Bedarf'}", f"#/checklisten/{cid}", "zuweisung")
 
     def checkpoint_api(self, con, m: str, teile: list[str]):
         token = teile[2]
