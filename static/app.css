@@ -329,3 +329,105 @@ td.zahl, th.zahl { text-align: right; white-space: nowrap; }
 .sv-bild { width: 104px; height: 104px; flex: none; display: flex; align-items: center; justify-content: center; border: 1px dashed var(--hellgrau); border-radius: var(--radius);
   background: repeating-conic-gradient(#EEE 0% 25%, #fff 0% 50%) 0 0 / 16px 16px; }
 .liste-einfach li > img { flex: none; align-self: center; }
+
+/* Anlagenakte */
+.akte { max-width: 1240px; }
+.akte-kopf { display: grid; grid-template-columns: minmax(280px, 520px) 1fr; gap: 24px; padding: 16px; align-items: start; }
+.galerie-rahmen { position: relative; border-radius: 10px; overflow: hidden; background: var(--zartgrau); aspect-ratio: 4 / 3; }
+.galerie { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; height: 100%; scrollbar-width: none; }
+.galerie::-webkit-scrollbar { display: none; }
+.gal-bild { flex: 0 0 100%; scroll-snap-align: start; height: 100%; }
+.gal-bild img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.galerie-leer { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; color: var(--grau); text-align: center; padding: 20px; font-size: 14px; }
+.gal-punkte { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); display: flex; gap: 6px; }
+.gal-punkte span { width: 22px; height: 4px; border-radius: 2px; background: rgba(255,255,255,.6); }
+.gal-punkte span.an { background: var(--orange); }
+.gal-symbol { position: absolute; left: 12px; bottom: 12px; background: #fff; border-radius: 8px; padding: 4px; box-shadow: 0 2px 8px rgba(0,0,0,.25); display: flex; }
+.rund-plus { position: absolute; right: 12px; top: 12px; width: 46px; height: 46px; border-radius: 50%; border: 0; background: var(--orange); color: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 3px 10px rgba(0,0,0,.25); }
+.rund-plus .icon { width: 24px; height: 24px; stroke-width: 2.4; }
+.plus-menue { position: absolute; right: 12px; top: 64px; background: #fff; border-radius: 8px; box-shadow: 0 8px 30px rgba(0,0,0,.25); padding: 6px; display: flex; flex-direction: column; z-index: 5; min-width: 230px; }
+.plus-menue button { text-align: left; background: none; border: 0; padding: 9px 12px; border-radius: 6px; cursor: pointer; }
+.plus-menue button:hover { background: var(--orange-zart); }
+.akte-titel h1 { font-size: 30px; margin: 2px 0 6px; }
+.akte-titel .kicker { font-size: 13px; letter-spacing: .1em; color: var(--orange); font-weight: 700; }
+.editierbar { cursor: pointer; border-radius: 4px; }
+.editierbar:hover { background: var(--orange-zart); }
+.beschreibung { margin: 0 0 12px; white-space: pre-wrap; }
+.leer-text { color: var(--grau); }
+.marken { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+.warnung { background: #FBF0CC; color: #6B5000; border-radius: var(--radius); padding: 10px 14px; margin: 14px 0; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.akte-raster { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; align-items: start; }
+.feldliste { padding: 0; margin-bottom: 16px; overflow: hidden; }
+.fz { display: flex; width: 100%; align-items: center; gap: 12px; padding: 13px 18px; border: 0; border-bottom: 1px solid var(--zartgrau); background: #fff; text-align: left; cursor: pointer; font-size: 15.5px; }
+.fz:last-child { border-bottom: 0; }
+.fz:hover:not(:disabled) { background: var(--orange-zart); }
+.fz:disabled { cursor: default; }
+.fz-l { flex: 1; color: var(--dunkelgrau); }
+.fz-w { text-align: right; font-weight: 700; display: inline-flex; align-items: center; gap: 6px; justify-content: flex-end; max-width: 60%; }
+.fz-neu { color: var(--orange-dunkel); font-weight: 400; }
+.fz-p { color: var(--grau); font-size: 20px; line-height: 1; }
+.schalter-zeile { display: flex; align-items: center; gap: 14px; padding: 13px 18px; border-bottom: 1px solid var(--zartgrau); cursor: pointer; }
+.schalter-zeile:last-child { border-bottom: 0; }
+.schalter-zeile span { flex: 1; }
+.schalter { appearance: none; -webkit-appearance: none; width: 46px; height: 26px; border-radius: 13px; background: var(--hellgrau); position: relative; cursor: pointer; transition: background .15s; flex: none; margin: 0; }
+.schalter::after { content: ""; position: absolute; left: 3px; top: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.3); transition: left .15s; }
+.schalter:checked { background: var(--orange); }
+.schalter:checked::after { left: 23px; }
+.schalter:disabled { opacity: .6; cursor: default; }
+.akt-kopf { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+.akt-kopf h3 { margin: 0; }
+.akt-kopf .knopf { margin-left: auto; }
+.timeline { position: relative; padding-left: 22px; }
+.timeline::before { content: ""; position: absolute; left: 6px; top: 6px; bottom: 6px; width: 2px; background: var(--zartgrau); }
+.tl-e { position: relative; padding: 6px 0 14px; }
+.tl-p { position: absolute; left: -22px; top: 9px; width: 14px; height: 14px; border-radius: 50%; border: 3px solid var(--orange); background: #fff; }
+.tl-k { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 4px; }
+.tl-t { background: var(--zartgrau); border-radius: var(--radius); padding: 10px 12px; font-size: 14.5px; }
+.pp-foto { width: calc(100% + 28px); margin: -14px -14px 10px; height: 130px; object-fit: cover; display: block; border-radius: 8px 8px 0 0; }
+
+/* Wartungsplan */
+.umschalter { display: inline-flex; border: 1px solid var(--hellgrau); border-radius: var(--radius); overflow: hidden; background: #fff; }
+.umschalter button { border: 0; background: none; padding: 8px 14px; cursor: pointer; }
+.umschalter button.an { background: var(--anthrazit); color: #fff; font-weight: 700; }
+.jahrwahl { display: inline-flex; align-items: center; gap: 8px; font-size: 18px; }
+.check-k { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; }
+table.jplan td, table.jplan th { padding: 7px 8px; }
+table.jplan .mzelle { text-align: center; width: 44px; min-width: 38px; border-left: 1px solid var(--zartgrau); white-space: nowrap; }
+table.jplan th.mzelle { border-left-color: #555; }
+table.jplan tr.gruppe td { background: var(--orange-zart); color: var(--orange-dunkel); font-weight: 700; font-size: 13px; letter-spacing: .04em; }
+table.jplan td.anl a { display: flex; gap: 8px; align-items: center; text-decoration: none; color: inherit; }
+table.jplan td.anl .zeichen-svg, table.jplan td.anl .sym { flex: none; }
+.mz { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; font-size: 12px; font-weight: 700; margin: 1px; }
+.mz.m-erl { background: var(--ok); color: #fff; }
+.mz.m-erl.mangel { background: var(--orange); }
+.mz.m-geplant { background: #fff; border: 2px solid var(--grau); color: var(--grau); font-size: 9px; }
+.mz.m-bald { background: var(--bald); color: #fff; font-size: 9px; }
+.mz.m-ueber { background: var(--ueber); color: #fff; }
+.vorschlaege { display: flex; flex-direction: column; gap: 10px; margin: 10px 0; }
+.vs { border: 1px solid var(--hellgrau); border-radius: var(--radius); padding: 10px 12px; }
+.vs.da { opacity: .65; }
+.vs label.check { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.vs-felder { display: flex; gap: 12px; margin: 8px 0 4px 26px; flex-wrap: wrap; }
+.vs-felder label { display: flex; flex-direction: column; font-size: 12.5px; color: var(--dunkelgrau); gap: 2px; }
+.vs-felder input { padding: 5px 8px; border: 1px solid var(--hellgrau); border-radius: var(--radius); width: 150px; }
+.checkliste { display: flex; flex-direction: column; gap: 6px; background: var(--zartgrau); border-radius: var(--radius); padding: 10px 12px; }
+.checkliste-anz { margin: 0; padding-left: 0; list-style: none; }
+.checkliste-anz li { padding: 6px 0 6px 28px; position: relative; border-bottom: 1px solid var(--zartgrau); }
+.checkliste-anz li::before { content: ""; position: absolute; left: 0; top: 8px; width: 16px; height: 16px; border: 2px solid var(--grau); border-radius: 3px; }
+.anlage-kachel { display: flex; gap: 12px; align-items: center; }
+
+@media (max-width: 900px) {
+  .akte-kopf { grid-template-columns: 1fr; padding: 0; }
+  .akte-kopf .akte-titel { padding: 0 16px 16px; }
+  .galerie-rahmen { border-radius: 8px 8px 0 0; }
+  .akte-raster { grid-template-columns: 1fr; }
+  .akte-titel h1 { font-size: 26px; }
+}
+@media print {
+  table.jplan { font-size: 10px; }
+  .mz { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  @page { size: A4 landscape; margin: 10mm; }
+}
+.nowrap { white-space: nowrap; }
+table.jplan.gross td.anl { min-width: 190px; }
+table.jplan.gross td:last-child { white-space: nowrap; }

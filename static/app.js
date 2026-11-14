@@ -137,7 +137,7 @@ const NAV = [
   ["objekte", "Objekte", "#/objekte"],
   ["plaene", "Pläne", "#/plaene"],
   ["anlagen", "Anlagen", "#/anlagen"],
-  ["wartungen", "Wartung & Prüfung", "#/wartungen"],
+  ["wartungen", "Wartungsplan", "#/wartungen"],
   ["tickets", "Störmeldungen", "#/tickets"],
   ["kalender", "Kalender", "#/kalender"],
   "-",
@@ -589,7 +589,7 @@ DETAIL.objekte = async (el, id, q) => {
   reiterLeiste(el.querySelector("#r"), [
     { titel: "Anlagen", zahl: anl.length, zeigen: (x) => tabelle(x, "anlagen", { filter: f }) },
     { titel: "Pläne", zahl: plaene.length, zeigen: (x) => planListe(x, f) },
-    { titel: "Wartung & Prüfung", zahl: wart.length, zeigen: (x) => tabelle(x, "wartungen", { filter: f, extraFilter: wartungFilter }) },
+    { titel: "Wartungsplan", zahl: wart.length, zeigen: (x) => tabelle(x, "wartungen", { filter: f, extraFilter: wartungFilter }) },
     { titel: "Störmeldungen", zahl: tick.length, zeigen: (x) => tabelle(x, "tickets", { filter: f, extraFilter: ticketFilter, extraStart: "offen" }) },
     { titel: "Verträge", zahl: vert.length, zeigen: (x) => tabelle(x, "vertraege", { filter: f }) },
     { titel: "Zähler", zahl: zae.length, zeigen: (x) => tabelle(x, "zaehler", { filter: f }) },
@@ -597,76 +597,7 @@ DETAIL.objekte = async (el, id, q) => {
   ], Number(q.get("reiter") || 0));
 };
 
-/* Anlage */
-DETAIL.anlagen = async (el, id, q) => {
-  await refsLaden("anlagen");
-  const a = await api("GET", `anlagen/${id}`);
-  el.innerHTML = seitenkopf(a.bezeichnung, [refText("objekte", a.objekt_id), a.gewerk].filter(Boolean).join(" · "),
-    `${darfAendern() ? `<button class="knopf" id="stoer">${icon("plus")} Störung melden</button><button class="knopf" id="bearb">Bearbeiten</button>` : ""}`, [`#/objekte/${a.objekt_id}`, refText("objekte", a.objekt_id)]) +
-    `<div class="${a.plan_id ? "raster k2" : ""}"><div class="karte">${stammdaten("anlagen", a, ["bezeichnung", "plan_id"])}</div>
-    ${a.plan_id ? `<div class="karte"><h3>Im Plan: ${esc(refText("plaene", a.plan_id))}</h3>${planAusschnitt(a)}</div>` : ""}</div>
-    ${!a.plan_id && darfAendern() ? '<div class="abstand"></div><div class="karte" id="aufplan"></div>' : ""}<div id="r"></div>`;
-  const b = document.getElementById("bearb");
-  if (b) b.onclick = async () => { const e = await bearbeiten("anlagen", a); if (e === "geloescht") location.hash = "#/anlagen"; else if (e) route(); };
-  const s = document.getElementById("stoer");
-  if (s) s.onclick = async () => { const t = await bearbeiten("tickets", null, { objekt_id: a.objekt_id, anlage_id: a.id, gewerk: a.gewerk }); if (t) location.hash = `#/tickets/${t.id}`; };
-  const ap = document.getElementById("aufplan");
-  if (ap) {
-    const pl = await api("GET", `plaene?objekt_id=${a.objekt_id}`);
-    ap.innerHTML = pl.length
-      ? `<h3>Noch nicht im Plan</h3><div class="werkzeug" style="margin:0"><select id="apsel">${pl.map((p) => `<option value="${p.id}">${esc([p.titel, p.etage].filter(Boolean).join(" · "))}</option>`).join("")}</select><button class="knopf haupt-k" id="apgo">Auf Plan setzen</button></div>`
-      : `<h3>Noch nicht im Plan</h3><p class="klein">Für dieses Objekt gibt es noch keinen Grundriss.</p><button class="knopf" id="apneu">Grundriss hochladen</button>`;
-    const go = document.getElementById("apgo");
-    if (go) go.onclick = () => { location.hash = `#/plaene/${document.getElementById("apsel").value}?platzieren=${a.id}`; };
-    const nu = document.getElementById("apneu");
-    if (nu) nu.onclick = async () => { const e = await planHochladen({ objekt_id: a.objekt_id }); if (e) location.hash = `#/plaene/${e.id}?platzieren=${a.id}`; };
-  }
-  const f = { anlage_id: String(id) };
-  const v = { objekt_id: a.objekt_id, anlage_id: a.id };
-  reiterLeiste(el.querySelector("#r"), [
-    { titel: "Wartung & Prüfung", zeigen: (x) => tabelle(x, "wartungen", { filter: f, neuAktion: () => bearbeiten("wartungen", null, v) }) },
-    { titel: "Störmeldungen", zeigen: (x) => tabelle(x, "tickets", { filter: f, neuAktion: () => bearbeiten("tickets", null, v) }) },
-    { titel: "Dokumente", zeigen: dokumenteReiter(f) },
-  ], Number(q.get("reiter") || 0));
-};
-
-/* Wartung */
-DETAIL.wartungen = async (el, id) => {
-  await refsLaden("wartungen");
-  const [w, hist] = await Promise.all([api("GET", `wartungen/${id}`), api("GET", `wartungen/${id}/historie`)]);
-  el.innerHTML = seitenkopf(w.titel, `${w.art} · ${refText("objekte", w.objekt_id)}`,
-    `${darfAendern() ? '<button class="knopf haupt-k" id="erl">Als erledigt melden</button><button class="knopf" id="bearb">Bearbeiten</button>' : ""}`, ["#/wartungen", "Wartung & Prüfung"]) + `
-    <div class="raster k4">
-      <div class="karte kennzahl ${tageBis(w.naechste) < 0 ? "rot" : tageBis(w.naechste) <= 30 ? "gelb" : ""}"><div class="wert">${datum(w.naechste)}</div><div class="text">nächste Fälligkeit ${faelligMarke(w.naechste, w.aktiv)}</div></div>
-      <div class="karte kennzahl"><div class="wert">${w.intervall_monate ? zahl(w.intervall_monate) : "–"}</div><div class="text">Monate Intervall</div></div>
-      <div class="karte kennzahl"><div class="wert">${datum(w.letzte) || "–"}</div><div class="text">zuletzt erledigt</div></div>
-    </div><div class="abstand"></div>
-    <div class="karte">${stammdaten("wartungen", w, ["titel", "naechste", "letzte", "intervall_monate"])}</div><div class="abstand"></div>
-    <div class="karte"><h3>Verlauf</h3>${hist.length ? `<table><thead><tr><th>Datum</th><th>Ergebnis</th><th>Bemerkung</th><th>Erfasst von</th></tr></thead><tbody>${hist.map((h) =>
-      `<tr><td>${datum(h.datum)}</td><td><span class="marke ${h.ergebnis === "Ohne Mängel" || h.ergebnis === "Mängel behoben" ? "m-ok" : h.ergebnis === "Mängel offen" ? "m-ueber" : "m-arbeit"}">${esc(h.ergebnis)}</span>${h.ticket_id ? ` <a href="#/tickets/${h.ticket_id}">Störmeldung</a>` : ""}</td><td>${esc(h.bemerkung)}</td><td>${esc(h.erfasst_von)}</td></tr>`).join("")}</tbody></table>` : '<p class="klein">Noch nichts erfasst.</p>'}</div>
-    <div id="r"></div>`;
-  const b = document.getElementById("bearb");
-  if (b) b.onclick = async () => { const e = await bearbeiten("wartungen", w); if (e === "geloescht") location.hash = "#/wartungen"; else if (e) route(); };
-  const e = document.getElementById("erl");
-  if (e) e.onclick = async () => {
-    const p = dialog("Als erledigt melden", `<div class="dfehler"></div><form class="formular" onsubmit="return false">
-      <label><span class="pflicht">Erledigt am</span><input type="date" name="datum" value="${heute()}" required></label>
-      <label><span>Ergebnis</span><select name="ergebnis"><option>Ohne Mängel</option><option>Mängel behoben</option><option>Mängel offen</option><option>Nicht durchgeführt</option></select></label>
-      <label class="breit"><span>Bemerkung</span><textarea name="bemerkung"></textarea></label>
-      <label class="check breit"><input type="checkbox" name="ticket_anlegen" checked> Bei offenen Mängeln gleich eine Störmeldung anlegen</label>
-      <p class="klein breit">Die nächste Fälligkeit rechnet das Programm aus dem Intervall (${zahl(w.intervall_monate)} Monate) neu aus.</p></form>`,
-      [{ text: "Abbrechen" }, {
-        text: "Speichern", klasse: "haupt-k", aktion: async (hg) => {
-          const fm = hg.querySelector("form");
-          const r = await api("POST", `wartungen/${id}/erledigt`, { datum: fm.datum.value, ergebnis: fm.ergebnis.value, bemerkung: fm.bemerkung.value, ticket_anlegen: fm.ticket_anlegen.checked });
-          melde(r.ticket_id ? "Erledigt gemeldet und Störmeldung angelegt." : "Erledigt gemeldet.");
-          return r;
-        },
-      }]);
-    if (await p) { cacheLeeren(); route(); }
-  };
-  reiterLeiste(el.querySelector("#r"), [{ titel: "Dokumente (Protokolle, Prüfberichte)", zeigen: dokumenteReiter({ objekt_id: String(w.objekt_id), ...(w.anlage_id ? { anlage_id: String(w.anlage_id) } : {}) }) }], 0);
-};
+/* Anlage- und Wartungsseite: siehe anlage.js */
 
 /* Störmeldung */
 DETAIL.tickets = async (el, id) => {

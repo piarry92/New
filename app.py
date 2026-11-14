@@ -46,6 +46,11 @@ GEWERKE = [
     "Sicherheitstechnik", "Türen/Tore", "Dach/Fassade", "Außenanlagen", "Reinigung",
     "Gebäudeautomation", "Flucht und Rettung", "Sonstiges",
 ]
+GRUPPEN = [
+    "Klima, Kälte & Lüftung (RLT)", "Heizung & Sanitär", "Elektro & Beleuchtung", "Brandschutz",
+    "Flucht & Rettung", "Fördertechnik", "Sicherheitstechnik", "Gebäudeautomation", "Gebäudehülle",
+    "Außenanlagen", "Sonstiges",
+]
 PLANZEICHEN = [
     "F001 Feuerlöscher", "F002 Löschschlauch (Wandhydrant)", "F003 Feuerleiter", "F005 Brandmelder (Handfeuermelder)",
     "F006 Brandmeldetelefon", "E001 Notausgang links", "E002 Notausgang rechts", "E003 Erste Hilfe",
@@ -86,8 +91,11 @@ RESSOURCEN: dict[str, dict] = {
     "anlagen": {
         "label": "Anlagen", "einzahl": "Anlage", "anzeige": ["bezeichnung"], "sort": "bezeichnung",
         "felder": [
-            {"name": "objekt_id", "label": "Objekt", "typ": "ref", "ref": "objekte", "pflicht": True, "liste": True},
+            {"name": "nummer", "label": "Anlagennummer", "typ": "text", "liste": True},
+            {"name": "objekt_id", "label": "Objekt (Arbeitsbereich)", "typ": "ref", "ref": "objekte", "pflicht": True, "liste": True},
             {"name": "bezeichnung", "label": "Bezeichnung", "typ": "text", "pflicht": True, "liste": True},
+            {"name": "beschreibung", "label": "Beschreibung", "typ": "textarea"},
+            {"name": "gruppe", "label": "Gruppe", "typ": "select", "optionen": GRUPPEN},
             {"name": "gewerk", "label": "Gewerk", "typ": "select", "optionen": GEWERKE, "liste": True},
             {"name": "planzeichen", "label": "Planzeichen (DIN EN ISO 7010)", "typ": "select", "optionen": PLANZEICHEN},
             {"name": "symbol_id", "label": "Eigenes Symbol (statt Planzeichen)", "typ": "ref", "ref": "symbole"},
@@ -96,8 +104,17 @@ RESSOURCEN: dict[str, dict] = {
             {"name": "typ", "label": "Typ / Modell", "typ": "text"},
             {"name": "seriennummer", "label": "Seriennummer", "typ": "text"},
             {"name": "baujahr", "label": "Baujahr", "typ": "number"},
+            {"name": "herstellungsdatum", "label": "Herstellungsdatum", "typ": "date"},
+            {"name": "inbetriebnahme", "label": "Inbetriebnahme", "typ": "date"},
+            {"name": "garantie_bis", "label": "Gewährleistung bis", "typ": "date"},
             {"name": "status", "label": "Zustand", "typ": "select",
              "optionen": ["In Betrieb", "Eingeschränkt", "Außer Betrieb", "Stillgelegt"], "liste": True},
+            {"name": "manager", "label": "Manager (Casa)", "typ": "text"},
+            {"name": "beauftragter", "label": "Standard-Beauftragter", "typ": "text"},
+            {"name": "dienstleister_id", "label": "Dienstleister", "typ": "ref", "ref": "dienstleister"},
+            {"name": "gps_pflicht", "label": "GPS erforderlich für die Arbeit", "typ": "bool", "standard": 0},
+            {"name": "pruefung_pflicht", "label": "Gesetzlich autorisierte Prüfung erforderlich", "typ": "bool", "standard": 0},
+            {"name": "wartung_pflicht", "label": "Gesetzlich autorisierte Wartung erforderlich", "typ": "bool", "standard": 0},
             {"name": "notiz", "label": "Notiz", "typ": "textarea"},
             {"name": "plan_id", "label": "Plan", "typ": "ref", "ref": "plaene", "nurlesen": True, "lose": True},
             {"name": "plan_x", "label": "Plan x", "typ": "number", "nurlesen": True, "intern": True},
@@ -127,7 +144,7 @@ RESSOURCEN: dict[str, dict] = {
         ],
     },
     "wartungen": {
-        "label": "Wartung & Prüfung", "einzahl": "Wartung oder Prüfung", "anzeige": ["titel"], "sort": "naechste",
+        "label": "Wartungsplan", "einzahl": "Wartungsaufgabe", "anzeige": ["titel"], "sort": "naechste",
         "felder": [
             {"name": "objekt_id", "label": "Objekt", "typ": "ref", "ref": "objekte", "pflicht": True, "liste": True},
             {"name": "anlage_id", "label": "Anlage", "typ": "ref", "ref": "anlagen", "filter": "objekt_id", "liste": True},
@@ -135,10 +152,12 @@ RESSOURCEN: dict[str, dict] = {
             {"name": "art", "label": "Art", "typ": "select", "optionen": ["Wartung", "Prüfung", "Inspektion", "Begehung"],
              "pflicht": True, "liste": True},
             {"name": "rechtsgrundlage", "label": "Grundlage (z. B. BetrSichV, DGUV V3)", "typ": "text"},
+            {"name": "taetigkeiten", "label": "Tätigkeiten (eine je Zeile, wird zur Checkliste)", "typ": "textarea"},
             {"name": "intervall_monate", "label": "Intervall (Monate)", "typ": "number", "pflicht": True},
             {"name": "letzte", "label": "Zuletzt erledigt", "typ": "date"},
             {"name": "naechste", "label": "Nächste Fälligkeit", "typ": "date", "pflicht": True, "liste": True},
             {"name": "dienstleister_id", "label": "Dienstleister", "typ": "ref", "ref": "dienstleister", "liste": True},
+            {"name": "zustaendig", "label": "Zuständig bei Casa", "typ": "text"},
             {"name": "aktiv", "label": "Aktiv", "typ": "bool", "standard": 1},
             {"name": "notiz", "label": "Notiz", "typ": "textarea"},
         ],
@@ -323,6 +342,10 @@ def db_anlegen() -> None:
                 if f["name"] not in vorhanden:
                     con.execute(f'ALTER TABLE "{name}" ADD COLUMN "{f["name"]}" {SQL_TYP.get(f["typ"], "TEXT")}')
         con.executescript(EXTRA_SQL)
+        vorhanden = {r["name"] for r in con.execute("PRAGMA table_info(wartung_historie)")}
+        for spalte, typ in (("lat", "REAL"), ("lon", "REAL"), ("checkliste", "TEXT")):
+            if spalte not in vorhanden:
+                con.execute(f"ALTER TABLE wartung_historie ADD COLUMN {spalte} {typ}")
         for idx in [
             "anlagen(objekt_id)", "wartungen(objekt_id)", "wartungen(naechste)", "tickets(objekt_id)",
             "tickets(status)", "vertraege(objekt_id)", "zaehler(objekt_id)", "ablesungen(zaehler_id)",
@@ -473,6 +496,22 @@ def wartung_erledigt(con, benutzer, wid: int, daten: dict) -> dict:
     if ergebnis not in ("Ohne Mängel", "Mängel behoben", "Mängel offen", "Nicht durchgeführt"):
         raise Fehler(400, "Ergebnis ist ungültig.")
     bemerkung = (daten.get("bemerkung") or "").strip()[:5000]
+    checkliste = daten.get("checkliste")
+    if checkliste is not None:
+        if not isinstance(checkliste, list) or len(checkliste) > 100:
+            raise Fehler(400, "Checkliste ist ungültig.")
+        checkliste = json.dumps([{"text": str(c.get("text", ""))[:300], "ok": bool(c.get("ok"))}
+                                 for c in checkliste if isinstance(c, dict)], ensure_ascii=False)
+    lat = lon = None
+    if daten.get("lat") is not None and daten.get("lon") is not None:
+        try:
+            lat, lon = float(daten["lat"]), float(daten["lon"])
+        except (TypeError, ValueError):
+            lat = lon = None
+    if w["anlage_id"]:
+        a = con.execute("SELECT gps_pflicht FROM anlagen WHERE id=?", (w["anlage_id"],)).fetchone()
+        if a and a["gps_pflicht"] and lat is None:
+            raise Fehler(400, "Für diese Anlage ist der Standort (GPS) Pflicht. Bitte die Standortfreigabe im Browser erlauben.")
     ticket_id = None
     if ergebnis == "Mängel offen" and daten.get("ticket_anlegen"):
         ticket_id = ticket_anlegen(con, benutzer, {
@@ -482,8 +521,8 @@ def wartung_erledigt(con, benutzer, wid: int, daten: dict) -> dict:
             "gemeldet_am": datum, "dienstleister_id": w["dienstleister_id"],
         })
     con.execute(
-        "INSERT INTO wartung_historie (wartung_id, datum, ergebnis, bemerkung, erfasst_von, ticket_id) "
-        "VALUES (?,?,?,?,?,?)", (wid, datum, ergebnis, bemerkung, benutzer["name"], ticket_id))
+        "INSERT INTO wartung_historie (wartung_id, datum, ergebnis, bemerkung, erfasst_von, ticket_id, lat, lon, checkliste) "
+        "VALUES (?,?,?,?,?,?,?,?,?)", (wid, datum, ergebnis, bemerkung, benutzer["name"], ticket_id, lat, lon, checkliste))
     if ergebnis != "Nicht durchgeführt":
         naechste = plus_monate(dt.date.fromisoformat(datum), int(w["intervall_monate"] or 12)).isoformat()
         con.execute("UPDATE wartungen SET letzte=?, naechste=?, geaendert=? WHERE id=?",
@@ -537,9 +576,12 @@ def plan_anlagen(con, pid: int) -> dict:
         "AND status NOT IN ('Erledigt','Abgeschlossen') GROUP BY anlage_id")}
     naechste = {r[0]: r[1] for r in con.execute(
         "SELECT anlage_id, MIN(naechste) FROM wartungen WHERE aktiv=1 AND anlage_id IS NOT NULL GROUP BY anlage_id")}
+    fotos = {r[0]: r[1] for r in con.execute(
+        "SELECT anlage_id, MIN(id) FROM dokumente WHERE kategorie='Foto' AND anlage_id IS NOT NULL GROUP BY anlage_id")}
     alle = []
     for r in con.execute("SELECT * FROM anlagen WHERE objekt_id=? ORDER BY bezeichnung", (plan["objekt_id"],)):
         a = dict(r)
+        a["foto_id"] = fotos.get(a["id"])
         a["tickets_offen"] = tickets.get(a["id"], 0)
         a["naechste"] = naechste.get(a["id"])
         if a["tickets_offen"] or (a["naechste"] and a["naechste"] < hs) or a["status"] == "Außer Betrieb":
@@ -552,6 +594,81 @@ def plan_anlagen(con, pid: int) -> dict:
     return {"plan": plan,
             "platziert": [a for a in alle if a["plan_id"] == pid],
             "frei": [a for a in alle if not a["plan_id"]]}
+
+
+def anlage_aktivitaet(con, aid: int) -> list[dict]:
+    if not con.execute("SELECT 1 FROM anlagen WHERE id=?", (aid,)).fetchone():
+        raise Fehler(404, "Anlage nicht gefunden.")
+    ein = []
+    for v in con.execute("SELECT * FROM verlauf WHERE tabelle='anlagen' AND datensatz=?", (aid,)):
+        ein.append({"zeit": v["zeit"], "wer": v["benutzer"], "art": v["aktion"], "info": v["info"], "typ": "anlage"})
+    for d in con.execute("SELECT * FROM dokumente WHERE anlage_id=?", (aid,)):
+        ein.append({"zeit": d["erstellt"], "wer": d["hochgeladen_von"], "art": "foto" if d["kategorie"] == "Foto" else "dokument",
+                    "info": d["titel"], "id": d["id"], "typ": "dokument"})
+    for t in con.execute("SELECT * FROM tickets WHERE anlage_id=?", (aid,)):
+        ein.append({"zeit": t["erstellt"], "wer": t["gemeldet_von"], "art": "meldung", "info": f'{t["nummer"]} {t["titel"]}',
+                    "id": t["id"], "typ": "ticket", "status": t["status"]})
+    wids = {w["id"]: w for w in con.execute("SELECT * FROM wartungen WHERE anlage_id=?", (aid,))}
+    if wids:
+        platz = ",".join("?" * len(wids))
+        for v in con.execute(f"SELECT * FROM verlauf WHERE tabelle='wartungen' AND aktion='angelegt' AND datensatz IN ({platz})",
+                             list(wids)):
+            ein.append({"zeit": v["zeit"], "wer": v["benutzer"], "art": "aufgabe", "info": wids[v["datensatz"]]["titel"],
+                        "id": v["datensatz"], "typ": "wartung"})
+        for h in con.execute(f"SELECT * FROM wartung_historie WHERE wartung_id IN ({platz})", list(wids)):
+            ein.append({"zeit": h["datum"] + "T12:00:00", "wer": h["erfasst_von"], "art": "erledigt",
+                        "info": wids[h["wartung_id"]]["titel"], "ergebnis": h["ergebnis"], "id": h["wartung_id"],
+                        "typ": "wartung", "gps": h["lat"] is not None})
+    ein.sort(key=lambda e: e["zeit"] or "", reverse=True)
+    return ein
+
+
+def wartungsplan(con, jahr: int, q: dict) -> dict:
+    von, bis = dt.date(jahr, 1, 1), dt.date(jahr, 12, 31)
+    bed, werte = ["w.aktiv=1"], []
+    for feld, spalte in (("objekt_id", "w.objekt_id"), ("gewerk", "a.gewerk"), ("art", "w.art"), ("anlage_id", "w.anlage_id")):
+        if q.get(feld) and q[feld][0]:
+            bed.append(f"{spalte}=?")
+            werte.append(q[feld][0])
+    if q.get("pflicht") and q["pflicht"][0] == "1":
+        bed.append("(a.pruefung_pflicht=1 OR a.wartung_pflicht=1)")
+    zeilen = []
+    for r in con.execute(
+            "SELECT w.*, a.bezeichnung AS a_bez, a.nummer AS a_nr, a.gewerk AS a_gewerk, a.planzeichen AS a_zeichen, "
+            "a.symbol_id AS a_symbol, a.pruefung_pflicht AS a_pp, a.wartung_pflicht AS a_wp, "
+            "o.kuerzel AS o_kuerzel, o.name AS o_name FROM wartungen w "
+            "LEFT JOIN anlagen a ON a.id=w.anlage_id LEFT JOIN objekte o ON o.id=w.objekt_id "
+            f"WHERE {' AND '.join(bed)} ORDER BY o.kuerzel COLLATE NOCASE, a.nummer COLLATE NOCASE, "
+            "a.bezeichnung COLLATE NOCASE, w.titel COLLATE NOCASE", werte):
+        z = dict(r)
+        termine = []
+        try:
+            d = dt.date.fromisoformat(z["naechste"])
+        except (TypeError, ValueError):
+            d = None
+        iv = max(int(z["intervall_monate"] or 12), 1)
+        schritte = 0
+        while d and d <= bis and schritte < 500:
+            if d >= von:
+                termine.append(d.isoformat())
+            d = plus_monate(d, iv)
+            schritte += 1
+        z["termine"] = termine
+        z["erledigt"] = [dict(h) for h in con.execute(
+            "SELECT datum, ergebnis FROM wartung_historie WHERE wartung_id=? AND datum BETWEEN ? AND ? ORDER BY datum",
+            (z["id"], von.isoformat(), bis.isoformat()))]
+        zeilen.append(z)
+    ohne = []
+    obed, owerte = ["NOT EXISTS (SELECT 1 FROM wartungen w WHERE w.anlage_id=a.id AND w.aktiv=1)"], []
+    if q.get("objekt_id") and q["objekt_id"][0]:
+        obed.append("a.objekt_id=?")
+        owerte.append(q["objekt_id"][0])
+    if q.get("gewerk") and q["gewerk"][0]:
+        obed.append("a.gewerk=?")
+        owerte.append(q["gewerk"][0])
+    for r in con.execute(f"SELECT a.* FROM anlagen a WHERE {' AND '.join(obed)} ORDER BY a.bezeichnung COLLATE NOCASE", owerte):
+        ohne.append(dict(r))
+    return {"jahr": jahr, "aufgaben": zeilen, "ohne_plan": ohne}
 
 
 def anlage_position(con, benutzer, aid: int, d: dict) -> dict:
@@ -698,6 +815,22 @@ def beispieldaten(con) -> None:
         "nsv": ins("anlagen", objekt_id=o2, bezeichnung="Niederspannungshauptverteilung", gewerk="Elektro",
                    standort="Technikraum", status="In Betrieb"),
     }
+    for key, nr, gruppe, extra in [
+        ("a1", "1.2.01.0010", "Fördertechnik", {"pruefung_pflicht": 1, "wartung_pflicht": 1}),
+        ("a2", "1.2.01.0020", "Fördertechnik", {"pruefung_pflicht": 1, "wartung_pflicht": 1}),
+        ("bma", "1.4.01.0010", "Brandschutz", {"pruefung_pflicht": 1, "wartung_pflicht": 1}),
+        ("hz", "1.1.01.0010", "Heizung & Sanitär", {}),
+        ("rlt", "1.3.01.0010", "Klima, Kälte & Lüftung (RLT)", {}),
+        ("tor", "2.6.01.0010", "Sonstiges", {"pruefung_pflicht": 1}),
+        ("nsv", "2.5.01.0010", "Elektro & Beleuchtung", {"pruefung_pflicht": 1}),
+    ]:
+        felder = {"nummer": nr, "gruppe": gruppe, "manager": "Beispiel Objektleitung", **extra}
+        setz = ", ".join(f'"{k}"=?' for k in felder)
+        con.execute(f"UPDATE anlagen SET {setz} WHERE id=?", [*felder.values(), anl[key]])
+    con.execute("UPDATE anlagen SET dienstleister_id=?, beauftragter=? WHERE id IN (?,?)",
+                (dl["auf"], "Herr Muster", anl["a1"], anl["a2"]))
+    con.execute("UPDATE anlagen SET beschreibung=? WHERE id=?",
+                ("Zu- und Abluftanlage für die Büroflächen, Aufstellung auf dem Dach.", anl["rlt"]))
     W = [
         (o1, anl["a1"], "Wartung Personenaufzug A", "Wartung", "Herstellervorgabe", 3, d(-80), d(10), dl["auf"]),
         (o1, anl["a1"], "Hauptprüfung Aufzug A (ZÜS)", "Prüfung", "BetrSichV", 24, d(-700), d(30), dl["auf"]),
@@ -709,8 +842,12 @@ def beispieldaten(con) -> None:
         (o2, anl["nsv"], "E-Prüfung ortsfeste Anlagen", "Prüfung", "DGUV V3", 48, d(-1000), d(460), dl["el"]),
     ]
     for o, a, t, art, rg, iv, letzte, naechste, dlid in W:
-        ins("wartungen", objekt_id=o, anlage_id=a, titel=t, art=art, rechtsgrundlage=rg, intervall_monate=iv,
-            letzte=letzte, naechste=naechste, dienstleister_id=dlid, aktiv=1)
+        wid = ins("wartungen", objekt_id=o, anlage_id=a, titel=t, art=art, rechtsgrundlage=rg, intervall_monate=iv,
+                  letzte=letzte, naechste=naechste, dienstleister_id=dlid, aktiv=1,
+                  taetigkeiten="Sichtprüfung\nFunktionsprüfung\nProtokoll ablegen")
+        if letzte:
+            con.execute("INSERT INTO wartung_historie (wartung_id, datum, ergebnis, erfasst_von) VALUES (?,?,?,?)",
+                        (wid, letzte, "Ohne Mängel", "Beispieldaten"))
     sys_user = {"name": "Beispieldaten"}
     for o, a, t, p, s, tage, dlid in [
         (o1, anl["a2"], "Aufzug B bleibt zwischen Etagen stehen", "Hoch", "Warten auf Dienstleister", -3, dl["auf"]),
@@ -979,6 +1116,16 @@ class Handler(BaseHTTPRequestHandler):
                 return self.plan_hochladen(con, b, pid)
             if teile[2] == "anlagen" and m == "GET":
                 return self.json(plan_anlagen(con, pid))
+        if erstes == "anlagen" and len(teile) == 3 and teile[2] == "aktivitaet" and m == "GET":
+            return self.json(anlage_aktivitaet(con, self.id(teile[1])))
+        if erstes == "wartungsplan" and m == "GET":
+            try:
+                jahr = int((q.get("jahr") or [heute().year])[0])
+            except ValueError:
+                raise Fehler(400, "Jahr ist ungültig.")
+            if not 1990 <= jahr <= 2200:
+                raise Fehler(400, "Jahr ist ungültig.")
+            return self.json(wartungsplan(con, jahr, q))
         if erstes == "anlagen" and len(teile) == 3 and teile[2] == "position" and m == "POST":
             return self.json(anlage_position(con, b, self.id(teile[1]), self.body()))
 

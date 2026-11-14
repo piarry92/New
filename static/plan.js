@@ -310,6 +310,7 @@ DETAIL.plaene = async (el, id, q) => {
   const popupZeigen = (a) => {
     ansicht.offen = a.id;
     popup.innerHTML = `<button class="x" data-p="zu" aria-label="Schließen">×</button>
+      ${a.foto_id ? `<img class="pp-foto" src="/api/dokumente/${a.foto_id}/datei" alt="">` : ""}
       <div class="pp-kopf">${symbolVon(a, 34)}<div><b>${esc(a.bezeichnung)}</b><br><span class="klein">${esc([a.gewerk, a.standort].filter(Boolean).join(" · "))}</span></div></div>
       <div class="pp-zeilen">
         ${a.status ? `<div>Zustand ${zustandMarke(a.status)}</div>` : ""}
@@ -317,7 +318,7 @@ DETAIL.plaene = async (el, id, q) => {
         <div>Nächster Termin ${a.naechste ? `${datum(a.naechste)} ${faelligMarke(a.naechste)}` : '<span class="klein">keiner geplant</span>'}</div>
         ${a.hersteller || a.typ ? `<div class="klein">${esc([a.hersteller, a.typ].filter(Boolean).join(" "))}</div>` : ""}
       </div>
-      <div class="pp-knoepfe"><a class="knopf klein haupt-k" href="#/anlagen/${a.id}">Öffnen</a>
+      <div class="pp-knoepfe"><a class="knopf klein haupt-k" href="#/anlagen/${a.id}">Anlage öffnen</a><a class="knopf klein" href="#/anlagen/${a.id}?reiter=1">Wartungsplan</a>
         ${aendern ? `<button class="knopf klein" data-p="stoer">Störung melden</button><button class="knopf klein" data-p="weg">Vom Plan nehmen</button>` : ""}</div>
       ${aendern ? '<div class="klein" style="margin-top:6px">Zum Verschieben das Symbol ziehen.</div>' : ""}`;
     popup.hidden = false;
