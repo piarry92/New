@@ -128,6 +128,13 @@ einen Leser aus dem Internet.
 - **Rückgabe:** mit Foto, Unterschrift und Bemerkung; fehlende Schlüssel werden als verloren markiert.
 - Neues Recht „Schlüssel anlegen, ausgeben und zurücknehmen“ unter Zugänge & Rechte.
 
+## Profilbild
+
+- Freiwillig: Unter Einstellungen › „Dein Zugang“ kann jeder ein Profilbild hinzufügen, ändern oder entfernen.
+  Das Bild wird quadratisch zugeschnitten und verkleinert gespeichert.
+- Es erscheint in der Seitenleiste, oben rechts, in Zugänge & Rechte und bei zugewiesenen Checklisten.
+  Ohne Bild stehen dort wie bisher die Initialen.
+
 ## Berichtswesen je Objekt
 
 - Im Objekt oben auf **„Bericht“** klicken. Zeitraum wählen (letzter Monat, Quartal, Jahr oder eigener Zeitraum),

@@ -1106,3 +1106,12 @@ html[data-theme="dark"] .sl-t { background: rgba(80,140,220,.2); color: #A9C8F0;
 .bt-kopf { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
 .bt-kopf .sl-titel { margin: 0 6px 0 0; }
 .bt-wahl { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px; }
+
+/* Profilbild */
+.avatar.mit-bild, .avatar-kopf.mit-bild { background: var(--hellgrau, #D9DADB); overflow: hidden; padding: 0; }
+.avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; display: block; }
+.avatar.gross { width: 72px; height: 72px; font-size: 24px; }
+.profil-zeile { display: flex; gap: 14px; align-items: center; margin-bottom: 12px; }
+.profil-zeile.klein-z { gap: 10px; margin: 0; }
+.profil-knoepfe { display: flex; gap: 8px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
+.profil-knoepfe label.knopf { cursor: pointer; }

@@ -44,7 +44,7 @@ SEITEN.zugaenge = async (el) => {
     el.querySelector("#bl").innerHTML = `<div class="tabelle-wrap" style="box-shadow:none"><table><thead><tr><th>Name</th><th>Rolle</th><th>Rechte</th><th>Status</th><th></th></tr></thead><tbody>${liste.map((b) => {
       const abw = Object.keys(b.abweichungen || {}).length;
       const anzahl = Object.values(b.rechte).filter(Boolean).length;
-      return `<tr><td><b>${esc(b.name)}</b>${b.id === S.ich.id ? ' <span class="marke m-geplant">du</span>' : ""}<br><span class="klein">${esc(b.email)}</span></td>
+      return `<tr><td><div class="profil-zeile klein-z">${avatar(b)}<div><b>${esc(b.name)}</b>${b.id === S.ich.id ? ' <span class="marke m-geplant">du</span>' : ""}<br><span class="klein">${esc(b.email)}</span></div></div></td>
         <td><select data-rolle-b="${b.id}" ${b.id === S.ich.id && b.rolle === "admin" ? "disabled" : ""}>${Object.entries(info.rollennamen).map(([k, t]) => `<option value="${k}" ${k === b.rolle ? "selected" : ""}>${t}</option>`).join("")}</select></td>
         <td>${b.rolle === "admin" ? '<span class="klein">alle</span>' : `${anzahl} von ${info.liste.length}${abw ? ` <span class="marke m-neu" title="Eigene Rechte, abweichend von der Rolle">angepasst</span>` : ' <span class="klein">wie Rolle</span>'}`}</td>
         <td>${b.aktiv ? '<span class="marke m-ok">aktiv</span>' : '<span class="marke m-arbeit">gesperrt</span>'}</td>

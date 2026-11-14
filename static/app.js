@@ -1,7 +1,7 @@
 /* Casa CAFM – Oberfläche (ohne Fremdbibliotheken) */
 "use strict";
 
-const VERSION = "2026.11.15-15"; // muss zu VERSION in app.py passen
+const VERSION = "2026.11.15-16"; // muss zu VERSION in app.py passen
 /* Hell- und Dunkelmodus: gemerkte Wahl, sonst wie das Gerät */
 const THEMA = (() => {
   let t = null;
@@ -199,6 +199,23 @@ const NAV = [
 ];
 
 const initialen = (n) => String(n || "?").trim().split(/\s+/).map((x) => x[0]).slice(0, 2).join("").toUpperCase();
+/* Profilbild quadratisch zuschneiden und verkleinern */
+function profilbildQuadrat(datei, groesse = 400) {
+  return new Promise((ok, nein) => {
+    const url = URL.createObjectURL(datei), img = new Image();
+    img.onload = () => {
+      const k = Math.min(img.naturalWidth, img.naturalHeight), cv = document.createElement("canvas");
+      cv.width = cv.height = Math.min(groesse, k);
+      cv.getContext("2d").drawImage(img, (img.naturalWidth - k) / 2, (img.naturalHeight - k) / 2, k, k, 0, 0, cv.width, cv.height);
+      URL.revokeObjectURL(url); ok(cv.toDataURL("image/jpeg", 0.85));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); nein(new Error("Dieses Bild lässt sich nicht lesen. Bitte ein Foto als JPG oder PNG nehmen.")); };
+    img.src = url;
+  });
+}
+/* Rundes Bild einer Person: Profilbild, sonst Initialen */
+const avatarInnen = (p) => p && p.bild ? `<img src="/api/profilbild/${p.id}?v=${encodeURIComponent(p.bild)}" alt="" loading="lazy">` : esc(initialen(p && p.name));
+const avatar = (p, klasse = "") => `<span class="avatar ${klasse} ${p && p.bild ? "mit-bild" : ""}">${avatarInnen(p)}</span>`;
 function rahmen() {
   $app.innerHTML = `
   <div class="rahmen">
@@ -206,7 +223,7 @@ function rahmen() {
       <div class="logo"><img class="logo-hell" src="/logo.png" alt="Casa Concept Consulting"><img class="logo-dunkel" src="/logo-negativ.png" alt="Casa Concept Consulting"><span>CAFM</span></div>
       <nav id="nav">${NAV.filter((n) => typeof n === "string" || !n[3] || darf(n[3])).map((n) => typeof n === "string" ? `<div class="nav-gruppe">${esc(n)}</div>` :
         `<a href="${n[2]}" data-nav="${n[0]}">${icon(n[0])}<span>${n[1]}</span><span class="zahl" data-zahl="${n[0]}" hidden></span></a>`).join("")}</nav>
-      <div class="ich"><span class="avatar">${esc(initialen(S.ich.name))}</span><div class="ich-text"><b>${esc(S.ich.name)}</b><span>${esc(ROLLENNAMEN[S.ich.rolle] || S.ich.rolle)}</span></div>
+      <div class="ich">${avatar(S.ich)}<div class="ich-text"><b>${esc(S.ich.name)}</b><span>${esc(ROLLENNAMEN[S.ich.rolle] || S.ich.rolle)}</span></div>
         <button id="abmelden" title="Abmelden" aria-label="Abmelden"><svg class="icon" viewBox="0 0 24 24"><path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h11"/></svg></button></div>
     </aside>
     <div class="haupt">
@@ -214,7 +231,7 @@ function rahmen() {
         <button class="menue" id="menue" aria-label="Menü">${icon("menue")}</button>
         <form class="suche" id="suchform">${icon("suche")}<input type="search" id="suchfeld" placeholder="Suchen: Objekt, Anlage, Störmeldung, Firma …" autocomplete="off"></form>
         <div class="kopf-rechts"><button class="kopf-knopf" id="thema" title="${document.documentElement.dataset.theme === "dark" ? "Hellmodus" : "Dunkelmodus"}" aria-label="Hell- oder Dunkelmodus">${themaIcon()}</button>${darf("tickets_anlegen") ? `<a class="knopf haupt-k klein kopf-neu" href="#/tickets" id="kopfNeu">${icon("plus")} Mangel melden</a>` : ""}
-          <a class="avatar avatar-kopf" href="#/einstellungen" title="${esc(S.ich.name)}">${esc(initialen(S.ich.name))}</a></div>
+          <a class="avatar avatar-kopf ${S.ich.bild ? "mit-bild" : ""}" href="#/einstellungen" title="${esc(S.ich.name)}">${avatarInnen(S.ich)}</a></div>
       </header>
       <main class="inhalt" id="inhalt"></main>
     </div>
@@ -873,7 +890,8 @@ SEITEN.einstellungen = async (el) => {
       <label>Bisheriges Passwort<input type="password" name="alt" required autocomplete="current-password"></label>
       <label>Neues Passwort (mindestens 8 Zeichen)<input type="password" name="neu" required minlength="8" autocomplete="new-password"></label>
       <div><button class="knopf haupt-k">Ändern</button></div></form></div>
-    <div class="karte"><h3>Dein Zugang</h3><p><b>${esc(S.ich.name)}</b><br><span class="klein">${esc(S.ich.email)} · Rolle: ${esc(ROLLENNAMEN[S.ich.rolle] || S.ich.rolle)}</span></p>
+    <div class="karte"><h3>Dein Zugang</h3><div class="profil-zeile">${avatar(S.ich, "gross")}<div><b>${esc(S.ich.name)}</b><br><span class="klein">${esc(S.ich.email)} · Rolle: ${esc(ROLLENNAMEN[S.ich.rolle] || S.ich.rolle)}</span>
+        <div class="profil-knoepfe"><label class="knopf klein">${S.ich.bild ? "Profilbild ändern" : "Profilbild hinzufügen"}<input type="file" accept="image/*" id="pbild" hidden></label>${S.ich.bild ? '<button class="knopf klein" id="pweg" type="button">Entfernen</button>' : ""}<span class="klein">freiwillig</span></div></div></div>
       <ul class="rechte-kurz">${(S.rechteListe || []).map((r) => `<li class="${S.ich.rechte[r.key] ? "an" : "aus"}">${S.ich.rechte[r.key] ? "✓" : "–"} ${esc(r.text)}</li>`).join("")}</ul>
       ${darf("benutzer_verwalten") ? '<a class="knopf haupt-k" href="#/zugaenge">Zugänge und Rechte verwalten</a>' : '<p class="klein">Fehlt dir ein Recht? Frag einen Administrator.</p>'}</div>
   </div>
@@ -905,6 +923,21 @@ SEITEN.einstellungen = async (el) => {
   el.querySelector("#pw").onsubmit = async (e) => {
     e.preventDefault();
     try { await api("POST", "benutzer/passwort", Object.fromEntries(new FormData(e.target))); melde("Passwort geändert."); e.target.reset(); }
+    catch (err) { melde(err.message, true); }
+  };
+  const pb = el.querySelector("#pbild");
+  if (pb) pb.onchange = async () => {
+    const datei = pb.files[0];
+    if (!datei) return;
+    try {
+      const bild = await profilbildQuadrat(datei);
+      const r = await api("PUT", "ich/bild", { bild });
+      S.ich.bild = r.bild; melde("Profilbild gespeichert."); rahmen(); route();
+    } catch (err) { melde(err.message, true); }
+  };
+  const pw = el.querySelector("#pweg");
+  if (pw) pw.onclick = async () => {
+    try { await api("DELETE", "ich/bild"); S.ich.bild = null; melde("Profilbild entfernt."); rahmen(); route(); }
     catch (err) { melde(err.message, true); }
   };
   if (!darf("einstellungen")) return;

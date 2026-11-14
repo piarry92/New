@@ -43,9 +43,10 @@ PLAN_PFAD = DATEN / "plaene"
 SYM_PFAD = DATEN / "symbole"
 OBJ_PFAD = DATEN / "objektbilder"
 SCHL_PFAD = DATEN / "schluesselfotos"
+PROFIL_PFAD = DATEN / "profilbilder"
 MAX_SYMBOL = 2 * 1024 * 1024
 MAX_UPLOAD = 25 * 1024 * 1024
-VERSION = "2026.11.15-15"  # muss zu VERSION in static/app.js passen
+VERSION = "2026.11.15-16"  # muss zu VERSION in static/app.js passen
 SITZUNG_TAGE = 7
 
 GEWERKE = [
@@ -577,6 +578,7 @@ def db_anlegen() -> None:
     SYM_PFAD.mkdir(parents=True, exist_ok=True)
     OBJ_PFAD.mkdir(parents=True, exist_ok=True)
     SCHL_PFAD.mkdir(parents=True, exist_ok=True)
+    PROFIL_PFAD.mkdir(parents=True, exist_ok=True)
     with db() as con:
         for name, res in RESSOURCEN.items():
             spalten = ["id INTEGER PRIMARY KEY AUTOINCREMENT"]
@@ -602,6 +604,8 @@ def db_anlegen() -> None:
         for r in con.execute("SELECT id FROM objekte WHERE qr_token IS NULL OR qr_token=''").fetchall():
             con.execute("UPDATE objekte SET qr_token=? WHERE id=?", (neuer_qr_token(), r["id"]))
         con.execute('CREATE UNIQUE INDEX IF NOT EXISTS "ux_objekte_qr" ON objekte(qr_token)')
+        if "bild" not in {r["name"] for r in con.execute("PRAGMA table_info(benutzer)")}:
+            con.execute("ALTER TABLE benutzer ADD COLUMN bild TEXT")
         if "mail_an" not in {r["name"] for r in con.execute("PRAGMA table_info(benutzer)")}:
             con.execute("ALTER TABLE benutzer ADD COLUMN mail_an INTEGER DEFAULT 1")
         vorhanden_bn = {r["name"] for r in con.execute("PRAGMA table_info(benachrichtigungen)")}
@@ -1053,6 +1057,8 @@ def benoetigtes_recht(m: str, teile: list[str]) -> str | None:
         return "benutzer_verwalten"
     if t0 == "einstellungen":
         return "einstellungen"
+    if t0 == "ich":
+        return None
     if m == "DELETE":
         return "loeschen"
     if t0 == "checklisten" and len(teile) == 3 and teile[2] == "durchgang":
@@ -2404,8 +2410,39 @@ class Handler(BaseHTTPRequestHandler):
             raise Fehler(403, f"Dafür fehlt dir das Recht: {text}.")
 
         if erstes == "personen" and m == "GET":
-            return self.json([{"id": r["id"], "name": r["name"], "rolle": r["rolle"]}
-                              for r in con.execute("SELECT id, name, rolle FROM benutzer WHERE aktiv=1 ORDER BY name COLLATE NOCASE")])
+            return self.json([{"id": r["id"], "name": r["name"], "rolle": r["rolle"], "bild": r["bild"]}
+                              for r in con.execute("SELECT id, name, rolle, bild FROM benutzer WHERE aktiv=1 ORDER BY name COLLATE NOCASE")])
+        if erstes == "profilbild" and len(teile) == 2 and m == "GET":
+            r = con.execute("SELECT bild FROM benutzer WHERE id=?", (self.id(teile[1]),)).fetchone()
+            pf = (PROFIL_PFAD / r["bild"]).resolve() if r and r["bild"] else None
+            if not pf or not str(pf).startswith(str(PROFIL_PFAD.resolve())) or not pf.is_file():
+                raise Fehler(404, "Kein Profilbild.")
+            return self.senden(200, pf.read_bytes(), mimetypes.guess_type(pf.name)[0] or "image/jpeg",
+                               {"Cache-Control": "private, max-age=604800", "Content-Security-Policy": "sandbox"})
+        if erstes == "ich" and len(teile) == 2 and teile[1] == "bild" and m in ("PUT", "DELETE"):
+            alt = con.execute("SELECT bild FROM benutzer WHERE id=?", (b["id"],)).fetchone()["bild"]
+            neu = None
+            if m == "PUT":
+                daten = str(self.body().get("bild") or "")
+                if not daten.startswith("data:image/") or "," not in daten:
+                    raise Fehler(400, "Bitte ein Bild auswählen.")
+                try:
+                    inhalt = base64.b64decode(daten.split(",", 1)[1], validate=True)
+                except (ValueError, binascii.Error):
+                    raise Fehler(400, "Das Bild ist ungültig.")
+                endung = bild_endung(inhalt)
+                if endung not in ("jpg", "png", "webp"):
+                    raise Fehler(400, "Bitte ein Foto als JPG, PNG oder WEBP.")
+                if len(inhalt) > 2 * 1024 * 1024:
+                    raise Fehler(400, "Das Bild ist zu groß (höchstens 2 MB).")
+                neu = f"{b['id']}_{secrets.token_hex(6)}.{endung}"
+                (PROFIL_PFAD / neu).write_bytes(inhalt)
+            con.execute("UPDATE benutzer SET bild=? WHERE id=?", (neu, b["id"]))
+            if alt:
+                ap = (PROFIL_PFAD / alt).resolve()
+                if str(ap).startswith(str(PROFIL_PFAD.resolve())) and ap.is_file():
+                    ap.unlink()
+            return self.json({"ok": True, "bild": neu})
         if erstes == "ich" and m == "PUT":
             d = self.body()
             if "mail_an" in d:
@@ -3409,7 +3446,8 @@ class Handler(BaseHTTPRequestHandler):
         if not b:
             return None
         aus = {"id": b["id"], "name": b["name"], "email": b["email"], "rolle": b["rolle"],
-               "mail_an": 0 if "mail_an" in b.keys() and b["mail_an"] == 0 else 1}
+               "mail_an": 0 if "mail_an" in b.keys() and b["mail_an"] == 0 else 1,
+               "bild": b["bild"] if "bild" in b.keys() else None}
         if con is not None:
             aus["rechte"] = effektive_rechte(con, b)
         return aus
