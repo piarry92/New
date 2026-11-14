@@ -201,7 +201,7 @@ const KATALOG_FELDER = ["kategorie_id", "gruppe_id", "typ_id"];
 const ZEILEN = ["kategorie_id", "gruppe_id", "typ_id", "nummer", "zulassung", "status", "objekt_id", "gruppe", "gewerk", "standort", "hersteller", "typ", "seriennummer", "herstellungsdatum",
   "inbetriebnahme", "baujahr", "garantie_bis", "planzeichen", "symbol_id"];
 const PERSONEN = ["manager", "beauftragter", "dienstleister_id"];
-const SCHALTER = ["gps_pflicht", "pruefung_pflicht", "wartung_pflicht"];
+const SCHALTER = ["gps_pflicht", "pruefung_pflicht", "wartung_pflicht", "sv_relevant"];
 
 DETAIL.anlagen = async (el, id, q) => {
   await Promise.all([refsLaden("anlagen"), lade("symbole"), katLaden()]);
@@ -213,7 +213,8 @@ DETAIL.anlagen = async (el, id, q) => {
   const plusErlaubt = ["tickets_anlegen", "dokumente_hochladen", "wartung_planen"].some(darf);
   const felder = Object.fromEntries(S.schema.anlagen.felder.map((f) => [f.name, f]));
   const naechste = wart.filter((w) => w.aktiv && w.naechste).map((w) => w.naechste).sort()[0];
-  const hatPruefung = wart.some((w) => w.aktiv && w.art === "Prüfung"), hatWartung = wart.some((w) => w.aktiv && w.art === "Wartung");
+  const hatSv = wart.some((w) => w.aktiv && w.art === "SV-Prüfung");
+  const hatPruefung = wart.some((w) => w.aktiv && ["Prüfung", "SV-Prüfung"].includes(w.art)), hatWartung = wart.some((w) => w.aktiv && w.art === "Wartung");
   const zeile = (n) => {
     const f = felder[n];
     let wert = a[n];
@@ -243,12 +244,13 @@ DETAIL.anlagen = async (el, id, q) => {
         ${a.nummer || a.kategorie_id ? `<div class="kicker">${esc([a.nummer, refText("kat_kategorien", a.kategorie_id), refText("kat_gruppen", a.gruppe_id), refText("kat_typen", a.typ_id)].filter((x) => x && !x.startsWith("#")).join(" · "))}</div>` : ""}
         <h1 ${aendern ? 'data-feld="bezeichnung" class="editierbar"' : ""}>${esc(a.bezeichnung)}</h1>
         <p class="beschreibung ${a.beschreibung ? "" : "leer-text"} ${aendern ? "editierbar" : ""}" data-feld="beschreibung">${a.beschreibung ? esc(a.beschreibung) : aendern ? "Beschreibung eingeben …" : ""}</p>
-        <div class="marken">${zustandMarke(a.status)} ${a.pruefung_pflicht ? '<span class="marke m-neu">Prüfpflichtig</span>' : ""} ${a.wartung_pflicht ? '<span class="marke m-neu">Wartungspflichtig</span>' : ""}
+        <div class="marken">${zustandMarke(a.status)} ${a.pruefung_pflicht ? '<span class="marke m-neu">Prüfpflichtig</span>' : ""} ${a.wartung_pflicht ? '<span class="marke m-neu">Wartungspflichtig</span>' : ""} ${a.sv_relevant ? '<a class="marke m-sv" href="#/svpruefplan">SV-Prüfplan</a>' : ""}
           ${tickets.length ? `<span class="marke m-ueber">${tickets.length} Störmeldung${tickets.length > 1 ? "en" : ""} offen</span>` : ""}
           ${naechste ? `<span class="marke m-geplant">Nächster Termin ${datum(naechste)}</span> ${faelligMarke(naechste)}` : '<span class="marke m-bald">kein Wartungsplan</span>'}</div>
         ${aendern && !a.nummer ? '<button class="knopf klein" data-feld="nummer">+ Anlagennummer</button>' : ""}
       </div>
     </div>
+    ${a.sv_relevant && !hatSv ? `<div class="warnung">Diese Anlage steht im SV-Prüfplan, hat aber noch keinen Prüftermin. ${darf("wartung_planen") ? '<button class="knopf klein" id="svneu">Prüftermin anlegen</button>' : ""}</div>` : ""}
     ${(a.pruefung_pflicht && !hatPruefung) || (a.wartung_pflicht && !hatWartung) ? `<div class="warnung">Für diese Anlage ist eine gesetzlich autorisierte ${a.pruefung_pflicht && !hatPruefung ? "Prüfung" : "Wartung"} vorgeschrieben, im Wartungsplan steht aber keine. ${darf("wartung_planen") ? '<button class="knopf klein" id="wvor">Wartungsplan vorschlagen</button>' : ""}</div>` : ""}
     <div class="akte-raster">
       <div>
@@ -259,7 +261,8 @@ DETAIL.anlagen = async (el, id, q) => {
         }).join("")}</div>` : ""}
         <div class="feldliste karte">${PERSONEN.map(zeile).join("")}</div>
         <div class="feldliste karte">${SCHALTER.map((n) => `<label class="schalter-zeile"><span>${esc(felder[n].label)}</span>
-          <input type="checkbox" class="schalter" data-schalter="${n}" ${a[n] ? "checked" : ""} ${aendern ? "" : "disabled"}></label>`).join("")}</div>
+          <input type="checkbox" class="schalter" data-schalter="${n}" ${a[n] ? "checked" : ""} ${aendern ? "" : "disabled"}></label>`).join("")}
+          ${a.sv_relevant ? ["sv_gegenstand", "sv_grundlage"].map(zeile).join("") : ""}</div>
       </div>
       <div>
         <div class="karte" id="qrk"></div>
@@ -326,6 +329,8 @@ DETAIL.anlagen = async (el, id, q) => {
     menue.onclick = (e) => { const b = e.target.closest("[data-m]"); if (b) { menue.hidden = true; aktion(b.dataset.m); } };
     document.addEventListener("click", () => { if (menue) menue.hidden = true; }, { once: true });
   }
+  const svn = el.querySelector("#svneu");
+  if (svn) svn.onclick = async () => { if (await svTerminAnlegen(a)) route(); };
   const wv = el.querySelector("#wvor");
   if (wv) wv.onclick = () => aktion("vorschlag");
 

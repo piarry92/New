@@ -1,7 +1,7 @@
 /* Casa CAFM – Oberfläche (ohne Fremdbibliotheken) */
 "use strict";
 
-const VERSION = "2026.11.15-8"; // muss zu VERSION in app.py passen
+const VERSION = "2026.11.15-9"; // muss zu VERSION in app.py passen
 /* Hell- und Dunkelmodus: gemerkte Wahl, sonst wie das Gerät */
 const THEMA = (() => {
   let t = null;
@@ -73,6 +73,7 @@ const ICONS = {
   vertraege: '<path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 13h7M9 17h5"/>',
   dienstleister: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6 6 0 0 1 3.5 6"/>',
   checklisten: '<path d="M9 5h10M9 12h10M9 19h10"/><path d="M3.5 5l1.5 1.5L7.5 4M3.5 12l1.5 1.5L7.5 11M3.5 19l1.5 1.5L7.5 18"/>',
+  svpruefplan: '<path d="M12 3l7 3v5c0 5-3.5 8.5-7 10-3.5-1.5-7-5-7-10V6z"/><path d="M12 8v5M12 16h.01"/>',
   pruefungen: '<path d="M12 3l7 3v5c0 5-3.5 8.5-7 10-3.5-1.5-7-5-7-10V6z"/><path d="M8.5 12l2.5 2.5 4.5-5"/>',
   zugaenge: '<rect x="4" y="11" width="16" height="10" rx="1"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
   zaehler: '<circle cx="12" cy="13" r="8"/><path d="M12 13l4-4M8 5l-1-2M16 5l1-2"/>',
@@ -180,6 +181,7 @@ const NAV = [
   ["katalog", "Katalog", "#/katalog"],
   "Betrieb",
   ["wartungen", "Wartungsplan", "#/wartungen"],
+  ["svpruefplan", "SV-Prüfplan", "#/svpruefplan"],
   ["tickets", "Mängel & Störungen", "#/tickets"],
   ["checklisten", "Checklisten & Rundgänge", "#/checklisten"],
   ["pruefungen", "Zur Prüfung", "#/pruefungen"],

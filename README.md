@@ -76,6 +76,18 @@ einen Leser aus dem Internet.
   eingestellt, lassen sich die Punkte einer Station erst nach dem Scan abhaken. Der Zwischenstand bleibt beim
   Wechsel zur Kamera erhalten.
 
+## SV-Prüfplan
+
+- Menü Betrieb › **SV-Prüfplan**: alle sicherheitsrelevanten Anlagen, die von Sachverständigen geprüft werden,
+  mit Prüfgegenstand, Grundlage, Sachverständigen, letzter Prüfung mit Ergebnis, nächster Prüfung und offenen Mängeln.
+- **Anlagen auswählen:** Jede Anlage per Schalter an- oder abwählen, Prüfgegenstand und Grundlage direkt in der Liste.
+  Das Programm macht anhand der Bezeichnung Vorschläge (z. B. Brandmeldeanlage, RWA, Aufzug); welche Anlagen wirklich
+  prüfpflichtig sind, steht in der Prüfverordnung des Landes, der Baugenehmigung und im Brandschutzkonzept.
+- Der Schalter steht auch auf jeder Anlagenseite. Fehlt ein Prüftermin, weist die Anlage darauf hin.
+- Prüftermine sind Aufgaben der Art „SV-Prüfung“ im Wartungsplan. „Prüfung eintragen“ speichert Datum und Ergebnis
+  und rechnet den nächsten Termin aus. Bei offenen Mängeln entsteht auf Wunsch gleich eine Störmeldung.
+- Filter (überfällig, 90 Tage, ohne Termin, offene Mängel), Excel-Liste und Druckansicht im Casa-Design (als PDF speichern).
+
 ## E-Mail, Push und App
 
 - **E-Mail:** Ein Administrator trägt unter Einstellungen › „E-Mail-Versand (Mailserver)“ den Mailserver ein

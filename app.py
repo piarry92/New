@@ -42,7 +42,7 @@ SYM_PFAD = DATEN / "symbole"
 OBJ_PFAD = DATEN / "objektbilder"
 MAX_SYMBOL = 2 * 1024 * 1024
 MAX_UPLOAD = 25 * 1024 * 1024
-VERSION = "2026.11.15-8"  # muss zu VERSION in static/app.js passen
+VERSION = "2026.11.15-9"  # muss zu VERSION in static/app.js passen
 SITZUNG_TAGE = 7
 
 GEWERKE = [
@@ -54,6 +54,16 @@ RHYTHMUS = {"täglich": 1, "wöchentlich": 7, "14-tägig": 14, "monatlich": 30, 
             "halbjährlich": 182, "jährlich": 365, "bei Bedarf": None}
 KAT_FARBEN = ["Rot", "Blau", "Grün", "Gelb", "Orange", "Grau", "Lila", "Petrol", "Schwarz"]
 GEFAEHRDUNG = ["gering", "mittel", "hoch"]
+SV_GEGENSTAENDE = [
+    "Brandmelde- und Alarmierungsanlage", "Rauchabzugsanlage (RWA)", "Druckbelüftungsanlage (RDA)",
+    "Lüftungsanlage", "CO-Warnanlage", "Feuerlöschanlage (Sprinkler, Gaslöschanlage)",
+    "Wandhydranten / Steigleitungen", "Sicherheitsstromversorgung / Notstrom", "Sicherheitsbeleuchtung",
+    "Feststellanlage (Brandschutztür)", "Aufzug", "Druckbehälter", "Elektrische Anlage", "Blitzschutzanlage", "Sonstiges",
+]
+SV_GRUNDLAGEN = [
+    "Prüfverordnung des Landes (z. B. TPrüfVO Hessen)", "BetrSichV (zugelassene Überwachungsstelle)",
+    "DGUV Vorschrift 3", "Baugenehmigung / Brandschutzkonzept", "Versicherer (z. B. VdS)", "Sonstige",
+]
 GRUPPEN = [
     "Klima, Kälte & Lüftung (RLT)", "Heizung & Sanitär", "Elektro & Beleuchtung", "Brandschutz",
     "Flucht & Rettung", "Fördertechnik", "Sicherheitstechnik", "Gebäudeautomation", "Gebäudehülle",
@@ -130,6 +140,9 @@ RESSOURCEN: dict[str, dict] = {
             {"name": "gps_pflicht", "label": "GPS erforderlich für die Arbeit", "typ": "bool", "standard": 0},
             {"name": "pruefung_pflicht", "label": "Gesetzlich autorisierte Prüfung erforderlich", "typ": "bool", "standard": 0},
             {"name": "wartung_pflicht", "label": "Gesetzlich autorisierte Wartung erforderlich", "typ": "bool", "standard": 0},
+            {"name": "sv_relevant", "label": "Sicherheitsrelevant: Prüfung durch Sachverständige (SV-Prüfplan)", "typ": "bool", "standard": 0},
+            {"name": "sv_gegenstand", "label": "SV-Prüfgegenstand", "typ": "select", "optionen": SV_GEGENSTAENDE},
+            {"name": "sv_grundlage", "label": "SV-Prüfgrundlage", "typ": "select", "optionen": SV_GRUNDLAGEN},
             {"name": "notiz", "label": "Notiz", "typ": "textarea"},
             {"name": "plan_id", "label": "Plan", "typ": "ref", "ref": "plaene", "nurlesen": True, "lose": True},
             {"name": "details", "label": "Detailinfo", "typ": "json", "intern": True},
@@ -231,7 +244,7 @@ RESSOURCEN: dict[str, dict] = {
             {"name": "objekt_id", "label": "Objekt", "typ": "ref", "ref": "objekte", "pflicht": True, "liste": True},
             {"name": "anlage_id", "label": "Anlage", "typ": "ref", "ref": "anlagen", "filter": "objekt_id", "liste": True},
             {"name": "titel", "label": "Titel", "typ": "text", "pflicht": True, "liste": True},
-            {"name": "art", "label": "Art", "typ": "select", "optionen": ["Wartung", "Prüfung", "Inspektion", "Begehung"],
+            {"name": "art", "label": "Art", "typ": "select", "optionen": ["Wartung", "Prüfung", "SV-Prüfung", "Inspektion", "Begehung"],
              "pflicht": True, "liste": True},
             {"name": "rechtsgrundlage", "label": "Grundlage (z. B. BetrSichV, DGUV V3)", "typ": "text"},
             {"name": "taetigkeiten", "label": "Tätigkeiten (eine je Zeile, wird zur Checkliste)", "typ": "textarea"},
@@ -733,7 +746,7 @@ def wartung_erledigt(con, benutzer, wid: int, daten: dict) -> dict:
     if ergebnis == "Mängel offen" and daten.get("ticket_anlegen"):
         ticket_id = ticket_anlegen(con, benutzer, {
             "objekt_id": w["objekt_id"], "anlage_id": w["anlage_id"],
-            "titel": f'Mangel aus {w["art"]}: {w["titel"]}', "beschreibung": bemerkung,
+            "titel": f'Mangel aus {w["titel"]}' if w["titel"].startswith(w["art"]) else f'Mangel aus {w["art"]}: {w["titel"]}', "beschreibung": bemerkung,
             "prioritaet": "Hoch", "status": "Neu", "gemeldet_von": benutzer["name"],
             "gemeldet_am": datum, "dienstleister_id": w["dienstleister_id"],
         })
@@ -1255,6 +1268,40 @@ def wartungsplan(con, jahr: int, q: dict) -> dict:
     return {"jahr": jahr, "aufgaben": zeilen, "ohne_plan": ohne}
 
 
+def sv_pruefplan(con, q: dict) -> dict:
+    """Alle sicherheitsrelevanten Anlagen mit ihren SV-Prüfungen."""
+    bed, werte = ["a.sv_relevant=1"], []
+    if q.get("objekt_id") and q["objekt_id"][0]:
+        bed.append("a.objekt_id=?")
+        werte.append(q["objekt_id"][0])
+    tickets = {r[0]: r[1] for r in con.execute(
+        "SELECT anlage_id, COUNT(*) FROM tickets WHERE anlage_id IS NOT NULL "
+        "AND status NOT IN ('Erledigt','Abgeschlossen') GROUP BY anlage_id")}
+    zeilen = []
+    for r in con.execute(
+            "SELECT a.id, a.nummer, a.bezeichnung, a.objekt_id, a.standort, a.gewerk, a.planzeichen, a.symbol_id, "
+            "a.sv_gegenstand, a.sv_grundlage, a.status, a.gps_pflicht, o.kuerzel AS o_kuerzel, o.name AS o_name "
+            "FROM anlagen a LEFT JOIN objekte o ON o.id=a.objekt_id "
+            f"WHERE {' AND '.join(bed)} ORDER BY o.kuerzel COLLATE NOCASE, a.nummer COLLATE NOCASE, a.bezeichnung COLLATE NOCASE",
+            werte):
+        z = dict(r)
+        z["tickets_offen"] = tickets.get(z["id"], 0)
+        z["pruefungen"] = []
+        for w in con.execute("SELECT * FROM wartungen WHERE anlage_id=? AND aktiv=1 AND art='SV-Prüfung' "
+                             "ORDER BY naechste", (z["id"],)):
+            w = dict(w)
+            h = con.execute("SELECT datum, ergebnis, bemerkung, erfasst_von, ticket_id FROM wartung_historie "
+                            "WHERE wartung_id=? ORDER BY datum DESC, id DESC LIMIT 1", (w["id"],)).fetchone()
+            w["letztes"] = dict(h) if h else None
+            w["dl_name"] = None
+            if w["dienstleister_id"]:
+                d = con.execute("SELECT firma FROM dienstleister WHERE id=?", (w["dienstleister_id"],)).fetchone()
+                w["dl_name"] = d[0] if d else None
+            z["pruefungen"].append(w)
+        zeilen.append(z)
+    return {"anlagen": zeilen}
+
+
 def anlage_position(con, benutzer, aid: int, d: dict) -> dict:
     a = zeile(con.execute("SELECT * FROM anlagen WHERE id=?", (aid,)).fetchone())
     if not a:
@@ -1403,9 +1450,12 @@ def beispieldaten(con) -> None:
     for key, nr, gruppe, extra in [
         ("a1", "1.2.01.0010", "Fördertechnik", {"pruefung_pflicht": 1, "wartung_pflicht": 1}),
         ("a2", "1.2.01.0020", "Fördertechnik", {"pruefung_pflicht": 1, "wartung_pflicht": 1}),
-        ("bma", "1.4.01.0010", "Brandschutz", {"pruefung_pflicht": 1, "wartung_pflicht": 1}),
+        ("bma", "1.4.01.0010", "Brandschutz", {"pruefung_pflicht": 1, "wartung_pflicht": 1, "sv_relevant": 1,
+                                                "sv_gegenstand": "Brandmelde- und Alarmierungsanlage",
+                                                "sv_grundlage": SV_GRUNDLAGEN[0]}),
         ("hz", "1.1.01.0010", "Heizung & Sanitär", {}),
-        ("rlt", "1.3.01.0010", "Klima, Kälte & Lüftung (RLT)", {}),
+        ("rlt", "1.3.01.0010", "Klima, Kälte & Lüftung (RLT)", {"sv_relevant": 1, "sv_gegenstand": "Lüftungsanlage",
+                                                                 "sv_grundlage": SV_GRUNDLAGEN[0]}),
         ("tor", "2.6.01.0010", "Sonstiges", {"pruefung_pflicht": 1}),
         ("nsv", "2.5.01.0010", "Elektro & Beleuchtung", {"pruefung_pflicht": 1}),
     ]:
@@ -1425,6 +1475,7 @@ def beispieldaten(con) -> None:
         (o1, anl["rlt"], "Hygieneinspektion RLT", "Inspektion", "VDI 6022", 24, d(-500), d(230), None),
         (o2, anl["tor"], "Prüfung Rolltor", "Prüfung", "ASR A1.7", 12, d(-380), d(-15), None),
         (o2, anl["nsv"], "E-Prüfung ortsfeste Anlagen", "Prüfung", "DGUV V3", 48, d(-1000), d(460), dl["el"]),
+        (o1, anl["bma"], "SV-Prüfung Brandmeldeanlage", "SV-Prüfung", "Prüfverordnung", 36, d(-1050), d(45), None),
     ]
     for o, a, t, art, rg, iv, letzte, naechste, dlid in W:
         wid = ins("wartungen", objekt_id=o, anlage_id=a, titel=t, art=art, rechtsgrundlage=rg, intervall_monate=iv,
@@ -1984,6 +2035,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.json({"qr_token": con.execute("SELECT qr_token FROM anlagen WHERE id=?", (aid,)).fetchone()[0]})
         if erstes == "anlagen" and len(teile) == 3 and teile[2] == "aktivitaet" and m == "GET":
             return self.json(anlage_aktivitaet(con, self.id(teile[1])))
+        if erstes == "svpruefplan" and m == "GET":
+            return self.json(sv_pruefplan(con, q))
         if erstes == "wartungsplan" and m == "GET":
             try:
                 jahr = int((q.get("jahr") or [heute().year])[0])
