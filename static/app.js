@@ -1,7 +1,7 @@
 /* Casa CAFM – Oberfläche (ohne Fremdbibliotheken) */
 "use strict";
 
-const VERSION = "2026.11.15-1"; // muss zu VERSION in app.py passen
+const VERSION = "2026.11.15-2"; // muss zu VERSION in app.py passen
 const S = { ich: null, schema: null, cache: {}, einheiten: {} };
 const $app = document.getElementById("app");
 
@@ -151,42 +151,50 @@ function zelle(ressource, f, z) {
 /* ---------- Rahmen ---------- */
 const NAV = [
   ["start", "Übersicht", "#/"],
+  "Bestand",
   ["objekte", "Objekte", "#/objekte"],
   ["plaene", "Standorte & Pläne", "#/plaene"],
   ["anlagen", "Anlagen", "#/anlagen"],
   ["katalog", "Katalog", "#/katalog"],
+  "Betrieb",
   ["wartungen", "Wartungsplan", "#/wartungen"],
   ["tickets", "Mängel & Störungen", "#/tickets"],
   ["kalender", "Kalender", "#/kalender"],
-  "-",
+  "Verwaltung",
   ["vertraege", "Verträge", "#/vertraege"],
   ["dienstleister", "Dienstleister", "#/dienstleister"],
   ["zaehler", "Zähler", "#/zaehler"],
   ["dokumente", "Dokumente", "#/dokumente"],
-  "-",
+  "System",
   ["zugaenge", "Zugänge & Rechte", "#/zugaenge", "benutzer_verwalten"],
   ["einstellungen", "Einstellungen", "#/einstellungen"],
 ];
 
+const initialen = (n) => String(n || "?").trim().split(/\s+/).map((x) => x[0]).slice(0, 2).join("").toUpperCase();
 function rahmen() {
   $app.innerHTML = `
   <div class="rahmen">
     <aside class="seite" id="seite">
-      <div class="logo"><img src="/logo-negativ.png" alt="Casa Concept Consulting"><span>CAFM</span></div>
-      <nav id="nav">${NAV.filter((n) => n === "-" || !n[3] || darf(n[3])).map((n) => n === "-" ? '<div class="trenner"></div>' :
+      <div class="logo"><img src="/logo.png" alt="Casa Concept Consulting"><span>CAFM</span></div>
+      <nav id="nav">${NAV.filter((n) => typeof n === "string" || !n[3] || darf(n[3])).map((n) => typeof n === "string" ? `<div class="nav-gruppe">${esc(n)}</div>` :
         `<a href="${n[2]}" data-nav="${n[0]}">${icon(n[0])}<span>${n[1]}</span><span class="zahl" data-zahl="${n[0]}" hidden></span></a>`).join("")}</nav>
-      <div class="ich">${esc(S.ich.name)}<br><span class="klein">${esc(ROLLENNAMEN[S.ich.rolle] || S.ich.rolle)}</span> · <button id="abmelden">Abmelden</button></div>
+      <div class="ich"><span class="avatar">${esc(initialen(S.ich.name))}</span><div class="ich-text"><b>${esc(S.ich.name)}</b><span>${esc(ROLLENNAMEN[S.ich.rolle] || S.ich.rolle)}</span></div>
+        <button id="abmelden" title="Abmelden" aria-label="Abmelden"><svg class="icon" viewBox="0 0 24 24"><path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h11"/></svg></button></div>
     </aside>
     <div class="haupt">
       <header class="kopf">
         <button class="menue" id="menue" aria-label="Menü">${icon("menue")}</button>
         <form class="suche" id="suchform">${icon("suche")}<input type="search" id="suchfeld" placeholder="Suchen: Objekt, Anlage, Störmeldung, Firma …" autocomplete="off"></form>
+        <div class="kopf-rechts">${darf("tickets_anlegen") ? `<a class="knopf haupt-k klein kopf-neu" href="#/tickets" id="kopfNeu">${icon("plus")} Mangel melden</a>` : ""}
+          <a class="avatar avatar-kopf" href="#/einstellungen" title="${esc(S.ich.name)}">${esc(initialen(S.ich.name))}</a></div>
       </header>
       <main class="inhalt" id="inhalt"></main>
     </div>
   </div>`;
   document.getElementById("abmelden").onclick = async () => { await api("POST", "abmelden"); S.ich = null; zeigeAnmeldung(); };
   document.getElementById("menue").onclick = () => document.getElementById("seite").classList.toggle("offen");
+  const kn = document.getElementById("kopfNeu");
+  if (kn) kn.onclick = async (e) => { e.preventDefault(); const t = await bearbeiten("tickets", null, { art: "Mangel" }); if (t && t.id) location.hash = `#/tickets/${t.id}`; };
   document.getElementById("suchform").onsubmit = (e) => { e.preventDefault(); location.hash = "#/suche/" + encodeURIComponent(document.getElementById("suchfeld").value); };
 }
 
