@@ -6,12 +6,17 @@ const GEWERK_STIL = {
   "Heizung": ["HZ", "#B8323F"], "Lüftung/Klima": ["LK", "#1E9BBB"], "Kälte": ["KÄ", "#2456A6"],
   "Sanitär": ["SA", "#3E9B3A"], "Sicherheitstechnik": ["ST", "#3C3C3B"], "Türen/Tore": ["TT", "#8D6E63"],
   "Dach/Fassade": ["DF", "#6D4C41"], "Außenanlagen": ["AA", "#558B2F"], "Reinigung": ["RE", "#939598"],
-  "Gebäudeautomation": ["GA", "#6A4C93"], "Sonstiges": ["SO", "#939598"],
+  "Gebäudeautomation": ["GA", "#6A4C93"], "Flucht und Rettung": ["FR", "#009A44"], "Sonstiges": ["SO", "#939598"],
 };
 const stil = (g) => GEWERK_STIL[g] || GEWERK_STIL.Sonstiges;
 
 const VORLAGEN = [
-  ["Brandschutz", ["Feuerlöscher", "Rauchmelder", "Brandmeldezentrale", "Handfeuermelder", "Brandschutztür", "Wandhydrant", "RWA-Anlage", "Sprinklerzentrale"]],
+  ["Brandschutz", [["Feuerlöscher", "F001 Feuerlöscher"], ["Wandhydrant", "F002 Löschschlauch (Wandhydrant)"], ["Handfeuermelder", "F005 Brandmelder (Handfeuermelder)"],
+    ["Brandmeldetelefon", "F006 Brandmeldetelefon"], ["Feuerleiter", "F003 Feuerleiter"], ["Brandmeldezentrale", "BMZ Brandmeldezentrale"],
+    ["Feuerwehr-Anzeigetableau", "FAT Feuerwehr-Anzeigetableau"], ["Feuerwehr-Bedienfeld", "FBF Feuerwehr-Bedienfeld"], ["Feuerwehr-Schlüsseldepot", "FSD Feuerwehr-Schlüsseldepot"],
+    ["RWA-Anlage", "RWA Rauchabzug"], "Rauchmelder", "Brandschutztür", "Sprinklerzentrale"]],
+  ["Flucht und Rettung", [["Notausgang links", "E001 Notausgang links"], ["Notausgang rechts", "E002 Notausgang rechts"], ["Erste-Hilfe-Kasten", "E003 Erste Hilfe"],
+    ["Notruftelefon", "E004 Notruftelefon"], ["Defibrillator", "E010 Defibrillator (AED)"], ["Augenspüleinrichtung", "E011 Augenspüleinrichtung"], ["Sammelstelle", "E007 Sammelstelle"]]],
   ["Elektro", ["Hauptverteilung", "Unterverteilung", "Sicherheitsbeleuchtung", "Notstromaggregat", "Ladestation E-Auto"]],
   ["Heizung", ["Heizkessel", "Wärmepumpe", "Fernwärmeübergabe", "Heizkreisverteiler"]],
   ["Lüftung/Klima", ["Lüftungsgerät", "Split-Klimagerät", "Brandschutzklappe", "Abluftventilator"]],
@@ -23,6 +28,11 @@ const VORLAGEN = [
   ["Gebäudeautomation", ["DDC-Schaltschrank", "Raumbediengerät"]],
   ["Sonstiges", ["Gerät"]],
 ];
+
+/* Planzeichen, wenn vorhanden, sonst Kreis mit Gewerk-Kürzel */
+function symbolFuer(gewerk, planzeichen, groesse = 26) {
+  return zeichenSvg(zeichenCode(planzeichen), groesse) || symbol(gewerk);
+}
 
 function symbol(gewerk, extra = "") {
   const [k, c] = stil(gewerk);
@@ -153,11 +163,11 @@ DETAIL.plaene = async (el, id, q) => {
   <div class="plan-layout">
     <aside class="palette" id="palette">
       <input type="search" id="psuche" placeholder="Gerät oder Anlage suchen">
-      ${aendern ? `<div class="hinweis">Zieh ein Symbol auf den Grundriss. Oder tippe es an und dann auf die Stelle im Plan.</div>` : ""}
+      ${aendern ? `<div class="hinweis">Zieh ein Symbol auf den Grundriss. Oder tippe es an und dann auf die Stelle im Plan. Rote und grüne Zeichen nach DIN EN ISO 7010.</div>` : ""}
       <div id="pfrei"></div>
       ${aendern ? `<h3>Neu einfügen</h3><div id="pvorlagen">${VORLAGEN.map(([g, liste]) => `
-        <details ${g === "Brandschutz" ? "open" : ""}><summary>${symbol(g)} ${esc(g)}</summary>
-        ${liste.map((n) => `<div class="p-item" data-vorlage="${esc(n)}" data-gewerk="${esc(g)}">${symbol(g)}<span>${esc(n)}</span></div>`).join("")}</details>`).join("")}</div>` : ""}
+        <details ${g === "Brandschutz" || g === "Flucht und Rettung" ? "open" : ""}><summary>${symbol(g)} ${esc(g)}</summary>
+        ${liste.map((v) => { const [n, z] = Array.isArray(v) ? v : [v, ""]; return `<div class="p-item" data-vorlage="${esc(n)}" data-gewerk="${esc(g)}" data-zeichen="${esc(z)}" title="${esc(z ? z.replace(/^(\S+) (.*)$/, "$2 ($1)") : n)}">${symbolFuer(g, z)}<span>${esc(n)}</span></div>`; }).join("")}</details>`).join("")}</div>` : ""}
     </aside>
     <section class="plan-bereich">
       <div class="plan-leiste">
@@ -208,13 +218,14 @@ DETAIL.plaene = async (el, id, q) => {
   const zeichnen = () => {
     markerEbene.innerHTML = daten.platziert.map((a) => {
       const [k, c] = stil(a.gewerk);
-      return `<button class="mk ampel-${a.ampel} ${sichtbar(a) ? "" : "aus"} ${Number(q.get("anlage")) === a.id ? "hervor" : ""}" data-id="${a.id}" style="left:${a.plan_x * 100}%;top:${a.plan_y * 100}%;--c:${c}" title="${esc(a.bezeichnung)}">${esc(k)}</button>`;
+      const z = zeichenSvg(zeichenCode(a.planzeichen), 32);
+      return `<button class="mk ${z ? "zeichen" : ""} ampel-${a.ampel} ${sichtbar(a) ? "" : "aus"} ${Number(q.get("anlage")) === a.id ? "hervor" : ""}" data-id="${a.id}" style="left:${a.plan_x * 100}%;top:${a.plan_y * 100}%;--c:${c}" title="${esc(a.bezeichnung)}">${z || esc(k)}</button>`;
     }).join("");
     const gewerke = [...new Set(daten.platziert.map((a) => a.gewerk || "Sonstiges"))].sort();
     el.querySelector("#ebenen").innerHTML = gewerke.map((g) => `<button class="chip ${ansicht.aus.has(g) ? "aus" : ""}" data-ebene="${esc(g)}">${symbol(g)} ${esc(g)} <span class="klein">${daten.platziert.filter((a) => (a.gewerk || "Sonstiges") === g).length}</span></button>`).join("");
     const frei = daten.frei.filter((a) => !ansicht.suche || a.bezeichnung.toLowerCase().includes(ansicht.suche));
     el.querySelector("#pfrei").innerHTML = aendern ? `<h3>Noch nicht im Plan <span class="klein">${daten.frei.length}</span></h3>${frei.length ? frei.map((a) =>
-      `<div class="p-item" data-anlage="${a.id}">${symbol(a.gewerk)}<span>${esc(a.bezeichnung)}<br><span class="klein">${esc(a.standort || a.gewerk || "")}</span></span></div>`).join("") : '<p class="klein">Alle Anlagen dieses Objekts sind auf einem Plan.</p>'}` : "";
+      `<div class="p-item" data-anlage="${a.id}">${symbolFuer(a.gewerk, a.planzeichen)}<span>${esc(a.bezeichnung)}<br><span class="klein">${esc(a.standort || a.gewerk || "")}</span></span></div>`).join("") : '<p class="klein">Alle Anlagen dieses Objekts sind auf einem Plan.</p>'}` : "";
     if (ansicht.suche) {
       const treffer = daten.platziert.filter(sichtbar);
       if (treffer.length === 1) zentrieren(treffer[0]);
@@ -241,7 +252,7 @@ DETAIL.plaene = async (el, id, q) => {
   const popupZeigen = (a) => {
     ansicht.offen = a.id;
     popup.innerHTML = `<button class="x" data-p="zu" aria-label="Schließen">×</button>
-      <div class="pp-kopf">${symbol(a.gewerk)}<div><b>${esc(a.bezeichnung)}</b><br><span class="klein">${esc([a.gewerk, a.standort].filter(Boolean).join(" · "))}</span></div></div>
+      <div class="pp-kopf">${symbolFuer(a.gewerk, a.planzeichen, 34)}<div><b>${esc(a.bezeichnung)}</b><br><span class="klein">${esc([a.gewerk, a.standort].filter(Boolean).join(" · "))}</span></div></div>
       <div class="pp-zeilen">
         ${a.status ? `<div>Zustand ${zustandMarke(a.status)}</div>` : ""}
         <div>Störmeldungen ${a.tickets_offen ? `<span class="marke m-ueber">${a.tickets_offen} offen</span>` : '<span class="marke m-ok">keine offen</span>'}</div>
@@ -275,7 +286,7 @@ DETAIL.plaene = async (el, id, q) => {
     if (!aid) {
       const gleich = [...daten.platziert, ...daten.frei].filter((a) => a.bezeichnung.startsWith(quelle.vorlage)).length;
       const neu = await bearbeiten("anlagen", null, {
-        objekt_id: plan.objekt_id, gewerk: quelle.gewerk, bezeichnung: `${quelle.vorlage} ${gleich + 1}`,
+        objekt_id: plan.objekt_id, gewerk: quelle.gewerk, planzeichen: quelle.zeichen, bezeichnung: `${quelle.vorlage} ${gleich + 1}`,
         standort: [plan.gebaeude, plan.etage].filter(Boolean).join(", "), status: "In Betrieb",
       });
       if (!neu || neu === "geloescht") return;
@@ -304,15 +315,15 @@ DETAIL.plaene = async (el, id, q) => {
     if (!item || !aendern || e.button > 0) return;
     e.preventDefault();
     const quelle = item.dataset.anlage
-      ? { anlage: Number(item.dataset.anlage), name: item.querySelector("span").firstChild.textContent, gewerk: daten.frei.find((a) => a.id === Number(item.dataset.anlage))?.gewerk, el: item }
-      : { vorlage: item.dataset.vorlage, gewerk: item.dataset.gewerk, name: item.dataset.vorlage, el: item };
+      ? (() => { const f = daten.frei.find((a) => a.id === Number(item.dataset.anlage)); return { anlage: f.id, name: f.bezeichnung, gewerk: f.gewerk, zeichen: f.planzeichen, el: item }; })()
+      : { vorlage: item.dataset.vorlage, gewerk: item.dataset.gewerk, zeichen: item.dataset.zeichen || null, name: item.dataset.vorlage, el: item };
     const start = { x: e.clientX, y: e.clientY };
     let geist = null;
     const bewegen = (ev) => {
       if (!geist && Math.hypot(ev.clientX - start.x, ev.clientY - start.y) > 6) {
         geist = document.createElement("div");
         geist.className = "geist";
-        geist.innerHTML = `${symbol(quelle.gewerk)}<span>${esc(quelle.name)}</span>`;
+        geist.innerHTML = `${symbolFuer(quelle.gewerk, quelle.zeichen, 30)}<span>${esc(quelle.name)}</span>`;
         document.body.appendChild(geist);
       }
       if (geist) {
@@ -449,7 +460,7 @@ DETAIL.plaene = async (el, id, q) => {
     const hervor = daten.platziert.find((a) => a.id === Number(q.get("anlage")));
     if (hervor) { zentrieren(hervor); popupZeigen(hervor); }
     const setz = daten.frei.find((a) => a.id === Number(q.get("platzieren")));
-    if (setz && aendern) modusSetzen({ anlage: setz.id, name: setz.bezeichnung, gewerk: setz.gewerk, el: el.querySelector(`[data-anlage="${setz.id}"]`) });
+    if (setz && aendern) modusSetzen({ anlage: setz.id, name: setz.bezeichnung, gewerk: setz.gewerk, zeichen: setz.planzeichen, el: el.querySelector(`[data-anlage="${setz.id}"]`) });
   };
   if (bild.complete && bild.naturalWidth) fertig(); else { bild.onload = () => { bild.onload = einpassen; fertig(); }; bild.onerror = () => melde("Der Grundriss konnte nicht geladen werden.", true); }
   const ro = new ResizeObserver(() => { if (document.body.contains(buehne)) einpassen(); else ro.disconnect(); });
@@ -461,5 +472,5 @@ function planAusschnitt(a) {
   if (!a.plan_id) return "";
   return `<a class="mini-plan" href="#/plaene/${a.plan_id}?anlage=${a.id}" title="Im Plan zeigen">
     <img src="/api/plaene/${a.plan_id}/bild" alt="">
-    <span class="mk ampel-gruen" style="left:${a.plan_x * 100}%;top:${a.plan_y * 100}%;--c:${stil(a.gewerk)[1]}">${esc(stil(a.gewerk)[0])}</span></a>`;
+    <span class="mk ${zeichenCode(a.planzeichen) ? "zeichen" : ""} ampel-gruen" style="left:${a.plan_x * 100}%;top:${a.plan_y * 100}%;--c:${stil(a.gewerk)[1]}">${zeichenSvg(zeichenCode(a.planzeichen), 32) || esc(stil(a.gewerk)[0])}</span></a>`;
 }

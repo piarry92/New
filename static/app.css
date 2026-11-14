@@ -286,6 +286,12 @@ td.zahl, th.zahl { text-align: right; white-space: nowrap; }
 .mk.ampel-rot { box-shadow: 0 0 0 3px var(--ueber), 0 2px 6px rgba(0,0,0,.35); animation: puls 1.8s infinite; }
 @keyframes puls { 50% { box-shadow: 0 0 0 7px rgba(158,24,48,.35), 0 2px 6px rgba(0,0,0,.35); } }
 .mk.aus { display: none; }
+.mk.zeichen { width: 32px; height: 32px; border: 0; border-radius: 5px; background: #fff; padding: 0; overflow: visible; }
+.mk.zeichen .zeichen-svg { width: 100%; height: 100%; display: block; border-radius: 5px; }
+.mk.zeichen.ampel-gruen { box-shadow: 0 0 0 2px #fff, 0 2px 6px rgba(0,0,0,.35); }
+.mk.zeichen.ampel-gelb { box-shadow: 0 0 0 2px #fff, 0 0 0 5px var(--bald), 0 2px 6px rgba(0,0,0,.35); }
+.mk.zeichen.ampel-rot { box-shadow: 0 0 0 2px #fff, 0 0 0 5px var(--ueber), 0 2px 6px rgba(0,0,0,.35); }
+.zeichen-svg { flex: none; display: block; }
 .mk.zieht { opacity: .85; cursor: grabbing; animation: none; z-index: 3; }
 .mk.hervor { z-index: 2; outline: 3px solid var(--orange); outline-offset: 4px; }
 .mk:focus-visible { outline: 3px solid var(--orange); outline-offset: 3px; }
@@ -306,6 +312,7 @@ td.zahl, th.zahl { text-align: right; white-space: nowrap; }
   .buehne { height: 62vh; min-height: 320px; }
   .modus { white-space: normal; width: 90%; }
   .mk { width: 24px; height: 24px; font-size: 9px; }
+  .mk.zeichen { width: 26px; height: 26px; }
 }
 @media print {
   .palette, .plan-leiste, .popup, .modus { display: none !important; }

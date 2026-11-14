@@ -42,7 +42,14 @@ SITZUNG_TAGE = 7
 GEWERKE = [
     "Aufzug", "Brandschutz", "Elektro", "Heizung", "Lüftung/Klima", "Kälte", "Sanitär",
     "Sicherheitstechnik", "Türen/Tore", "Dach/Fassade", "Außenanlagen", "Reinigung",
-    "Gebäudeautomation", "Sonstiges",
+    "Gebäudeautomation", "Flucht und Rettung", "Sonstiges",
+]
+PLANZEICHEN = [
+    "F001 Feuerlöscher", "F002 Löschschlauch (Wandhydrant)", "F003 Feuerleiter", "F005 Brandmelder (Handfeuermelder)",
+    "F006 Brandmeldetelefon", "E001 Notausgang links", "E002 Notausgang rechts", "E003 Erste Hilfe",
+    "E004 Notruftelefon", "E007 Sammelstelle", "E010 Defibrillator (AED)", "E011 Augenspüleinrichtung",
+    "BMZ Brandmeldezentrale", "FAT Feuerwehr-Anzeigetableau", "FBF Feuerwehr-Bedienfeld",
+    "FSD Feuerwehr-Schlüsseldepot", "RWA Rauchabzug",
 ]
 TICKET_STATUS = ["Neu", "In Arbeit", "Warten auf Dienstleister", "Erledigt", "Abgeschlossen"]
 PRIORITAETEN = ["Notfall", "Hoch", "Normal", "Niedrig"]
@@ -80,6 +87,7 @@ RESSOURCEN: dict[str, dict] = {
             {"name": "objekt_id", "label": "Objekt", "typ": "ref", "ref": "objekte", "pflicht": True, "liste": True},
             {"name": "bezeichnung", "label": "Bezeichnung", "typ": "text", "pflicht": True, "liste": True},
             {"name": "gewerk", "label": "Gewerk", "typ": "select", "optionen": GEWERKE, "liste": True},
+            {"name": "planzeichen", "label": "Planzeichen", "typ": "select", "optionen": PLANZEICHEN},
             {"name": "standort", "label": "Standort (Gebäude, Etage, Raum)", "typ": "text", "liste": True},
             {"name": "hersteller", "label": "Hersteller", "typ": "text", "liste": True},
             {"name": "typ", "label": "Typ / Modell", "typ": "text"},
@@ -733,8 +741,20 @@ def beispieldaten(con) -> None:
             con.execute("UPDATE anlagen SET plan_id=?, plan_x=?, plan_y=? WHERE id=?", (pid, x, y, aid))
         for nr, (x, y) in enumerate([(0.15, 0.49), (0.62, 0.49), (0.93, 0.49), (0.36, 0.86)], 1):
             fid = ins("anlagen", objekt_id=o1, bezeichnung=f"Feuerlöscher {nr}", gewerk="Brandschutz",
+                      planzeichen="F001 Feuerlöscher",
                       standort="Haupthaus, 2. OG", typ="ABC-Pulver 6 kg", status="In Betrieb")
             con.execute("UPDATE anlagen SET plan_id=?, plan_x=?, plan_y=? WHERE id=?", (pid, x, y, fid))
+        con.execute("UPDATE anlagen SET planzeichen='BMZ Brandmeldezentrale' WHERE id=?", (anl["bma"],))
+        for name, gewerk, zeichen, x, y in [
+            ("Wandhydrant 1", "Brandschutz", "F002 Löschschlauch (Wandhydrant)", 0.40, 0.49),
+            ("Handfeuermelder 1", "Brandschutz", "F005 Brandmelder (Handfeuermelder)", 0.565, 0.60),
+            ("Notausgang Treppenhaus", "Flucht und Rettung", "E002 Notausgang rechts", 0.585, 0.53),
+            ("Erste-Hilfe-Kasten", "Flucht und Rettung", "E003 Erste Hilfe", 0.20, 0.72),
+            ("Defibrillator", "Flucht und Rettung", "E010 Defibrillator (AED)", 0.24, 0.53),
+        ]:
+            nid = ins("anlagen", objekt_id=o1, bezeichnung=name, gewerk=gewerk, planzeichen=zeichen,
+                      standort="Haupthaus, 2. OG", status="In Betrieb")
+            con.execute("UPDATE anlagen SET plan_id=?, plan_x=?, plan_y=? WHERE id=?", (pid, x, y, nid))
 
 
 # ---------------------------------------------------------------------------
