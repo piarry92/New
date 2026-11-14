@@ -12,7 +12,8 @@ Es läuft im Browser und braucht nur Python, sonst nichts.
 | Objekte | Liegenschaften mit Stammdaten. Je Objekt alle Anlagen, Termine, Meldungen, Verträge, Zähler und Dokumente |
 | Anlagen | Eigene Akte je Anlage, auch hinter jedem Symbol im Plan: Fotos, Anlagennummer, Beschreibung, Gruppe, Gewerk, Hersteller, Modell, Daten, Manager, Beauftragter, Schalter für GPS-Pflicht und gesetzliche Prüf- und Wartungspflicht, Meldungen, Wartungsplan, Dokumente und Aktivität |
 | Wartungsplan | Je Anlage Aufgaben mit Intervall, Grundlage und Checkliste. Vorschläge je Anlagentyp zum Übernehmen. Gesamtübersicht als Jahresplan (Monate als Spalten) oder Liste, Filter nach Objekt, Gewerk, Art und gesetzlicher Pflicht, Export nach Excel, Drucken quer. „Als erledigt melden“ mit Checkliste und Standort rechnet den nächsten Termin selbst aus |
-| Störmeldungen | Nummer, Priorität, Status, Dienstleister mit Telefon und Notdienst, Verlauf mit Notizen, Fotos und Dokumente |
+| Katalog | Kategorie › Hersteller/Gruppe › Bezeichnung › Detailinfo, mit Symbol je Kategorie, Nummernkreis für die Inventar-Nr., Prüf-, Wartungs- und Kontrollintervall, Zusatzfeldern (z. B. Brandschutztür, Feuerwiderstand, Breite) und Mängelkatalog je Kategorie. Grundbestand: 30 Kategorien, 135 Hersteller, über 600 Bezeichnungen, über 100 Mängel. Erweiterbar |
+| Mängel & Störungen | Eintragsmanagement mit Frist, Gefährdung (gering, mittel, hoch), Status, Kategorie, Gruppe, Bezeichnung, Inventar-Nr., Standort. Filter nach Kategorie, Gefährdung und Frist. „Mangel erfassen“ mit Auswahl aus dem Mängelkatalog, Frist und Gefährdung werden vorgeschlagen, bis zu 4 Fotos |
 | Kalender | Monatsansicht mit Wartungen, Prüfungen, Folgeterminen, fälligen Meldungen und Kündigungsfristen |
 | Verträge | Laufzeit, Kündigungsfrist, Jahresbetrag. Warnung 90 Tage vor Ablauf der Kündigungsfrist |
 | Dienstleister | Firmen, Ansprechpartner, Telefon, Notdienst, E-Mail |
@@ -53,6 +54,14 @@ erscheint eine einfache Seite zum Melden mit Beschreibung, Fotos, Name und Konta
 Etiketten: einzeln auf der Anlagenseite oder als Bogen für ein ganzes Objekt oder einen Plan („QR-Etiketten“).
 Wichtig: In den Einstellungen die Adresse eintragen, unter der das Programm vom Handy aus erreichbar ist, und erst
 dann drucken. „Neuen Code erzeugen“ macht den alten Code ungültig.
+
+## Katalog
+
+Der Grundbestand steht in `katalog_daten.py` und wird beim ersten Start angelegt. Die Teckentrup-Bezeichnungen und
+einige Beispiele (GLORIA, ZAPP-ZIMMERMANN, COLT, Mängel für Türen, Meldetechnik, Schottung, RWA) stammen aus den
+Kevox-Bildschirmfotos. Die übrigen Hersteller sind bekannte Anbieter. Die Liste ist nicht vollständig. Wo kein
+Herstellertyp hinterlegt ist, stehen allgemeine Bauarten oder Klassen (z. B. T30-1). Intervalle sind Vorschläge.
+Pflegen dürfen nur Zugänge mit dem Recht „Katalog pflegen“.
 
 ## Zugänge und Rechte
 

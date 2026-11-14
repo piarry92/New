@@ -467,3 +467,46 @@ table.jplan.gross td:last-child { white-space: nowrap; }
 .rechte-kurz li { padding: 3px 0; }
 .rechte-kurz li.aus { color: var(--grau); }
 .rechte-kurz li.an { color: var(--anthrazit); }
+
+/* Katalog */
+.kat-reiter { display: flex; gap: 0; margin-bottom: 12px; border-bottom: 2px solid var(--hellgrau); flex-wrap: wrap; }
+.kat-reiter a { padding: 9px 16px; text-decoration: none; color: var(--dunkelgrau); border: 1px solid var(--hellgrau); border-bottom: 0; background: var(--zartgrau); margin-right: -1px; border-radius: 6px 6px 0 0; font-size: 15px; }
+.kat-reiter a[href]:hover { background: #fff; }
+.kat-reiter a.an { background: #fff; color: var(--anthrazit); font-weight: 700; position: relative; top: 2px; padding-bottom: 11px; }
+.kacheln { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 14px; margin-bottom: 8px; }
+.kachel { position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px 8px 10px; text-decoration: none; color: var(--anthrazit); border-radius: 8px; text-align: center; }
+.kachel:hover { background: #fff; box-shadow: var(--schatten); }
+.kachel .zeichen-svg { width: 88px; height: 88px; }
+.kachel .k-titel { font-size: 14.5px; line-height: 1.2; word-break: break-word; }
+.k-stift { position: absolute; top: 6px; right: 6px; border: 1px solid var(--hellgrau); background: #fff; border-radius: 50%; width: 26px; height: 26px; cursor: pointer; opacity: 0; color: var(--dunkelgrau); }
+.kachel:hover .k-stift, .k-stift:focus { opacity: 1; }
+.typ-detail { display: grid; grid-template-columns: 110px 1fr; gap: 18px; align-items: start; }
+.typ-detail > .abstand, .typ-detail > button { grid-column: 1 / -1; }
+.kat-zelle { display: inline-flex; align-items: center; gap: 6px; }
+.fl-kopf { padding: 10px 18px 4px; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--grau); }
+.klickbar-li { cursor: pointer; }
+.klickbar-li:hover { background: var(--orange-zart); }
+.sym-wahl { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.sym-wahl .klein { width: 100%; }
+.sym-wahl button { border: 2px solid transparent; background: none; padding: 1px; border-radius: 4px; cursor: pointer; }
+.sym-wahl button.an { border-color: var(--orange); }
+.kk-grp summary { font-weight: 400 !important; padding-left: 10px !important; font-size: 14px; }
+.kk-inhalt { padding-left: 4px; }
+
+/* Gefährdung und Frist */
+.marke.gef-gering { background: #F7E24A; color: #4A4000; }
+.marke.gef-mittel { background: #F0A030; color: #3A2000; }
+.marke.gef-hoch { background: #D62828; color: #fff; }
+.frist { padding: 1px 7px; border-radius: 4px; font-weight: 700; white-space: nowrap; }
+.frist-ueber { background: #F5DDE2; color: var(--ueber); }
+.frist-bald { background: #FBF0CC; color: #6B5000; }
+
+/* Mangel erfassen */
+.dialog:has(.mangel-fenster) { max-width: 920px; }
+.mangel-fenster { display: grid; grid-template-columns: 200px 1fr; gap: 20px; }
+.mf-links { background: var(--zartgrau); border-radius: var(--radius); padding: 14px; font-size: 14px; display: flex; flex-direction: column; gap: 2px; }
+.mf-links .zeichen-svg, .mf-links .sym { margin-bottom: 8px; }
+.mf-links .lbl { font-size: 11.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--grau); margin-top: 8px; }
+.foto-vorschau { display: flex; gap: 8px; flex-wrap: wrap; }
+.foto-vorschau img { width: 80px; height: 80px; object-fit: cover; border-radius: 6px; border: 1px solid var(--hellgrau); }
+@media (max-width: 900px) { .mangel-fenster { grid-template-columns: 1fr; } .typ-detail { grid-template-columns: 1fr; } }

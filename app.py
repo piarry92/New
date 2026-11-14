@@ -10,6 +10,7 @@ Braucht nur Python 3.10 oder neuer, keine weiteren Pakete.
 from __future__ import annotations
 
 import argparse
+import katalog_daten
 import base64
 import calendar
 import csv
@@ -46,6 +47,8 @@ GEWERKE = [
     "Sicherheitstechnik", "Türen/Tore", "Dach/Fassade", "Außenanlagen", "Reinigung",
     "Gebäudeautomation", "Flucht und Rettung", "Sonstiges",
 ]
+KAT_FARBEN = ["Rot", "Blau", "Grün", "Gelb", "Orange", "Grau", "Lila", "Petrol", "Schwarz"]
+GEFAEHRDUNG = ["gering", "mittel", "hoch"]
 GRUPPEN = [
     "Klima, Kälte & Lüftung (RLT)", "Heizung & Sanitär", "Elektro & Beleuchtung", "Brandschutz",
     "Flucht & Rettung", "Fördertechnik", "Sicherheitstechnik", "Gebäudeautomation", "Gebäudehülle",
@@ -91,11 +94,15 @@ RESSOURCEN: dict[str, dict] = {
     "anlagen": {
         "label": "Anlagen", "einzahl": "Anlage", "anzeige": ["bezeichnung"], "sort": "bezeichnung",
         "felder": [
-            {"name": "nummer", "label": "Anlagennummer", "typ": "text", "liste": True},
+            {"name": "nummer", "label": "Inventar-Nr.", "typ": "text", "liste": True},
             {"name": "objekt_id", "label": "Objekt (Arbeitsbereich)", "typ": "ref", "ref": "objekte", "pflicht": True, "liste": True},
             {"name": "bezeichnung", "label": "Bezeichnung", "typ": "text", "pflicht": True, "liste": True},
             {"name": "beschreibung", "label": "Beschreibung", "typ": "textarea"},
-            {"name": "gruppe", "label": "Gruppe", "typ": "select", "optionen": GRUPPEN},
+            {"name": "kategorie_id", "label": "Kategorie", "typ": "ref", "ref": "kat_kategorien", "liste": True},
+            {"name": "gruppe_id", "label": "Hersteller / Gruppe", "typ": "ref", "ref": "kat_gruppen", "filter": "kategorie_id"},
+            {"name": "typ_id", "label": "Bezeichnung (Typ)", "typ": "ref", "ref": "kat_typen", "filter": "gruppe_id", "liste": True},
+            {"name": "zulassung", "label": "Zulassungs-Nr.", "typ": "text"},
+            {"name": "gruppe", "label": "Bereich", "typ": "select", "optionen": GRUPPEN},
             {"name": "gewerk", "label": "Gewerk", "typ": "select", "optionen": GEWERKE, "liste": True},
             {"name": "planzeichen", "label": "Planzeichen (DIN EN ISO 7010)", "typ": "select", "optionen": PLANZEICHEN},
             {"name": "symbol_id", "label": "Eigenes Symbol (statt Planzeichen)", "typ": "ref", "ref": "symbole"},
@@ -117,6 +124,7 @@ RESSOURCEN: dict[str, dict] = {
             {"name": "wartung_pflicht", "label": "Gesetzlich autorisierte Wartung erforderlich", "typ": "bool", "standard": 0},
             {"name": "notiz", "label": "Notiz", "typ": "textarea"},
             {"name": "plan_id", "label": "Plan", "typ": "ref", "ref": "plaene", "nurlesen": True, "lose": True},
+            {"name": "details", "label": "Detailinfo", "typ": "json", "intern": True},
             {"name": "qr_token", "label": "QR-Kennung", "typ": "text", "nurlesen": True, "intern": True},
             {"name": "plan_x", "label": "Plan x", "typ": "number", "nurlesen": True, "intern": True},
             {"name": "plan_y", "label": "Plan y", "typ": "number", "nurlesen": True, "intern": True},
@@ -133,6 +141,50 @@ RESSOURCEN: dict[str, dict] = {
             {"name": "dateiname", "label": "Datei", "typ": "text", "nurlesen": True},
             {"name": "breite", "label": "Breite (px)", "typ": "number", "nurlesen": True, "intern": True},
             {"name": "hoehe", "label": "Höhe (px)", "typ": "number", "nurlesen": True, "intern": True},
+        ],
+    },
+    "kat_kategorien": {
+        "label": "Katalog: Kategorien", "einzahl": "Kategorie", "anzeige": ["name"], "sort": "name", "versteckt": True,
+        "felder": [
+            {"name": "name", "label": "Name", "typ": "text", "pflicht": True, "liste": True},
+            {"name": "gewerk", "label": "Gewerk", "typ": "select", "optionen": GEWERKE, "liste": True},
+            {"name": "farbe", "label": "Rahmenfarbe", "typ": "select", "optionen": KAT_FARBEN, "standard": "Blau"},
+            {"name": "symbol", "label": "Symbol (Planzeichen wie F001, Bild wie i:tuer oder eigenes Symbol)", "typ": "text"},
+            {"name": "symbol_id", "label": "Eigenes Symbol", "typ": "ref", "ref": "symbole"},
+            {"name": "nummernkreis", "label": "Nummernkreis für Inventar-Nr. (z. B. 204)", "typ": "text"},
+            {"name": "pruefung_monate", "label": "Prüfung alle (Monate)", "typ": "number"},
+            {"name": "wartung_monate", "label": "Wartung alle (Monate)", "typ": "number"},
+            {"name": "kontrolle_monate", "label": "Kontrolle alle (Monate)", "typ": "number"},
+            {"name": "grundlage", "label": "Grundlage (Vorschlag, bitte prüfen)", "typ": "text"},
+            {"name": "zusatzfelder", "label": "Zusatzfelder (eine Zeile je Feld: Name; Art; Auswahl1, Auswahl2)", "typ": "textarea"},
+        ],
+    },
+    "kat_gruppen": {
+        "label": "Katalog: Hersteller", "einzahl": "Hersteller / Gruppe", "anzeige": ["name"], "sort": "name", "versteckt": True,
+        "felder": [
+            {"name": "kategorie_id", "label": "Kategorie", "typ": "ref", "ref": "kat_kategorien", "pflicht": True, "liste": True},
+            {"name": "name", "label": "Hersteller / Gruppe", "typ": "text", "pflicht": True, "liste": True},
+            {"name": "web", "label": "Internetseite", "typ": "text"},
+            {"name": "notiz", "label": "Notiz", "typ": "textarea"},
+        ],
+    },
+    "kat_typen": {
+        "label": "Katalog: Bezeichnungen", "einzahl": "Bezeichnung", "anzeige": ["name"], "sort": "name", "versteckt": True,
+        "felder": [
+            {"name": "gruppe_id", "label": "Hersteller / Gruppe", "typ": "ref", "ref": "kat_gruppen", "pflicht": True, "liste": True},
+            {"name": "kategorie_id", "label": "Kategorie", "typ": "ref", "ref": "kat_kategorien", "pflicht": True, "liste": True},
+            {"name": "name", "label": "Bezeichnung / Typ", "typ": "text", "pflicht": True, "liste": True},
+            {"name": "beschreibung", "label": "Beschreibung", "typ": "textarea"},
+        ],
+    },
+    "kat_maengel": {
+        "label": "Katalog: Mängel", "einzahl": "Mangel", "anzeige": ["text"], "sort": "text", "versteckt": True,
+        "felder": [
+            {"name": "kategorie_id", "label": "Kategorie (leer = für alle)", "typ": "ref", "ref": "kat_kategorien", "liste": True},
+            {"name": "text", "label": "Mangel", "typ": "text", "pflicht": True, "liste": True},
+            {"name": "bereich", "label": "Bereich (z. B. Brandschutz)", "typ": "text", "liste": True},
+            {"name": "gefaehrdung", "label": "Gefährdung", "typ": "select", "optionen": GEFAEHRDUNG, "standard": "mittel", "liste": True},
+            {"name": "frist_tage", "label": "Frist (Tage)", "typ": "number", "liste": True},
         ],
     },
     "symbole": {
@@ -164,21 +216,28 @@ RESSOURCEN: dict[str, dict] = {
         ],
     },
     "tickets": {
-        "label": "Störmeldungen", "einzahl": "Störmeldung", "anzeige": ["nummer", "titel"], "sort": "-id",
+        "label": "Mängel & Störungen", "einzahl": "Eintrag", "anzeige": ["nummer", "titel"], "sort": "-id",
         "felder": [
             {"name": "nummer", "label": "Nr.", "typ": "text", "nurlesen": True, "liste": True},
-            {"name": "objekt_id", "label": "Objekt", "typ": "ref", "ref": "objekte", "pflicht": True, "liste": True},
-            {"name": "anlage_id", "label": "Anlage", "typ": "ref", "ref": "anlagen", "filter": "objekt_id"},
-            {"name": "titel", "label": "Titel", "typ": "text", "pflicht": True, "liste": True},
-            {"name": "beschreibung", "label": "Beschreibung", "typ": "textarea"},
-            {"name": "gewerk", "label": "Gewerk", "typ": "select", "optionen": GEWERKE},
-            {"name": "prioritaet", "label": "Priorität", "typ": "select", "optionen": PRIORITAETEN,
-             "standard": "Normal", "liste": True},
+            {"name": "titel", "label": "Eintrag", "typ": "text", "pflicht": True, "liste": True},
+            {"name": "faellig_am", "label": "Frist bis", "typ": "date", "liste": True},
+            {"name": "gefaehrdung", "label": "Gefährdung", "typ": "select", "optionen": GEFAEHRDUNG, "liste": True},
             {"name": "status", "label": "Status", "typ": "select", "optionen": TICKET_STATUS, "standard": "Neu",
              "liste": True},
+            {"name": "a_kategorie", "label": "Kategorie", "typ": "text", "nurlesen": True, "virtuell": True, "liste": True},
+            {"name": "a_gruppe", "label": "Gruppe", "typ": "text", "nurlesen": True, "virtuell": True, "liste": True},
+            {"name": "a_typ", "label": "Bezeichnung", "typ": "text", "nurlesen": True, "virtuell": True, "liste": True},
+            {"name": "a_nummer", "label": "Inv.-Nr.", "typ": "text", "nurlesen": True, "virtuell": True, "liste": True},
+            {"name": "objekt_id", "label": "Objekt", "typ": "ref", "ref": "objekte", "pflicht": True, "liste": True},
+            {"name": "a_standort", "label": "Standort", "typ": "text", "nurlesen": True, "virtuell": True, "liste": True},
+            {"name": "anlage_id", "label": "Anlage", "typ": "ref", "ref": "anlagen", "filter": "objekt_id"},
+            {"name": "art", "label": "Typ", "typ": "select", "optionen": ["Mangel", "Störung", "Hinweis"], "standard": "Mangel"},
+            {"name": "mangel", "label": "Mangel aus Katalog", "typ": "text"},
+            {"name": "beschreibung", "label": "Beschreibung", "typ": "textarea"},
+            {"name": "gewerk", "label": "Gewerk", "typ": "select", "optionen": GEWERKE},
+            {"name": "prioritaet", "label": "Priorität", "typ": "select", "optionen": PRIORITAETEN, "standard": "Normal"},
             {"name": "gemeldet_von", "label": "Gemeldet von", "typ": "text"},
-            {"name": "gemeldet_am", "label": "Gemeldet am", "typ": "date", "liste": True},
-            {"name": "faellig_am", "label": "Erledigen bis", "typ": "date", "liste": True},
+            {"name": "gemeldet_am", "label": "Erfasst am", "typ": "date"},
             {"name": "zugewiesen", "label": "Zuständig bei Casa", "typ": "text"},
             {"name": "dienstleister_id", "label": "Dienstleister", "typ": "ref", "ref": "dienstleister"},
             {"name": "kosten", "label": "Kosten (€)", "typ": "money"},
@@ -337,6 +396,8 @@ def db_anlegen() -> None:
         for name, res in RESSOURCEN.items():
             spalten = ["id INTEGER PRIMARY KEY AUTOINCREMENT"]
             for f in res["felder"]:
+                if f.get("virtuell"):
+                    continue
                 spalten.append(f'"{f["name"]}" {SQL_TYP.get(f["typ"], "TEXT")}')
             if name == "dokumente" or res.get("datei"):
                 spalten.append('"pfad" TEXT')
@@ -345,6 +406,8 @@ def db_anlegen() -> None:
             # neue Felder in bestehende Datenbank nachtragen
             vorhanden = {r["name"] for r in con.execute(f'PRAGMA table_info("{name}")')}
             for f in res["felder"]:
+                if f.get("virtuell"):
+                    continue
                 if f["name"] not in vorhanden:
                     con.execute(f'ALTER TABLE "{name}" ADD COLUMN "{f["name"]}" {SQL_TYP.get(f["typ"], "TEXT")}')
         con.executescript(EXTRA_SQL)
@@ -411,6 +474,23 @@ def wert_pruefen(feld: dict, wert):
             raise Fehler(400, f'Bitte „{feld["label"]}“ ausfüllen.')
         return None
     t = feld["typ"]
+    if t == "json":
+        if isinstance(wert, str):
+            try:
+                wert = json.loads(wert)
+            except ValueError:
+                raise Fehler(400, f'„{feld["label"]}“ ist ungültig.')
+        if not isinstance(wert, dict) or len(wert) > 60:
+            raise Fehler(400, f'„{feld["label"]}“ ist ungültig.')
+        sauber = {}
+        for k, v in wert.items():
+            if not isinstance(k, str) or len(k) > 80:
+                raise Fehler(400, f'„{feld["label"]}“ ist ungültig.')
+            if isinstance(v, (bool, int, float)) or v is None:
+                sauber[k] = v
+            else:
+                sauber[k] = str(v)[:500]
+        return json.dumps(sauber, ensure_ascii=False)
     if t in ("number", "money"):
         try:
             return float(str(wert).replace(",", "."))
@@ -543,8 +623,13 @@ def wartung_erledigt(con, benutzer, wid: int, daten: dict) -> dict:
     return {"ok": True, "ticket_id": ticket_id}
 
 
+FRIST_TAGE = {"hoch": 3, "mittel": 14, "gering": 30}
+
+
 def ticket_anlegen(con, benutzer, daten: dict) -> int:
     sauber = daten_pruefen(RESSOURCEN["tickets"], daten, neu=True)
+    if sauber.get("gefaehrdung") and not sauber.get("faellig_am"):
+        sauber["faellig_am"] = (heute() + dt.timedelta(days=FRIST_TAGE[sauber["gefaehrdung"]])).isoformat()
     sauber.setdefault("gemeldet_am", heute().isoformat())
     if not sauber.get("gemeldet_am"):
         sauber["gemeldet_am"] = heute().isoformat()
@@ -567,10 +652,27 @@ def einstellung(con, schluessel: str) -> str:
     return r["wert"] if r and r["wert"] is not None else EINSTELLUNGEN_STANDARD.get(schluessel, "")
 
 
+def naechste_inventarnr(con, kategorie_id) -> str | None:
+    k = con.execute("SELECT nummernkreis FROM kat_kategorien WHERE id=?", (kategorie_id,)).fetchone()
+    praefix = (k["nummernkreis"] or "").strip() if k else ""
+    if not praefix.isdigit():
+        return None
+    hoechste = 0
+    for (nr,) in con.execute("SELECT nummer FROM anlagen WHERE nummer LIKE ?", (praefix + "%",)):
+        rest = (nr or "")[len(praefix):]
+        if len(rest) == 5 and rest.isdigit():
+            hoechste = max(hoechste, int(rest))
+    return f"{praefix}{hoechste + 1:05d}"
+
+
 def einfuegen(con, tabelle: str, sauber: dict) -> int:
     sauber = dict(sauber)
     if tabelle == "anlagen" and not sauber.get("qr_token"):
         sauber["qr_token"] = neuer_qr_token()
+    if tabelle == "anlagen" and not sauber.get("nummer") and sauber.get("kategorie_id"):
+        nr = naechste_inventarnr(con, sauber["kategorie_id"])
+        if nr:
+            sauber["nummer"] = nr
     sauber["erstellt"] = sauber["geaendert"] = jetzt()
     spalten = ", ".join(f'"{k}"' for k in sauber)
     platz = ", ".join("?" for _ in sauber)
@@ -638,12 +740,13 @@ RECHTE = [
     ("dokumente_hochladen", "Dokumente und Fotos hochladen", "Verwaltung"),
     ("export", "Listen nach Excel exportieren", "Verwaltung"),
     ("loeschen", "Einträge löschen", "Verwaltung"),
+    ("katalog_bearbeiten", "Katalog pflegen: Kategorien, Hersteller, Bezeichnungen, Mängel", "System"),
     ("benutzer_verwalten", "Zugänge und Rechte verwalten, Änderungsverlauf sehen", "System"),
     ("einstellungen", "Einstellungen ändern (QR-Adresse, Melden ohne Anmeldung)", "System"),
 ]
 RECHTE_KEYS = [r[0] for r in RECHTE]
 RECHTE_STANDARD = {
-    "benutzer": {k: k not in ("loeschen", "benutzer_verwalten", "einstellungen") for k in RECHTE_KEYS},
+    "benutzer": {k: k not in ("loeschen", "benutzer_verwalten", "einstellungen", "katalog_bearbeiten") for k in RECHTE_KEYS},
     "zuschauer": {k: k == "export" for k in RECHTE_KEYS},
 }
 
@@ -684,7 +787,8 @@ RESSOURCE_RECHT = {
     "objekte": "anlagen_bearbeiten", "anlagen": "anlagen_bearbeiten", "plaene": "plaene_bearbeiten",
     "symbole": "plaene_bearbeiten", "wartungen": "wartung_planen", "vertraege": "vertraege_bearbeiten",
     "dienstleister": "vertraege_bearbeiten", "zaehler": "zaehler_erfassen", "ablesungen": "zaehler_erfassen",
-    "dokumente": "dokumente_hochladen",
+    "dokumente": "dokumente_hochladen", "kat_kategorien": "katalog_bearbeiten", "kat_gruppen": "katalog_bearbeiten",
+    "kat_typen": "katalog_bearbeiten", "kat_maengel": "katalog_bearbeiten",
 }
 
 
@@ -784,7 +888,7 @@ def wartungsplan(con, jahr: int, q: dict) -> dict:
     zeilen = []
     for r in con.execute(
             "SELECT w.*, a.bezeichnung AS a_bez, a.nummer AS a_nr, a.gewerk AS a_gewerk, a.planzeichen AS a_zeichen, "
-            "a.symbol_id AS a_symbol, a.pruefung_pflicht AS a_pp, a.wartung_pflicht AS a_wp, "
+            "a.symbol_id AS a_symbol, a.kategorie_id AS a_kat, a.pruefung_pflicht AS a_pp, a.wartung_pflicht AS a_wp, "
             "o.kuerzel AS o_kuerzel, o.name AS o_name FROM wartungen w "
             "LEFT JOIN anlagen a ON a.id=w.anlage_id LEFT JOIN objekte o ON o.id=w.objekt_id "
             f"WHERE {' AND '.join(bed)} ORDER BY o.kuerzel COLLATE NOCASE, a.nummer COLLATE NOCASE, "
@@ -912,7 +1016,8 @@ def suche(con, q: str) -> list[dict]:
     for name, res in RESSOURCEN.items():
         if res.get("versteckt"):
             continue
-        textfelder = [f["name"] for f in res["felder"] if f["typ"] in ("text", "textarea", "email", "tel")]
+        textfelder = [f["name"] for f in res["felder"]
+                      if f["typ"] in ("text", "textarea", "email", "tel") and not f.get("virtuell")]
         if not textfelder:
             continue
         bed = " OR ".join(f'"{f}" LIKE ?' for f in textfelder)
@@ -1054,6 +1159,52 @@ def beispieldaten(con) -> None:
             nid = ins("anlagen", objekt_id=o1, bezeichnung=name, gewerk=gewerk, planzeichen=zeichen,
                       standort="Haupthaus, 2. OG", status="In Betrieb")
             con.execute("UPDATE anlagen SET plan_id=?, plan_x=?, plan_y=? WHERE id=?", (pid, x, y, nid))
+        # Brandschutztüren aus dem Katalog
+        for nr, (x, y) in enumerate([(0.36, 0.66), (0.555, 0.43), (0.705, 0.43)], 1):
+            tid = einfuegen(con, "anlagen", {"objekt_id": o1, "bezeichnung": f"Tür {nr}", "gewerk": "Türen/Tore",
+                                            "standort": "Haupthaus, 2. OG", "status": "In Betrieb"})
+            con.execute("UPDATE anlagen SET plan_id=?, plan_x=?, plan_y=? WHERE id=?", (pid, x, y, tid))
+    # Katalog zuordnen
+    def kat(name):
+        r = con.execute("SELECT id FROM kat_kategorien WHERE name=?", (name,)).fetchone()
+        return r["id"] if r else None
+
+    def typ(kname, gname, tname):
+        r = con.execute("SELECT t.id, t.gruppe_id FROM kat_typen t JOIN kat_gruppen g ON g.id=t.gruppe_id "
+                        "JOIN kat_kategorien k ON k.id=t.kategorie_id WHERE k.name=? AND g.name=? AND t.name=?",
+                        (kname, gname, tname)).fetchone()
+        return (r["gruppe_id"], r["id"]) if r else (None, None)
+
+    def zuordnen(muster, kname, gname=None, tname=None, details=None):
+        kid = kat(kname)
+        gid, tid = typ(kname, gname, tname) if gname else (None, None)
+        for r in con.execute("SELECT id, nummer FROM anlagen WHERE bezeichnung LIKE ? AND objekt_id IN (?, ?)", (muster, o1, o2)).fetchall():
+            nummer = r["nummer"] or naechste_inventarnr(con, kid)
+            con.execute("UPDATE anlagen SET kategorie_id=?, gruppe_id=?, typ_id=?, nummer=?, details=? WHERE id=?",
+                        (kid, gid, tid, nummer, json.dumps(details, ensure_ascii=False) if details else None, r["id"]))
+
+    zuordnen("Feuerlöscher %", "Feuerlöscher", "GLORIA", "ABC-Pulver 6 kg", {"Löschmittel": "ABC-Pulver", "Löschmitteleinheiten (LE)": 10})
+    zuordnen("Tür %", "Tür", "Teckentrup", "T 30-1-FSA-42", {"Brandschutztür": True, "Feuerwiderstand": "T30", "Flügel": "1-flügelig", "Feststellanlage": True})
+    zuordnen("Wandhydrant%", "Hydrant", "Hawle", "Wandhydrant Typ F")
+    zuordnen("Handfeuermelder%", "Meldetechnik", "Hekatron", "Handfeuermelder", {"Meldertyp": "Handfeuermelder"})
+    zuordnen("Brandmeldeanlage", "Brandmeldezentrale")
+    zuordnen("Notausgang%", "Flucht & Rettung", "Allgemein", "Rettungszeichen nachleuchtend")
+    zuordnen("Erste-Hilfe%", "Erste Hilfe", "Söhngen", "Verbandkasten DIN 13157")
+    zuordnen("Defibrillator", "Defibrillator", "Philips", "HeartStart FRx")
+    zuordnen("Personenaufzug%", "Aufzug")
+    zuordnen("Gas-Brennwertkessel%", "Heizung", "Viessmann", "Gas-Brennwertkessel")
+    zuordnen("RLT-Anlage%", "Lüftung", "Wolf GmbH", "Zentrales RLT-Gerät")
+    zuordnen("Rolltor%", "Tor")
+    zuordnen("Niederspannungs%", "Elektro")
+    for titel, gef in (("Aufzug B%", "mittel"), ("Leuchtmittel%", "gering"), ("Rolltor%", "hoch"), ("Heizung%", "gering")):
+        con.execute("UPDATE tickets SET gefaehrdung=?, art='Störung' WHERE titel LIKE ?", (gef, titel))
+    tuer = con.execute("SELECT id FROM anlagen WHERE bezeichnung='Tür 2'").fetchone()
+    if tuer:
+        for mangel, gef, tage in (("Tür schließt nicht", "hoch", 3), ("Glaselement beschädigt", "mittel", 14)):
+            ticket_anlegen(con, {"name": "Beispieldaten"}, {"objekt_id": o1, "anlage_id": tuer["id"], "titel": mangel,
+                                                          "mangel": mangel, "gefaehrdung": gef, "art": "Mangel", "status": "Neu",
+                                                          "faellig_am": (h + dt.timedelta(days=tage - 5)).isoformat(),
+                                                          "gemeldet_von": "Begehung"})
 
 
 # ---------------------------------------------------------------------------
@@ -1414,19 +1565,28 @@ class Handler(BaseHTTPRequestHandler):
 
     def liste(self, con, name: str, q: dict) -> list[dict]:
         res = RESSOURCEN[name]
-        namen = {f["name"] for f in res["felder"]} | {"id"}
+        namen = {f["name"] for f in res["felder"] if not f.get("virtuell")} | {"id"}
         bed, werte = [], []
         for k, v in q.items():
             if k in namen and v:
                 bed.append(f'"{k}"=?')
                 werte.append(v[0])
         if q.get("q") and q["q"][0].strip():
-            textfelder = [f["name"] for f in res["felder"] if f["typ"] in ("text", "textarea", "email", "tel")]
+            textfelder = [f["name"] for f in res["felder"]
+                          if f["typ"] in ("text", "textarea", "email", "tel") and not f.get("virtuell")]
             if textfelder:
                 bed.append("(" + " OR ".join(f'"{f}" LIKE ?' for f in textfelder) + ")")
                 werte += [f'%{q["q"][0].strip()}%'] * len(textfelder)
         if name == "tickets" and q.get("offen"):
             bed.append("status NOT IN ('Erledigt','Abgeschlossen')")
+        if name == "tickets" and q.get("kategorie_id") and q["kategorie_id"][0]:
+            bed.append("anlage_id IN (SELECT id FROM anlagen WHERE kategorie_id=?)")
+            werte.append(q["kategorie_id"][0])
+        if name == "tickets" and q.get("frist") and q["frist"][0] in ("ueber", "7"):
+            grenze = heute().isoformat() if q["frist"][0] == "ueber" else (heute() + dt.timedelta(days=7)).isoformat()
+            bed.append("faellig_am IS NOT NULL AND faellig_am " + ("<" if q["frist"][0] == "ueber" else "<=") + " ?"
+                       " AND status NOT IN ('Erledigt','Abgeschlossen')")
+            werte.append(grenze)
         sort = res.get("sort", "id")
         richtung = "DESC" if sort.startswith("-") else "ASC"
         sort = sort.lstrip("-")
@@ -1435,6 +1595,16 @@ class Handler(BaseHTTPRequestHandler):
         zeilen = [dict(r) for r in con.execute(sql, werte)]
         for z in zeilen:
             z.pop("pfad", None)
+        if name == "tickets" and zeilen:
+            info = {r["id"]: r for r in con.execute(
+                "SELECT a.id, a.nummer, a.standort, k.name AS kat, g.name AS grp, t.name AS typ FROM anlagen a "
+                "LEFT JOIN kat_kategorien k ON k.id=a.kategorie_id LEFT JOIN kat_gruppen g ON g.id=a.gruppe_id "
+                "LEFT JOIN kat_typen t ON t.id=a.typ_id")}
+            for z in zeilen:
+                r = info.get(z.get("anlage_id"))
+                z.update({"a_kategorie": r["kat"] if r else None, "a_gruppe": r["grp"] if r else None,
+                          "a_typ": r["typ"] if r else None, "a_nummer": r["nummer"] if r else None,
+                          "a_standort": r["standort"] if r else None})
         if name == "plaene":
             anzahl = {r[0]: r[1] for r in con.execute(
                 "SELECT plan_id, COUNT(*) FROM anlagen WHERE plan_id IS NOT NULL GROUP BY plan_id")}
@@ -1550,8 +1720,16 @@ class Handler(BaseHTTPRequestHandler):
             info = {"bezeichnung": a["bezeichnung"], "nummer": a["nummer"], "standort": a["standort"],
                     "objekt": " · ".join(x for x in (a["o_kuerzel"], a["o_name"]) if x),
                     "anschrift": ", ".join(x for x in (a["o_strasse"], a["o_ort"]) if x),
-                    "gewerk": a["gewerk"], "planzeichen": a["planzeichen"]}
-            return self.json({"anlage": info, "oeffentlich": offen, "angemeldet": bool(b),
+                    "gewerk": a["gewerk"], "planzeichen": a["planzeichen"], "kategorie_id": a["kategorie_id"]}
+            kat = con.execute("SELECT name, symbol, farbe FROM kat_kategorien WHERE id=?", (a["kategorie_id"],)).fetchone()
+            if kat:
+                info.update({"kategorie": kat["name"], "kat_symbol": kat["symbol"], "kat_farbe": kat["farbe"]})
+            maengel = [r["text"] for r in con.execute(
+                "SELECT text FROM kat_maengel WHERE kategorie_id=? ORDER BY text COLLATE NOCASE", (a["kategorie_id"],))] \
+                if a["kategorie_id"] else []
+            maengel += [r["text"] for r in con.execute(
+                "SELECT text FROM kat_maengel WHERE kategorie_id IS NULL ORDER BY text COLLATE NOCASE") if r["text"] not in maengel]
+            return self.json({"anlage": info, "oeffentlich": offen, "angemeldet": bool(b), "maengel": maengel,
                               "anlage_id": a["id"] if b else None})
         if len(teile) == 3 and teile[2] == "meldung" and m == "POST":
             if not b and not offen:
@@ -1562,28 +1740,50 @@ class Handler(BaseHTTPRequestHandler):
                 qr_bremse(self.client_address[0])
             d = self.body()
             text = str(d.get("beschreibung") or "").strip()
-            if len(text) < 3:
-                raise Fehler(400, "Bitte kurz beschreiben, was nicht stimmt.")
+            mangel = str(d.get("mangel") or "").strip()[:200]
+            kat_mangel = None
+            if mangel:
+                kat_mangel = con.execute("SELECT * FROM kat_maengel WHERE text=? AND (kategorie_id=? OR kategorie_id IS NULL) "
+                                         "ORDER BY kategorie_id IS NULL LIMIT 1", (mangel, a["kategorie_id"])).fetchone()
+                if not kat_mangel and not b:
+                    mangel = ""
+            if len(text) < 3 and not mangel:
+                raise Fehler(400, "Bitte einen Mangel auswählen oder kurz beschreiben, was nicht stimmt.")
             name = str(d.get("name") or "").strip()[:120]
             kontakt = str(d.get("kontakt") or "").strip()[:160]
             if not b and not name:
                 raise Fehler(400, "Bitte Ihren Namen angeben, damit wir nachfragen können.")
             melder = b["name"] if b else name + (f" ({kontakt})" if kontakt else "")
-            titel = str(d.get("titel") or "").strip()[:150] or ("Mangel: " + text.split("\n")[0][:80])
+            titel = str(d.get("titel") or "").strip()[:150] or mangel or ("Mangel: " + text.split("\n")[0][:80])
+            gef = d.get("gefaehrdung") if b and d.get("gefaehrdung") in GEFAEHRDUNG else (
+                kat_mangel["gefaehrdung"] if kat_mangel and kat_mangel["gefaehrdung"] in GEFAEHRDUNG else ("hoch" if d.get("dringend") else "mittel"))
+            frist = None
+            if b and d.get("faellig_am"):
+                frist = wert_pruefen({"label": "Frist", "typ": "date"}, d.get("faellig_am"))
+            elif kat_mangel and kat_mangel["frist_tage"]:
+                frist = (heute() + dt.timedelta(days=int(kat_mangel["frist_tage"]))).isoformat()
+            art = d.get("art") if b and d.get("art") in ("Mangel", "Störung", "Hinweis") else "Mangel"
+            dlid = a["dienstleister_id"]
+            if b and d.get("dienstleister_id"):
+                try:
+                    dlid = int(d["dienstleister_id"])
+                except (TypeError, ValueError):
+                    raise Fehler(400, "Dienstleister ist ungültig.")
             prio = d.get("prioritaet") if d.get("prioritaet") in PRIORITAETEN else ("Hoch" if d.get("dringend") else "Normal")
             if not b and prio == "Notfall":
                 prio = "Hoch"
             tid = ticket_anlegen(con, b or {"name": "QR-Code"}, {
-                "objekt_id": a["objekt_id"], "anlage_id": a["id"], "titel": titel, "beschreibung": text[:5000],
-                "gewerk": a["gewerk"], "prioritaet": prio, "status": "Neu", "gemeldet_von": melder[:200],
-                "gemeldet_am": heute().isoformat(), "dienstleister_id": a["dienstleister_id"]})
+                "objekt_id": a["objekt_id"], "anlage_id": a["id"], "titel": titel, "beschreibung": text[:5000] or None,
+                "gewerk": a["gewerk"], "prioritaet": "Hoch" if gef == "hoch" and prio == "Normal" else prio, "status": "Neu",
+                "gemeldet_von": melder[:200], "gemeldet_am": heute().isoformat(), "dienstleister_id": dlid,
+                "gefaehrdung": gef, "faellig_am": frist, "art": art, "mangel": mangel or None})
             con.execute("INSERT INTO ticket_kommentare (ticket_id, zeit, autor, text) VALUES (?,?,?,?)",
                         (tid, jetzt(), melder[:200], "Über den QR-Code der Anlage gemeldet."
                          + ("" if b else " Ohne Anmeldung, bitte Angaben prüfen.")))
             fotos = d.get("fotos") or []
             if not isinstance(fotos, list):
                 fotos = []
-            for nr, f in enumerate(fotos[:3], 1):
+            for nr, f in enumerate(fotos[:4], 1):
                 try:
                     inhalt = base64.b64decode(str(f), validate=True)
                 except ValueError:
@@ -1782,6 +1982,8 @@ def main():
     p.add_argument("--leise", action="store_true")
     a = p.parse_args()
     db_anlegen()
+    with db() as con:
+        katalog_daten.katalog_anlegen(con, einfuegen)
     if a.demo:
         with db() as con:
             beispieldaten(con)

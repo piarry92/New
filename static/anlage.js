@@ -42,7 +42,17 @@ const VORSCHLAEGE = [
   { wenn: () => true, aufgaben: [
     { titel: "Wartung", art: "Wartung", iv: 12, grund: "Herstellervorgabe (Intervall prüfen)", t: ["Wartung laut Herstellerangaben"] }] },
 ];
-const vorschlagFuer = (a) => VORSCHLAEGE.find((v) => v.wenn(a, zeichenCode(a.planzeichen), (a.bezeichnung || "").toLowerCase())).aufgaben;
+const vorschlagFuer = (a) => {
+  const kat = typeof katVon === "function" ? katVon(a.kategorie_id) : null;
+  if (kat && (kat.pruefung_monate || kat.wartung_monate || kat.kontrolle_monate)) {
+    const aufg = [];
+    if (kat.pruefung_monate) aufg.push({ titel: `Prüfung ${kat.name}`, art: "Prüfung", iv: kat.pruefung_monate, grund: kat.grundlage || "bitte eintragen", t: ["Prüfung durchführen", "Prüfnachweis anbringen", "Prüfbericht ablegen"] });
+    if (kat.wartung_monate) aufg.push({ titel: `Wartung ${kat.name}`, art: "Wartung", iv: kat.wartung_monate, grund: kat.grundlage || "Herstellerangaben", t: ["Wartung laut Herstellerangaben", "Verschleißteile prüfen", "Protokoll ablegen"] });
+    if (kat.kontrolle_monate) aufg.push({ titel: `Kontrolle ${kat.name}`, art: "Inspektion", iv: kat.kontrolle_monate, grund: kat.grundlage || "Herstellerangaben", t: ["Sichtkontrolle", "Funktionskontrolle"] });
+    return aufg;
+  }
+  return VORSCHLAEGE.find((v) => v.wenn(a, zeichenCode(a.planzeichen), (a.bezeichnung || "").toLowerCase())).aufgaben;
+};
 
 /* ---------- kleine Bausteine ---------- */
 const plusMonate = (iso, m) => {
@@ -186,13 +196,14 @@ function feldNamen(info) {
 }
 const zeitText = (iso) => iso ? `${datum(iso)} ${iso.slice(11, 16) === "12:00" && iso.endsWith("12:00:00") ? "" : iso.slice(11, 16)}` : "";
 
-const ZEILEN = ["status", "objekt_id", "gruppe", "gewerk", "standort", "hersteller", "typ", "seriennummer", "herstellungsdatum",
+const KATALOG_FELDER = ["kategorie_id", "gruppe_id", "typ_id"];
+const ZEILEN = ["kategorie_id", "gruppe_id", "typ_id", "nummer", "zulassung", "status", "objekt_id", "gruppe", "gewerk", "standort", "hersteller", "typ", "seriennummer", "herstellungsdatum",
   "inbetriebnahme", "baujahr", "garantie_bis", "planzeichen", "symbol_id"];
 const PERSONEN = ["manager", "beauftragter", "dienstleister_id"];
 const SCHALTER = ["gps_pflicht", "pruefung_pflicht", "wartung_pflicht"];
 
 DETAIL.anlagen = async (el, id, q) => {
-  await Promise.all([refsLaden("anlagen"), lade("symbole")]);
+  await Promise.all([refsLaden("anlagen"), lade("symbole"), katLaden()]);
   const [a, fotos, akt, tickets, plan] = await Promise.all([
     api("GET", `anlagen/${id}`), api("GET", `dokumente?anlage_id=${id}&kategorie=Foto`), api("GET", `anlagen/${id}/aktivitaet`),
     api("GET", `tickets?anlage_id=${id}&offen=1`), api("GET", `wartungsplan?jahr=${new Date().getFullYear()}&anlage_id=${id}`)]);
@@ -228,7 +239,7 @@ DETAIL.anlagen = async (el, id, q) => {
           </div>` : ""}
       </div>
       <div class="akte-titel">
-        ${a.nummer ? `<div class="kicker">${esc(a.nummer)}</div>` : ""}
+        ${a.nummer || a.kategorie_id ? `<div class="kicker">${esc([a.nummer, refText("kat_kategorien", a.kategorie_id), refText("kat_gruppen", a.gruppe_id), refText("kat_typen", a.typ_id)].filter((x) => x && !x.startsWith("#")).join(" · "))}</div>` : ""}
         <h1 ${aendern ? 'data-feld="bezeichnung" class="editierbar"' : ""}>${esc(a.bezeichnung)}</h1>
         <p class="beschreibung ${a.beschreibung ? "" : "leer-text"} ${aendern ? "editierbar" : ""}" data-feld="beschreibung">${a.beschreibung ? esc(a.beschreibung) : aendern ? "Beschreibung eingeben …" : ""}</p>
         <div class="marken">${zustandMarke(a.status)} ${a.pruefung_pflicht ? '<span class="marke m-neu">Prüfpflichtig</span>' : ""} ${a.wartung_pflicht ? '<span class="marke m-neu">Wartungspflichtig</span>' : ""}
@@ -241,6 +252,10 @@ DETAIL.anlagen = async (el, id, q) => {
     <div class="akte-raster">
       <div>
         <div class="feldliste karte">${ZEILEN.map(zeile).join("")}</div>
+        ${zusatzfelder(katVon(a.kategorie_id)).length ? `<div class="feldliste karte"><div class="fl-kopf">Detailinfo ${esc(katVon(a.kategorie_id).name)}</div>${zusatzfelder(katVon(a.kategorie_id)).map((f) => {
+          const v = detailsVon(a)[f.name];
+          return `<button class="fz" data-details ${aendern ? "" : "disabled"}><span class="fz-l">${esc(f.name)}</span><span class="fz-w">${detailWert(f, v) || (aendern ? '<span class="fz-neu">+ Hinzufügen</span>' : '<span class="klein">–</span>')}</span>${aendern ? '<span class="fz-p">›</span>' : ""}</button>`;
+        }).join("")}</div>` : ""}
         <div class="feldliste karte">${PERSONEN.map(zeile).join("")}</div>
         <div class="feldliste karte">${SCHALTER.map((n) => `<label class="schalter-zeile"><span>${esc(felder[n].label)}</span>
           <input type="checkbox" class="schalter" data-schalter="${n}" ${a[n] ? "checked" : ""} ${aendern ? "" : "disabled"}></label>`).join("")}</div>
@@ -285,8 +300,10 @@ DETAIL.anlagen = async (el, id, q) => {
   el.querySelectorAll("[data-feld]").forEach((b) => b.addEventListener("click", async (e) => {
     if (!aendern) return;
     e.preventDefault();
+    if (KATALOG_FELDER.includes(b.dataset.feld)) { if (await katalogZuordnen(a)) route(); return; }
     if (await feldBearbeiten("anlagen", a, b.dataset.feld)) route();
   }));
+  el.querySelectorAll("[data-details]").forEach((b) => b.addEventListener("click", async () => { if (aendern && await detailsBearbeiten(a)) route(); }));
   el.querySelectorAll("[data-schalter]").forEach((c) => c.addEventListener("change", async () => {
     try { await api("PUT", `anlagen/${id}`, { [c.dataset.schalter]: c.checked ? 1 : 0 }); melde("Gespeichert."); cacheLeeren(); route(); }
     catch (err) { melde(err.message, true); c.checked = !c.checked; }
@@ -448,7 +465,7 @@ SEITEN.wartungen = async (el, _, q) => {
     const reihen = liste.map((w) => {
       const kopf = w.objekt_id !== objekt ? `<tr class="gruppe"><td colspan="16">${esc(w.o_kuerzel || "")} · ${esc(w.o_name || "")}</td></tr>` : "";
       objekt = w.objekt_id;
-      const a = { gewerk: w.a_gewerk, planzeichen: w.a_zeichen, symbol_id: w.a_symbol };
+      const a = { gewerk: w.a_gewerk, planzeichen: w.a_zeichen, symbol_id: w.a_symbol, kategorie_id: w.a_kat };
       return kopf + `<tr class="klickbar" data-w="${w.id}">
         <td class="anl">${w.anlage_id ? `<a href="#/anlagen/${w.anlage_id}" onclick="event.stopPropagation()">${symbolVon(a, 22)}<span>${w.a_nr ? `<span class="klein">${esc(w.a_nr)}</span><br>` : ""}${esc(w.a_bez || "")}</span></a>` : '<span class="klein">ohne Anlage</span>'}</td>
         <td><b>${esc(w.titel)}</b>${w.a_pp || w.a_wp ? ' <span class="marke m-neu" title="gesetzlich vorgeschrieben">§</span>' : ""}${w.rechtsgrundlage ? `<br><span class="klein">${esc(w.rechtsgrundlage)}</span>` : ""}</td>

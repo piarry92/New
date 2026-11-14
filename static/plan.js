@@ -30,8 +30,12 @@ const VORLAGEN = [
 ];
 
 /* Planzeichen, wenn vorhanden, sonst Kreis mit Gewerk-Kürzel */
-function symbolFuer(gewerk, planzeichen, groesse = 26, symbolId = null) {
-  return eigenesSymbol(symbolId, groesse) || zeichenSvg(zeichenCode(planzeichen), groesse) || symbol(gewerk);
+function symbolFuer(gewerk, planzeichen, groesse = 26, symbolId = null, katId = null) {
+  return quadratSymbol({ symbol_id: symbolId, planzeichen, kategorie_id: katId }, groesse) || symbol(gewerk);
+}
+/* Eckiges Zeichen (eigenes Symbol, Planzeichen oder Kategorie), sonst leer */
+function quadratSymbol(a, groesse = 26) {
+  return eigenesSymbol(a.symbol_id, groesse) || zeichenSvg(zeichenCode(a.planzeichen), groesse) || (typeof katSymbol === "function" ? katSymbol(katVon(a.kategorie_id), groesse) : "");
 }
 /* Eigenes Symbol (hochgeladenes Bild) */
 function eigenesSymbol(id, groesse = 26) {
@@ -40,7 +44,7 @@ function eigenesSymbol(id, groesse = 26) {
   const v = sym && sym.geaendert ? encodeURIComponent(sym.geaendert) : "";
   return `<img class="zeichen-svg eigen" src="/api/symbole/${Number(id)}/bild?v=${v}" width="${groesse}" height="${groesse}" alt="${esc(sym ? sym.name : "Symbol")}" draggable="false">`;
 }
-const symbolVon = (a, groesse = 26) => symbolFuer(a.gewerk, a.planzeichen, groesse, a.symbol_id);
+const symbolVon = (a, groesse = 26) => symbolFuer(a.gewerk, a.planzeichen, groesse, a.symbol_id, a.kategorie_id);
 
 /* Bild in ein quadratisches PNG (256 px) umwandeln, SVG eingeschlossen */
 async function symbolBildVorbereiten(datei) {
@@ -209,7 +213,7 @@ SEITEN.plaene = async (el) => {
 
 /* ---------- Plan-Arbeitsfläche ---------- */
 DETAIL.plaene = async (el, id, q) => {
-  await Promise.all(["objekte", "plaene", "symbole"].map((r) => lade(r)));
+  await Promise.all([...["objekte", "plaene", "symbole"].map((r) => lade(r)), katLaden()]);
   let daten = await api("GET", `plaene/${id}/anlagen`);
   const plan = daten.plan;
   const aendern = darf("plaene_bearbeiten");
@@ -221,11 +225,9 @@ DETAIL.plaene = async (el, id, q) => {
   <div class="plan-layout">
     <aside class="palette" id="palette">
       <input type="search" id="psuche" placeholder="Gerät oder Anlage suchen">
-      ${aendern ? `<div class="hinweis">Zieh ein Symbol auf den Grundriss. Oder tippe es an und dann auf die Stelle im Plan. Rote und grüne Zeichen nach DIN EN ISO 7010.</div>` : ""}
+      ${aendern ? `<div class="hinweis">Zieh ein Symbol auf den Grundriss. Oder tippe es an und dann auf die Stelle im Plan. Katalog: Kategorie, Hersteller, Bezeichnung.</div>` : ""}
       <div id="pfrei"></div>
-      ${aendern ? `<h3>Neu einfügen</h3><div id="peigen"></div><div id="pvorlagen">${VORLAGEN.map(([g, liste]) => `
-        <details ${g === "Brandschutz" || g === "Flucht und Rettung" ? "open" : ""}><summary>${symbol(g)} ${esc(g)}</summary>
-        ${liste.map((v) => { const [n, z] = Array.isArray(v) ? v : [v, ""]; return `<div class="p-item" data-vorlage="${esc(n)}" data-gewerk="${esc(g)}" data-zeichen="${esc(z)}" data-symbol="" title="${esc(z ? z.replace(/^(\S+) (.*)$/, "$2 ($1)") : n)}">${symbolFuer(g, z)}<span>${esc(n)}</span></div>`; }).join("")}</details>`).join("")}</div>` : ""}
+      ${aendern ? `<h3>Neu einfügen</h3><div id="peigen"></div><div id="pkatalog"></div>` : ""}
     </aside>
     <section class="plan-bereich">
       <div class="plan-leiste">
@@ -276,7 +278,7 @@ DETAIL.plaene = async (el, id, q) => {
   const zeichnen = () => {
     markerEbene.innerHTML = daten.platziert.map((a) => {
       const [k, c] = stil(a.gewerk);
-      const z = eigenesSymbol(a.symbol_id, 32) || zeichenSvg(zeichenCode(a.planzeichen), 32);
+      const z = quadratSymbol(a, 32);
       return `<button class="mk ${z ? "zeichen" : ""} ampel-${a.ampel} ${sichtbar(a) ? "" : "aus"} ${Number(q.get("anlage")) === a.id ? "hervor" : ""}" data-id="${a.id}" style="left:${a.plan_x * 100}%;top:${a.plan_y * 100}%;--c:${c}" title="${esc(a.bezeichnung)}">${z || esc(k)}</button>`;
     }).join("");
     const gewerke = [...new Set(daten.platziert.map((a) => a.gewerk || "Sonstiges"))].sort();
@@ -344,12 +346,15 @@ DETAIL.plaene = async (el, id, q) => {
     let aid = quelle.anlage;
     if (!aid) {
       const gleich = [...daten.platziert, ...daten.frei].filter((a) => a.bezeichnung.startsWith(quelle.vorlage)).length;
+      const t = quelle.typ ? S.kat.tMap[quelle.typ] : null;
       const neu = await bearbeiten("anlagen", null, {
         objekt_id: plan.objekt_id, gewerk: quelle.gewerk, planzeichen: quelle.zeichen, symbol_id: quelle.symbol_id, bezeichnung: `${quelle.vorlage} ${gleich + 1}`,
         standort: [plan.gebaeude, plan.etage].filter(Boolean).join(", "), status: "In Betrieb",
+        ...(t ? { kategorie_id: t.kategorie_id, gruppe_id: t.gruppe_id, typ_id: t.id } : {}),
       });
       if (!neu || neu === "geloescht") return;
       aid = neu.id;
+      if (quelle.typ) { zuletztGenutzt(quelle.typ); katalogZeichnen(); }
     }
     await api("POST", `anlagen/${aid}/position`, { plan_id: id, x: pos.x, y: pos.y });
     cacheLeeren();
@@ -379,7 +384,9 @@ DETAIL.plaene = async (el, id, q) => {
     ziel.querySelector("#symneu").onclick = async () => { if (await symbolDialog()) eigeneZeichnen(); };
   };
   eigeneZeichnen();
-  el.querySelector("#psuche").addEventListener("input", () => setTimeout(eigeneZeichnen, 220));
+  const katalogZeichnen = () => { const z = el.querySelector("#pkatalog"); if (z) katalogPalette(z, ansicht.suche); };
+  katalogZeichnen();
+  el.querySelector("#psuche").addEventListener("input", () => setTimeout(() => { eigeneZeichnen(); katalogZeichnen(); }, 220));
 
   /* Ziehen aus der Seitenleiste */
   el.querySelector("#palette").addEventListener("pointerdown", (e) => {
@@ -388,14 +395,16 @@ DETAIL.plaene = async (el, id, q) => {
     e.preventDefault();
     const quelle = item.dataset.anlage
       ? (() => { const f = daten.frei.find((a) => a.id === Number(item.dataset.anlage)); return { anlage: f.id, name: f.bezeichnung, gewerk: f.gewerk, zeichen: f.planzeichen, symbol_id: f.symbol_id, el: item }; })()
-      : { vorlage: item.dataset.vorlage, gewerk: item.dataset.gewerk || null, zeichen: item.dataset.zeichen || null, symbol_id: Number(item.dataset.symbol) || null, name: item.dataset.vorlage, el: item };
+      : item.dataset.typ
+        ? (() => { const t = S.kat.tMap[item.dataset.typ]; return { typ: t.id, kategorie_id: t.kategorie_id, vorlage: item.dataset.vorlage, gewerk: item.dataset.gewerk || null, zeichen: null, symbol_id: null, name: t.name, el: item }; })()
+        : { vorlage: item.dataset.vorlage, gewerk: item.dataset.gewerk || null, zeichen: item.dataset.zeichen || null, symbol_id: Number(item.dataset.symbol) || null, name: item.dataset.vorlage, el: item };
     const start = { x: e.clientX, y: e.clientY };
     let geist = null;
     const bewegen = (ev) => {
       if (!geist && Math.hypot(ev.clientX - start.x, ev.clientY - start.y) > 6) {
         geist = document.createElement("div");
         geist.className = "geist";
-        geist.innerHTML = `${symbolFuer(quelle.gewerk, quelle.zeichen, 30, quelle.symbol_id)}<span>${esc(quelle.name)}</span>`;
+        geist.innerHTML = `${symbolFuer(quelle.gewerk, quelle.zeichen, 30, quelle.symbol_id, quelle.kategorie_id)}<span>${esc(quelle.name)}</span>`;
         document.body.appendChild(geist);
       }
       if (geist) {
@@ -545,5 +554,5 @@ function planAusschnitt(a) {
   if (!a.plan_id) return "";
   return `<a class="mini-plan" href="#/plaene/${a.plan_id}?anlage=${a.id}" title="Im Plan zeigen">
     <img src="/api/plaene/${a.plan_id}/bild" alt="">
-    <span class="mk ${a.symbol_id || zeichenCode(a.planzeichen) ? "zeichen" : ""} ampel-gruen" style="left:${a.plan_x * 100}%;top:${a.plan_y * 100}%;--c:${stil(a.gewerk)[1]}">${eigenesSymbol(a.symbol_id, 32) || zeichenSvg(zeichenCode(a.planzeichen), 32) || esc(stil(a.gewerk)[0])}</span></a>`;
+    <span class="mk ${quadratSymbol(a, 32) ? "zeichen" : ""} ampel-gruen" style="left:${a.plan_x * 100}%;top:${a.plan_y * 100}%;--c:${stil(a.gewerk)[1]}">${quadratSymbol(a, 32) || esc(stil(a.gewerk)[0])}</span></a>`;
 }

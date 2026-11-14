@@ -57,6 +57,7 @@ const ICONS = {
   zaehler: '<circle cx="12" cy="13" r="8"/><path d="M12 13l4-4M8 5l-1-2M16 5l1-2"/>',
   dokumente: '<path d="M3 6h7l2 2h9v12H3z"/>',
   plaene: '<path d="M3 5l6-2 6 2 6-2v16l-6 2-6-2-6 2z"/><path d="M9 3v16M15 5v16"/>',
+  katalog: '<rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="8" rx="1"/><rect x="3" y="13" width="8" height="8" rx="1"/><rect x="13" y="13" width="8" height="8" rx="1"/>',
   einstellungen: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
   suche: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>',
   menue: '<path d="M3 6h18M3 12h18M3 18h18"/>',
@@ -70,7 +71,7 @@ async function lade(ressource, neu = false) {
   if (!S.cache[ressource] || neu) S.cache[ressource] = await api("GET", ressource);
   return S.cache[ressource];
 }
-function cacheLeeren() { S.cache = {}; }
+function cacheLeeren() { S.cache = { symbole: S.cache.symbole }; }
 function anzeige(ressource, zeile) {
   if (!zeile) return "";
   const r = S.schema[ressource];
@@ -119,6 +120,13 @@ function zelle(ressource, f, z) {
   const v = z[f.name];
   if (ressource === "wartungen" && f.name === "naechste") return `${datum(v)} ${faelligMarke(v, z.aktiv)}`;
   if (ressource === "tickets" && f.name === "status") return ticketMarke(v);
+  if (f.name === "gefaehrdung") return gefMarke(v);
+  if (ressource === "tickets" && f.name === "nummer") return `<span class="nowrap">${esc(v)}</span>`;
+  if (ressource === "tickets" && f.name === "faellig_am" && v) {
+    const offen = !["Erledigt", "Abgeschlossen"].includes(z.status), t = tageBis(v);
+    return offen && t < 0 ? `<span class="frist frist-ueber">${datum(v)}</span>` : offen && t <= 7 ? `<span class="frist frist-bald">${datum(v)}</span>` : datum(v);
+  }
+  if (ressource === "anlagen" && f.name === "kategorie_id" && v) return `<span class="kat-zelle">${katSymbol(katVon(v), 20)} ${esc(refText(f.ref, v))}</span>`;
   if (f.name === "prioritaet") return prioMarke(v);
   if (ressource === "anlagen" && f.name === "status") return zustandMarke(v);
   if (f.name === "medium") return `<span class="medium ${esc(v)}">${esc(v)}</span>`;
@@ -145,8 +153,9 @@ const NAV = [
   ["objekte", "Objekte", "#/objekte"],
   ["plaene", "Pläne", "#/plaene"],
   ["anlagen", "Anlagen", "#/anlagen"],
+  ["katalog", "Katalog", "#/katalog"],
   ["wartungen", "Wartungsplan", "#/wartungen"],
-  ["tickets", "Störmeldungen", "#/tickets"],
+  ["tickets", "Mängel & Störungen", "#/tickets"],
   ["kalender", "Kalender", "#/kalender"],
   "-",
   ["vertraege", "Verträge", "#/vertraege"],
@@ -279,7 +288,7 @@ function eingabe(f, wert, ressource) {
 }
 
 function formularHtml(ressource, z, vorgabe = {}) {
-  const felder = S.schema[ressource].felder.filter((f) => !f.nurlesen);
+  const felder = S.schema[ressource].felder.filter((f) => !f.nurlesen && !f.intern);
   return `<div class="dfehler"></div><form class="formular" onsubmit="return false">${felder.map((f) => {
     const wert = z ? z[f.name] : (vorgabe[f.name] ?? f.standard ?? (f.name === "gemeldet_am" ? heute() : null));
     const breit = f.typ === "textarea" ? "breit" : "";
@@ -317,7 +326,7 @@ function formularDaten(hg, ressource) {
   const form = hg.querySelector("form");
   const d = {};
   for (const f of S.schema[ressource].felder) {
-    if (f.nurlesen) continue;
+    if (f.nurlesen || f.intern) continue;
     const el = form.querySelector(`[name="${f.name}"]`);
     if (!el) continue;
     d[f.name] = f.typ === "bool" ? (el.checked ? 1 : 0) : (el.value === "" ? null : el.value);
@@ -358,7 +367,7 @@ async function tabelle(ziel, ressource, opt = {}) {
   await refsLaden(ressource);
   const filter = opt.filter || {};
   const spalten = r.felder.filter((f) => f.liste && !(f.name in filter));
-  const zustand = { q: "", objekt: "", extra: opt.extraStart || "" };
+  const zustand = { q: "", objekt: "", extra: opt.extraStart || "", zusatz: {} };
   const hatObjekt = r.felder.some((f) => f.name === "objekt_id") && !("objekt_id" in filter);
   const extraFilter = opt.extraFilter;
 
@@ -366,6 +375,7 @@ async function tabelle(ziel, ressource, opt = {}) {
     <div class="werkzeug">
       <input type="search" placeholder="In ${esc(r.label)} suchen" data-q>
       ${hatObjekt ? `<select data-objekt><option value="">Alle Objekte</option>${(S.cache.objekte || []).map((o) => `<option value="${o.id}">${esc(anzeige("objekte", o))}</option>`).join("")}</select>` : ""}
+      ${(opt.zusatzFilter || []).map((zf) => `<select data-zf="${zf.param}"><option value="">${esc(zf.alle)}</option>${zf.optionen.map(([w, t]) => `<option value="${esc(w)}">${esc(t)}</option>`).join("")}</select>`).join("")}
       ${extraFilter ? `<select data-extra>${extraFilter.optionen.map(([w, t]) => `<option value="${w}" ${w === zustand.extra ? "selected" : ""}>${esc(t)}</option>`).join("")}</select>` : ""}
       ${darfNeu(ressource) && opt.neu !== false ? `<button class="knopf haupt-k" data-neu>${icon("plus")} ${esc(r.einzahl)}</button>` : ""}
       ${opt.export !== false && darf("export") ? `<a class="knopf" href="/api/export/${ressource}" title="Als Excel-Liste (CSV) speichern">${icon("export")} Excel</a>` : ""}
@@ -379,6 +389,7 @@ async function tabelle(ziel, ressource, opt = {}) {
     if (zustand.q) qs.set("q", zustand.q);
     if (zustand.objekt) qs.set("objekt_id", zustand.objekt);
     if (ressource === "tickets" && zustand.extra === "offen") qs.set("offen", "1");
+    for (const [k, v] of Object.entries(zustand.zusatz)) if (v) qs.set(k, v);
     daten = await api("GET", `${ressource}?${qs}`);
     if (extraFilter && extraFilter.lokal) daten = daten.filter((z) => extraFilter.lokal(z, zustand.extra));
     zeichnen();
@@ -402,6 +413,7 @@ async function tabelle(ziel, ressource, opt = {}) {
   ziel.querySelector("[data-q]").addEventListener("input", (e) => { clearTimeout(t); t = setTimeout(() => { zustand.q = e.target.value; laden(); }, 250); });
   const os = ziel.querySelector("[data-objekt]");
   if (os) os.onchange = (e) => { zustand.objekt = e.target.value; laden(); };
+  ziel.querySelectorAll("[data-zf]").forEach((sel) => sel.onchange = () => { zustand.zusatz[sel.dataset.zf] = sel.value; laden(); });
   const ex = ziel.querySelector("[data-extra]");
   if (ex) ex.onchange = (e) => { zustand.extra = e.target.value; laden(); };
   const nb = ziel.querySelector("[data-neu]");
@@ -504,9 +516,15 @@ SEITEN.wartungen = async (el, _, q) => {
 };
 
 const ticketFilter = { optionen: [["offen", "Nur offene"], ["", "Alle"]] };
+const ticketZusatzFilter = () => [
+  { param: "kategorie_id", alle: "Alle Kategorien", optionen: (S.kat ? S.kat.k : []).map((k) => [k.id, k.name]) },
+  { param: "gefaehrdung", alle: "Alle Gefährdungen", optionen: [["hoch", "hoch"], ["mittel", "mittel"], ["gering", "gering"]] },
+  { param: "frist", alle: "Alle Fristen", optionen: [["ueber", "Frist überschritten"], ["7", "Frist in 7 Tagen"]] },
+];
 SEITEN.tickets = async (el) => {
-  el.innerHTML = seitenkopf("Störmeldungen", "Meldungen und Aufträge") + '<div id="t"></div>';
-  await tabelle(el.querySelector("#t"), "tickets", { extraFilter: ticketFilter, extraStart: "offen" });
+  await katLaden();
+  el.innerHTML = seitenkopf("Mängel & Störungen", "Eintragsmanagement") + '<div id="t"></div>';
+  await tabelle(el.querySelector("#t"), "tickets", { extraFilter: ticketFilter, extraStart: "offen", zusatzFilter: ticketZusatzFilter() });
 };
 SEITEN.vertraege = async (el) => {
   el.innerHTML = seitenkopf("Verträge", "Laufzeiten und Kündigungsfristen") + '<div id="t"></div>';
@@ -790,6 +808,7 @@ async function start() {
   S.schema = s.ressourcen;
   S.einheiten = s.medien_einheit;
   S.rechteListe = s.rechte || [];
+  try { await Promise.all([katLaden(), lade("symbole")]); } catch (e) { /* Katalog später */ }
   rahmen();
   window.onhashchange = route;
   const qrZiel = new URLSearchParams(location.search).get("qr");

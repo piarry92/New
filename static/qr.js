@@ -98,20 +98,57 @@ async function qrKarte(ziel, a) {
 
 /* ---------- Mangel melden (angemeldet) ---------- */
 async function mangelDialog(a) {
-  const html = `<div class="dfehler"></div><form class="formular" onsubmit="return false">
-    <label class="breit"><span class="pflicht">Was ist das Problem?</span><textarea name="beschreibung" required placeholder="z. B. Lüfter macht laute Geräusche, Filteranzeige leuchtet"></textarea></label>
-    <label><span>Priorität</span><select name="prioritaet">${["Normal", "Hoch", "Notfall", "Niedrig"].map((p) => `<option>${p}</option>`).join("")}</select></label>
-    <label><span>Fotos (bis zu 3)</span><input type="file" name="fotos" accept="image/*" capture="environment" multiple></label>
-  </form>`;
-  const erg = await dialog(`Mangel melden: ${a.bezeichnung}`, html, [{ text: "Abbrechen" }, {
-    text: "Melden", klasse: "haupt-k", aktion: async (hg) => {
+  await Promise.all([katLaden(), lade("dienstleister"), lade("objekte")]);
+  const kat = katVon(a.kategorie_id);
+  const alle = await api("GET", "kat_maengel");
+  const maengel = [...alle.filter((m) => kat && m.kategorie_id === kat.id), ...alle.filter((m) => !m.kategorie_id)];
+  const bereiche = [...new Set(maengel.map((m) => m.bereich).filter(Boolean))];
+  const plusTage = (t) => { const d = new Date(); d.setDate(d.getDate() + Number(t || 14)); return d.toISOString().slice(0, 10); };
+  const dl = S.cache.dienstleister || [];
+  const html = `<div class="mangel-fenster">
+    <aside class="mf-links">${symbolVon(a, 88)}
+      <div class="lbl">Bauteil</div><div>${esc([kat ? kat.name : a.gewerk, refText("kat_gruppen", a.gruppe_id), refText("kat_typen", a.typ_id)].filter((x) => x && !String(x).startsWith("#")).join("\n") || a.bezeichnung).replace(/\n/g, "<br>")}</div>
+      <div class="lbl">Anlage</div><div>${esc(a.bezeichnung)}</div>
+      <div class="lbl">Standort</div><div>${esc([refText("objekte", a.objekt_id), a.standort].filter(Boolean).join(" · ") || "–")}</div>
+      <div class="lbl">Inventar-Nr.</div><div>${esc(a.nummer || "–")}</div>
+      <div class="lbl">Zuständig</div><div>${esc(refText("dienstleister", a.dienstleister_id) || a.beauftragter || "–")}</div>
+    </aside>
+    <div><div class="dfehler"></div><form class="formular" onsubmit="return false">
+      <label><span>Typ</span><select name="art"><option>Mangel</option><option>Störung</option><option>Hinweis</option></select></label>
+      <label><span>Bereich</span><select name="bereich"><option value="">Alle Bereiche</option>${bereiche.map((b) => `<option>${esc(b)}</option>`).join("")}</select></label>
+      <label class="breit"><span>Mangel aus dem Katalog</span><select name="mangel"><option value="">– eigener Text –</option>${maengel.map((m) => `<option value="${esc(m.text)}" data-bereich="${esc(m.bereich || "")}" data-gef="${esc(m.gefaehrdung || "")}" data-tage="${m.frist_tage || ""}">${esc(m.text)}${m.bereich ? ` [${esc(m.bereich)}]` : ""}</option>`).join("")}</select></label>
+      <label class="breit"><span>Beschreibung</span><textarea name="beschreibung" maxlength="1024" placeholder="Was genau ist los? Wo genau?"></textarea><span class="klein" data-rest>noch 1024 Zeichen</span></label>
+      <label><span>Gefährdung</span><select name="gefaehrdung">${["gering", "mittel", "hoch"].map((g) => `<option ${g === "mittel" ? "selected" : ""}>${g}</option>`).join("")}</select></label>
+      <label><span>Frist bis</span><input type="date" name="faellig_am" value="${plusTage(14)}"></label>
+      <label class="breit"><span>Zuständig (Dienstleister)</span><select name="dienstleister_id"><option value="">–</option>${dl.map((d) => `<option value="${d.id}" ${d.id === a.dienstleister_id ? "selected" : ""}>${esc(d.firma)}</option>`).join("")}</select></label>
+      <label class="breit"><span>Fotos (bis zu 4)</span><input type="file" name="fotos" accept="image/*" capture="environment" multiple></label>
+      <div class="breit foto-vorschau" data-fv></div>
+    </form></div></div>`;
+  const p = dialog(`Mangel erfassen`, html, [{ text: "Abbrechen" }, {
+    text: "Speichern", klasse: "haupt-k", aktion: async (hg) => {
       const fm = hg.querySelector("form");
+      if (!fm.mangel.value && fm.beschreibung.value.trim().length < 3) throw new Error("Bitte einen Mangel wählen oder kurz beschreiben.");
       const fotos = [];
-      for (const d of [...fm.fotos.files].slice(0, 3)) fotos.push(await bildVerkleinern(d));
-      return api("POST", `qr/${encodeURIComponent(a.qr_token)}/meldung`, { beschreibung: fm.beschreibung.value, prioritaet: fm.prioritaet.value, fotos });
+      for (const d of [...fm.fotos.files].slice(0, 4)) fotos.push(await bildVerkleinern(d));
+      return api("POST", `qr/${encodeURIComponent(a.qr_token)}/meldung`, {
+        art: fm.art.value, mangel: fm.mangel.value, beschreibung: fm.beschreibung.value, gefaehrdung: fm.gefaehrdung.value,
+        faellig_am: fm.faellig_am.value, dienstleister_id: fm.dienstleister_id.value || null, fotos,
+      });
     },
   }]);
-  if (erg) { cacheLeeren(); melde(`Mangel ${erg.nummer} angelegt.`); if (erg.ticket_id) location.hash = `#/tickets/${erg.ticket_id}`; }
+  const hg = letzterDialog(), fm = hg.querySelector("form");
+  fm.bereich.onchange = () => fm.mangel.querySelectorAll("option[data-bereich]").forEach((o) => { o.hidden = !!fm.bereich.value && o.dataset.bereich !== fm.bereich.value; });
+  fm.mangel.onchange = () => {
+    const o = fm.mangel.selectedOptions[0];
+    if (o && o.dataset.gef) fm.gefaehrdung.value = o.dataset.gef;
+    if (o && o.dataset.tage) fm.faellig_am.value = plusTage(o.dataset.tage);
+  };
+  fm.beschreibung.oninput = () => { hg.querySelector("[data-rest]").textContent = `noch ${1024 - fm.beschreibung.value.length} Zeichen`; };
+  fm.fotos.onchange = () => {
+    hg.querySelector("[data-fv]").innerHTML = [...fm.fotos.files].slice(0, 4).map((d) => `<img src="${URL.createObjectURL(d)}" alt="">`).join("");
+  };
+  const erg = await p;
+  if (erg) { cacheLeeren(); melde(`Eintrag ${erg.nummer} angelegt.`); if (erg.ticket_id) location.hash = `#/tickets/${erg.ticket_id}`; }
 }
 
 /* ---------- Öffentliche Seite nach dem Scannen ---------- */
@@ -126,7 +163,7 @@ async function qrSeite(token) {
   if (info.angemeldet && info.anlage_id) { location.replace(`/#/anlagen/${info.anlage_id}?mangel=1`); return; }
   const a = info.anlage;
   const kopf = `<header><img src="/logo.png" alt="Casa Concept Consulting"></header>
-    <div class="karte qr-anlage">${zeichenSvg(zeichenCode(a.planzeichen), 48)}<div>${a.nummer ? `<div class="kicker">${esc(a.nummer)}</div>` : ""}<h1>${esc(a.bezeichnung)}</h1>
+    <div class="karte qr-anlage">${zeichenSvg(zeichenCode(a.planzeichen), 48) || (a.kat_symbol ? katSymbol({ name: a.kategorie, symbol: a.kat_symbol, farbe: a.kat_farbe }, 48) : "")}<div>${a.nummer ? `<div class="kicker">${esc(a.nummer)}</div>` : ""}<h1>${esc(a.bezeichnung)}</h1>
       <div class="klein">${esc([a.objekt, a.standort].filter(Boolean).join(" · "))}</div>${a.anschrift ? `<div class="klein">${esc(a.anschrift)}</div>` : ""}</div></div>`;
   const anmelden = `<p class="klein qr-mitarbeiter">Sie arbeiten bei Casa? <a href="/?qr=${encodeURIComponent(token)}">Anmelden und Anlage öffnen</a></p>`;
   if (!info.oeffentlich) {
@@ -137,9 +174,10 @@ async function qrSeite(token) {
     <form class="karte formular" id="qf" style="grid-template-columns:1fr" novalidate>
       <h2>Mangel melden</h2>
       <div class="dfehler" id="qfe"></div>
-      <label><span class="pflicht">Was ist das Problem?</span><textarea name="beschreibung" required placeholder="Bitte kurz beschreiben, was nicht funktioniert oder beschädigt ist."></textarea></label>
+      ${(info.maengel || []).length ? `<label><span>Was ist das Problem?</span><select name="mangel"><option value="">Bitte wählen oder unten beschreiben</option>${info.maengel.map((m) => `<option>${esc(m)}</option>`).join("")}</select></label>` : ""}
+      <label><span class="${(info.maengel || []).length ? "" : "pflicht"}">${(info.maengel || []).length ? "Beschreibung" : "Was ist das Problem?"}</span><textarea name="beschreibung" placeholder="Bitte kurz beschreiben, was nicht funktioniert oder beschädigt ist."></textarea></label>
       <label class="check"><input type="checkbox" name="dringend"> Dringend: Gefahr für Personen oder Ausfall</label>
-      <label><span>Fotos (bis zu 3, freiwillig)</span><input type="file" name="fotos" accept="image/*" capture="environment" multiple></label>
+      <label><span>Fotos (bis zu 4, freiwillig)</span><input type="file" name="fotos" accept="image/*" capture="environment" multiple></label>
       <label><span class="pflicht">Ihr Name</span><input name="name" required autocomplete="name"></label>
       <label><span>Telefon oder E-Mail für Rückfragen</span><input name="kontakt" autocomplete="email"></label>
       <p class="klein">Ihre Angaben nutzen wir nur, um den Mangel zu bearbeiten und bei Rückfragen Kontakt aufzunehmen.</p>
@@ -153,8 +191,8 @@ async function qrSeite(token) {
     knopf.disabled = true; knopf.textContent = "Wird gesendet …";
     try {
       const fotos = [];
-      for (const d of [...fm.fotos.files].slice(0, 3)) fotos.push(await bildVerkleinern(d));
-      const r = await api("POST", `qr/${encodeURIComponent(token)}/meldung`, { beschreibung: fm.beschreibung.value, dringend: fm.dringend.checked, name: fm.name.value, kontakt: fm.kontakt.value, fotos });
+      for (const d of [...fm.fotos.files].slice(0, 4)) fotos.push(await bildVerkleinern(d));
+      const r = await api("POST", `qr/${encodeURIComponent(token)}/meldung`, { mangel: fm.mangel ? fm.mangel.value : "", beschreibung: fm.beschreibung.value, dringend: fm.dringend.checked, name: fm.name.value, kontakt: fm.kontakt.value, fotos });
       $app.innerHTML = `<div class="qr-seite">${kopf}<div class="karte qr-danke"><div class="haken">✓</div><h2>Vielen Dank!</h2>
         <p>Ihre Meldung ist bei uns eingegangen. Die Nummer lautet <b>${esc(r.nummer)}</b>.</p><p class="klein">Wir kümmern uns darum. Bei Rückfragen melden wir uns.</p>
         <button class="knopf" onclick="location.reload()">Weiteren Mangel melden</button></div></div>`;
