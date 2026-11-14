@@ -45,7 +45,7 @@ OBJ_PFAD = DATEN / "objektbilder"
 SCHL_PFAD = DATEN / "schluesselfotos"
 MAX_SYMBOL = 2 * 1024 * 1024
 MAX_UPLOAD = 25 * 1024 * 1024
-VERSION = "2026.11.15-13"  # muss zu VERSION in static/app.js passen
+VERSION = "2026.11.15-14"  # muss zu VERSION in static/app.js passen
 SITZUNG_TAGE = 7
 
 GEWERKE = [
@@ -343,13 +343,16 @@ RESSOURCEN: dict[str, dict] = {
         ],
     },
     "schluessel": {
-        "label": "Schlüssel", "einzahl": "Schlüssel", "anzeige": ["nummer", "bezeichnung"], "sort": "nummer",
+        "label": "Schlüssel und Transponder", "einzahl": "Schlüssel oder Transponder", "anzeige": ["nummer", "bezeichnung"],
+        "sort": "nummer",
         "felder": [
             {"name": "objekt_id", "label": "Objekt", "typ": "ref", "ref": "objekte", "pflicht": True, "liste": True},
-            {"name": "nummer", "label": "Schlüssel-Nr.", "typ": "text", "pflicht": True, "liste": True},
+            {"name": "art", "label": "Art", "typ": "select", "optionen": ["Schlüssel", "Transponder"], "standard": "Schlüssel", "liste": True},
+            {"name": "nummer", "label": "Nummer", "typ": "text", "pflicht": True, "liste": True},
             {"name": "bezeichnung", "label": "Bezeichnung", "typ": "text", "pflicht": True, "liste": True},
-            {"name": "schliessanlage", "label": "Schließanlage / Profil", "typ": "text", "liste": True},
-            {"name": "schliessbereich", "label": "Schließt (Türen, Räume)", "typ": "textarea"},
+            {"name": "schliessanlage", "label": "Schließanlage / Zutrittssystem", "typ": "text", "liste": True},
+            {"name": "chip_nr", "label": "Transponder- / Chip-Nummer", "typ": "text"},
+            {"name": "schliessbereich", "label": "Schließt / berechtigt für (Türen, Räume, Zeiten)", "typ": "textarea"},
             {"name": "anzahl", "label": "Anzahl Exemplare", "typ": "number", "standard": 1, "liste": True},
             {"name": "aufbewahrung", "label": "Aufbewahrung (Schrank, Haken)", "typ": "text", "liste": True},
             {"name": "status", "label": "Zustand", "typ": "select", "optionen": ["aktiv", "verloren", "gesperrt", "außer Betrieb"],
@@ -1513,7 +1516,7 @@ def uebergabe_anlegen(con, benutzer, d: dict) -> dict:
         raise Fehler(400, "Bitte eine gültige E-Mail-Adresse der Person eintragen, die den Schlüssel erhält.")
     gewaehlt = d.get("schluessel") or []
     if not isinstance(gewaehlt, list) or not gewaehlt or len(gewaehlt) > 50:
-        raise Fehler(400, "Bitte mindestens einen Schlüssel auswählen.")
+        raise Fehler(400, "Bitte mindestens einen Schlüssel oder Transponder auswählen.")
     offen = schluessel_offen(con)
     liste = []
     for g in gewaehlt:
@@ -1523,13 +1526,14 @@ def uebergabe_anlegen(con, benutzer, d: dict) -> dict:
             raise Fehler(400, "Schlüsselauswahl ist ungültig.")
         s = con.execute("SELECT * FROM schluessel WHERE id=? AND objekt_id=?", (sid, objekt_id)).fetchone()
         if not s:
-            raise Fehler(400, "Ein gewählter Schlüssel gehört nicht zu diesem Objekt.")
+            raise Fehler(400, "Ein gewählter Schlüssel oder Transponder gehört nicht zu diesem Objekt.")
         if s["status"] not in (None, "", "aktiv"):
-            raise Fehler(400, f'Schlüssel {s["nummer"]} ist {s["status"]} und kann nicht ausgegeben werden.')
+            raise Fehler(400, f'{s["art"] or "Schlüssel"} {s["nummer"]} ist {s["status"]} und kann nicht ausgegeben werden.')
         frei = int(s["anzahl"] or 1) - offen.get(sid, 0)
         if anz > frei:
-            raise Fehler(400, f'Von Schlüssel {s["nummer"]} sind nur noch {max(frei, 0)} Exemplare da.')
-        liste.append({"id": sid, "nummer": s["nummer"], "bezeichnung": s["bezeichnung"], "anzahl": anz})
+            raise Fehler(400, f'Von {s["art"] or "Schlüssel"} {s["nummer"]} sind nur noch {max(frei, 0)} Exemplare da.')
+        liste.append({"id": sid, "nummer": s["nummer"], "bezeichnung": s["bezeichnung"], "anzahl": anz,
+                      "art": s["art"] or "Schlüssel", "chip_nr": s["chip_nr"]})
     std = schluessel_standardzeiten(con)
     bis = _zeitpunkt(d.get("rueckgabe_bis") or std["rueckgabe_bis"], "Rückgabe bis")
     erinnerung = None
@@ -1596,8 +1600,14 @@ def _zeit_text(iso: str) -> str:
 
 def _schluessel_text(u: dict) -> str:
     liste = json.loads(u["schluessel"]) if isinstance(u["schluessel"], str) else u["schluessel"]
-    return "\n".join(f'– {x["nummer"]} {x["bezeichnung"]}' + (f' ({x["anzahl"]} Stück)' if int(x.get("anzahl") or 1) > 1 else "")
-                     for x in liste)
+    return "\n".join(f'– {x.get("art") or "Schlüssel"} {x["nummer"]} {x["bezeichnung"]}'
+                     + (f' ({x["anzahl"]} Stück)' if int(x.get("anzahl") or 1) > 1 else "") for x in liste)
+
+
+def _art_wort(u: dict) -> str:
+    liste = json.loads(u["schluessel"]) if isinstance(u["schluessel"], str) else u["schluessel"]
+    arten = {x.get("art") or "Schlüssel" for x in liste}
+    return "Schlüssel und Transponder" if len(arten) > 1 else arten.pop() if arten else "Schlüssel"
 
 
 def schluessel_mails_holen(con, mail_moeglich: bool) -> list:
@@ -1627,18 +1637,19 @@ def schluessel_mails_holen(con, mail_moeglich: bool) -> list:
         extern = {"antwort_an": u["ausgeber_email"] or "",
                   "fuss": "Casa Concept Consulting GmbH & Co. KG · Diese E-Mail wurde automatisch zu Ihrer Schlüsselübergabe versendet."}
         heute_ = u["rueckgabe_bis"][:10] == jetzt_[:10]
+        wort = _art_wort(u)
         if u["quittung_senden"] == 1 and not u["quittung_gesendet"]:
             aus.append({"id": f'q:{u["id"]}', "an": u["empfaenger_email"],
                         "betreff": f'Schlüsselübergabe {u["nummer"]}: {u["o_name"] or ""}'.strip(),
                         "text": f'Guten Tag {u["empfaenger_name"]},\n\nSie haben am {_zeit_text(u["ausgabe_zeit"])} für das Objekt {objekt} '
-                                f'folgende Schlüssel erhalten:\n{liste}\n\nBitte geben Sie die Schlüssel '
+                                f'folgende {wort} erhalten:\n{liste}\n\nBitte geben Sie die {wort} '
                                 f'{"heute" if heute_ else "bis zum " + dt.date.fromisoformat(u["rueckgabe_bis"][:10]).strftime("%d.%m.%Y")} '
                                 f'bis spätestens {u["rueckgabe_bis"][11:16]} Uhr bei {u["ausgeber_name"]} zurück.' + gruss,
                         "extern": extern})
         elif u["erinnerung_um"] and not u["erinnert"]:
             aus.append({"id": f'e:{u["id"]}', "an": u["empfaenger_email"],
-                        "betreff": f'Erinnerung: Schlüsselrückgabe {"heute " if heute_ else ""}bis {u["rueckgabe_bis"][11:16]} Uhr',
-                        "text": f'Guten Tag {u["empfaenger_name"]},\n\nwir möchten Sie daran erinnern, die Schlüssel für das Objekt {objekt} '
+                        "betreff": f'Erinnerung: Rückgabe {wort} {"heute " if heute_ else ""}bis {u["rueckgabe_bis"][11:16]} Uhr',
+                        "text": f'Guten Tag {u["empfaenger_name"]},\n\nwir möchten Sie daran erinnern, die {wort} für das Objekt {objekt} '
                                 f'{"heute" if heute_ else "am " + dt.date.fromisoformat(u["rueckgabe_bis"][:10]).strftime("%d.%m.%Y")} '
                                 f'bis spätestens {u["rueckgabe_bis"][11:16]} Uhr bei {u["ausgeber_name"]} zurückzugeben:\n{liste}\n\n'
                                 f'Übergabeprotokoll {u["nummer"]} vom {_zeit_text(u["ausgabe_zeit"])}.' + gruss,
@@ -1926,7 +1937,15 @@ def beispieldaten(con) -> None:
         (o1, "S-04", "Feuerwehrschlüssel (Generalhauptschlüssel)", "Beispiel-Schließanlage HS 1", 1, "Schlüsseldepot Feuerwehr"),
         (o2, "S-01", "Halle 2 und Technikraum", "Beispiel-Schließanlage BW 7", 2, "Schlüsselkasten Büro"),
     ]:
-        ins("schluessel", objekt_id=o, nummer=nr, bezeichnung=bez, schliessanlage=anlage, anzahl=anz, aufbewahrung=ort, status="aktiv")
+        ins("schluessel", objekt_id=o, art="Schlüssel", nummer=nr, bezeichnung=bez, schliessanlage=anlage, anzahl=anz,
+            aufbewahrung=ort, status="aktiv")
+    for o, nr, bez, chip, bereich in [
+        (o1, "T-01", "Besuchertransponder Technik", "04A1B2C3", "Haupteingang, Technikräume UG, Mo–Fr 7–18 Uhr"),
+        (o1, "T-02", "Besuchertransponder Dach", "04A1B2C4", "Haupteingang, Dachzugang, Mo–Fr 7–18 Uhr"),
+        (o2, "T-01", "Transponder Halle 2", "0B77E201", "Tor Halle 2, Technikraum"),
+    ]:
+        ins("schluessel", objekt_id=o, art="Transponder", nummer=nr, bezeichnung=bez, schliessanlage="Beispiel-Zutrittskontrolle",
+            chip_nr=chip, schliessbereich=bereich, anzahl=1, aufbewahrung="Schlüsselschrank Empfang", status="aktiv")
     sys_user = {"name": "Beispieldaten"}
     for o, a, t, p, s, tage, dlid in [
         (o1, anl["a2"], "Aufzug B bleibt zwischen Etagen stehen", "Hoch", "Warten auf Dienstleister", -3, dl["auf"]),

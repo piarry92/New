@@ -110,6 +110,9 @@ einen Leser aus dem Internet.
 
 - Menü Verwaltung › **Schlüssel** (und Reiter „Schlüssel“ im Objekt): Schlüsselbestand je Objekt mit Nummer,
   Schließanlage, Anzahl Exemplare, Aufbewahrung; man sieht, wie viele da sind und wer welchen Schlüssel hat.
+- **Transponder (Zutrittskontrolle)** werden wie Schlüssel angelegt (Art „Transponder“, mit Chip-Nummer und
+  Berechtigung) und bei der Ausgabe getrennt ausgewählt. Im Protokoll stehen sie in einem eigenen Abschnitt
+  „Zutrittskontrolle: Transponder“, auch in den E-Mails werden sie genannt.
 - **Schlüssel ausgeben:** Objekt und Schlüssel wählen, ausgebende Person (Casa) und empfangende Person mit Name,
   Firma, **E-Mail-Adresse (Pflicht)** und Telefon, Zweck, Rückgabe (Standard: heute bis Feierabend), Foto der
   Schlüssel, Unterschrift beider Seiten. Danach öffnet sich das **Schlüsselübergabeprotokoll** im Casa-Design zum Drucken oder als PDF.

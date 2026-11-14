@@ -2,7 +2,15 @@
 /* Schlüsselmanager: Bestand, Übergabe mit Protokoll und Unterschriften, Rückgabe, Erinnerung per E-Mail */
 
 const slZeit = (iso) => iso ? `${datum(iso)} ${iso.slice(11, 16)}` : "";
-const slListe = (u) => u.schluessel.map((s) => `${s.nummer}${s.anzahl > 1 ? ` ×${s.anzahl}` : ""}`).join(", ");
+const slIstT = (s) => s.art === "Transponder";
+const slListe = (u) => u.schluessel.map((s) => `${slIstT(s) ? "Transp. " : ""}${s.nummer}${s.anzahl > 1 ? ` ×${s.anzahl}` : ""}`).join(", ");
+const slArtMarke = (s) => slIstT(s) ? '<span class="marke sl-t">Transponder</span>' : '<span class="marke m-geplant">Schlüssel</span>';
+const slWort = (liste) => { const t = liste.some(slIstT), k = liste.some((s) => !slIstT(s)); return t && k ? "Schlüssel und Transponder" : t ? "Transponder" : "Schlüssel"; };
+function slTabellen(u, druck = false) {
+  const zeile = (s) => `<tr><td><b>${esc(s.nummer)}</b></td><td>${esc(s.bezeichnung)}${slIstT(s) && s.chip_nr ? `<br>${druck ? "<small>" : '<span class="klein">'}Chip ${esc(s.chip_nr)}${druck ? "</small>" : "</span>"}` : ""}</td><td>${s.anzahl}</td></tr>`;
+  const teil = (titel, l) => l.length ? `${druck ? `<h2>${titel}</h2>` : `<div class="sl-titel">${titel}</div>`}<${druck ? "table" : 'div class="tabelle-wrap"><table'}><thead><tr><th>Nr.</th><th>Bezeichnung</th><th>Anzahl</th></tr></thead><tbody>${l.map(zeile).join("")}</tbody></table>${druck ? "" : "</div>"}` : "";
+  return teil("Schlüssel", u.schluessel.filter((s) => !slIstT(s))) + teil(druck ? "Zutrittskontrolle: Transponder" : "Transponder", u.schluessel.filter(slIstT));
+}
 function slMarke(u) {
   if (u.status !== "ausgegeben") return `<span class="marke m-ok">zurück ${slZeit(u.rueckgabe_zeit)}</span>`;
   const jetzt = new Date().toISOString().slice(0, 16), lokal = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16);
@@ -15,7 +23,7 @@ const slMinus = (hhmm, min) => { const [h, m] = hhmm.split(":").map(Number); con
 
 SEITEN.schluessel = async (el, _, q) => {
   await lade("objekte");
-  el.innerHTML = seitenkopf("Schlüsselmanager", "Schlüssel, Übergaben und Rückgaben",
+  el.innerHTML = seitenkopf("Schlüsselmanager", "Schlüssel, Transponder, Übergaben und Rückgaben",
     `${darf("schluessel_verwalten") ? `<button class="knopf haupt-k" id="slaus">${icon("plus")} Schlüssel ausgeben</button>` : ""}`)
     + `<div id="slber"></div>`;
   const ber = el.querySelector("#slber");
@@ -38,17 +46,16 @@ async function schluesselBereich(ziel, festesObjekt, ansicht = "aus") {
     ziel.querySelectorAll("[data-a]").forEach((b) => b.classList.toggle("an", b.dataset.a === z.ansicht));
     const inh = ziel.querySelector("[data-inh]"), extra = ziel.querySelector("[data-extra]");
     if (z.ansicht === "bestand") {
-      const liste = daten.filter((s) => passt([s.nummer, s.bezeichnung, s.schliessanlage, s.aufbewahrung, ...s.inhaber.map((i) => i.name + " " + (i.firma || ""))].join(" ")));
-      ziel.querySelector("[data-anz]").textContent = `${liste.length} Schlüssel`;
-      extra.innerHTML = darfNeu("schluessel") ? `<button class="knopf" data-neu>${icon("plus")} Schlüssel anlegen</button>` : "";
-      inh.innerHTML = liste.length ? `<div class="tabelle-wrap"><table><thead><tr><th>Nr.</th><th>Bezeichnung</th>${festesObjekt ? "" : "<th>Objekt</th>"}<th>Aufbewahrung</th><th>Verfügbar</th><th>Ausgegeben an</th></tr></thead><tbody>
-        ${liste.map((s) => `<tr class="klickbar" data-s="${s.id}"><td><b>${esc(s.nummer)}</b></td><td>${esc(s.bezeichnung)}${s.schliessanlage ? `<br><span class="klein">${esc(s.schliessanlage)}</span>` : ""}</td>
+      const liste = daten.filter((s) => passt([s.nummer, s.art, s.chip_nr, s.bezeichnung, s.schliessanlage, s.aufbewahrung, ...s.inhaber.map((i) => i.name + " " + (i.firma || ""))].join(" ")));
+      ziel.querySelector("[data-anz]").textContent = `${liste.filter((s) => !slIstT(s)).length} Schlüssel · ${liste.filter(slIstT).length} Transponder`;
+      extra.innerHTML = darfNeu("schluessel") ? `<button class="knopf" data-neu="Schlüssel">${icon("plus")} Schlüssel anlegen</button><button class="knopf" data-neu="Transponder">${icon("plus")} Transponder anlegen</button>` : "";
+      inh.innerHTML = liste.length ? `<div class="tabelle-wrap"><table><thead><tr><th>Nr.</th><th>Art</th><th>Bezeichnung</th>${festesObjekt ? "" : "<th>Objekt</th>"}<th>Aufbewahrung</th><th>Verfügbar</th><th>Ausgegeben an</th></tr></thead><tbody>
+        ${liste.map((s) => `<tr class="klickbar" data-s="${s.id}"><td><b>${esc(s.nummer)}</b></td><td>${slArtMarke(s)}</td><td>${esc(s.bezeichnung)}${s.schliessanlage ? `<br><span class="klein">${esc(s.schliessanlage)}</span>` : ""}${slIstT(s) && s.chip_nr ? `<br><span class="klein">Chip ${esc(s.chip_nr)}</span>` : ""}</td>
           ${festesObjekt ? "" : `<td>${esc(refText("objekte", s.objekt_id))}</td>`}<td>${esc(s.aufbewahrung || "")}</td>
           <td>${s.status && s.status !== "aktiv" ? `<span class="marke m-ueber">${esc(s.status)}</span>` : `<span class="marke ${s.verfuegbar ? "m-ok" : "m-bald"}">${s.verfuegbar} von ${zahl(s.anzahl || 1)}</span>`}</td>
           <td>${s.inhaber.map((i) => `<a href="#" data-u="${i.uebergabe_id}">${esc(i.name)}</a>${i.firma ? ` <span class="klein">${esc(i.firma)}</span>` : ""}<br><span class="klein">bis ${slZeit(i.bis)}</span>`).join("<br>")}</td></tr>`).join("")}</tbody></table></div>`
-        : `<div class="karte leer">Noch keine Schlüssel angelegt.${darfNeu("schluessel") ? " Leg sie mit „Schlüssel anlegen“ an." : ""}</div>`;
-      const nb = extra.querySelector("[data-neu]");
-      if (nb) nb.onclick = async () => { if (await bearbeiten("schluessel", null, { objekt_id: z.objekt ? Number(z.objekt) : "", anzahl: 1, status: "aktiv" })) laden(); };
+        : `<div class="karte leer">Noch keine Schlüssel oder Transponder angelegt.${darfNeu("schluessel") ? " Leg sie mit den Knöpfen oben an." : ""}</div>`;
+      extra.querySelectorAll("[data-neu]").forEach((nb) => nb.onclick = async () => { if (await bearbeiten("schluessel", null, { objekt_id: z.objekt ? Number(z.objekt) : "", art: nb.dataset.neu, anzahl: 1, status: "aktiv" })) laden(); });
       return;
     }
     extra.innerHTML = "";
@@ -61,7 +68,7 @@ async function schluesselBereich(ziel, festesObjekt, ansicht = "aus") {
         <div class="karte kennzahl ${ueber ? "rot" : ""}"><div class="wert">${ueber}</div><div class="text">überfällig</div></div>
         <div class="karte kennzahl"><div class="wert">${liste.filter((u) => u.rueckgabe_bis.slice(0, 10) === jetzt.slice(0, 10)).length}</div><div class="text">heute zurück</div></div>
         <div class="karte kennzahl"><div class="wert">${liste.reduce((n, u) => n + u.schluessel.reduce((m, s) => m + (s.anzahl || 1), 0), 0)}</div><div class="text">Schlüssel unterwegs</div></div></div><div class="abstand"></div>` : "")
-      + (liste.length ? `<div class="tabelle-wrap"><table><thead><tr><th>Protokoll</th>${festesObjekt ? "" : "<th>Objekt</th>"}<th>Schlüssel</th><th>Erhalten von</th><th>Ausgabe</th><th>Rückgabe bis</th><th>E-Mail</th><th></th></tr></thead><tbody>
+      + (liste.length ? `<div class="tabelle-wrap"><table><thead><tr><th>Protokoll</th>${festesObjekt ? "" : "<th>Objekt</th>"}<th>Schlüssel / Transponder</th><th>Erhalten von</th><th>Ausgabe</th><th>Rückgabe bis</th><th>E-Mail</th><th></th></tr></thead><tbody>
         ${liste.map((u) => `<tr class="klickbar ${u.status === "ausgegeben" && u.rueckgabe_bis < jetzt ? "zeile-rot" : ""}" data-u="${u.id}"><td><b>${esc(u.nummer)}</b></td>
           ${festesObjekt ? "" : `<td>${esc(u.o_kuerzel || "")}</td>`}<td>${esc(slListe(u))}</td>
           <td><b>${esc(u.empfaenger_name)}</b>${u.empfaenger_firma ? `<br><span class="klein">${esc(u.empfaenger_firma)}</span>` : ""}<br><span class="klein">${esc(u.empfaenger_email)}</span></td>
@@ -116,7 +123,7 @@ function slFotoFeld(box, titel) {
   box.innerHTML = `<div class="sl-foto-kopf"><b>${esc(titel)}</b> <span class="pflicht-stern">Pflicht</span></div>
     <div class="sl-fotos"></div>
     <label class="knopf sl-foto-knopf">${icon("plus")} Foto aufnehmen<input type="file" accept="image/*" capture="environment" multiple hidden></label>
-    <span class="klein">Alle ausgegebenen Schlüssel gut erkennbar fotografieren, Nummern lesbar.</span>`;
+    <span class="klein">Alle Schlüssel und Transponder gut erkennbar fotografieren, Nummern lesbar.</span>`;
   const zeigen = () => {
     box.querySelector(".sl-fotos").innerHTML = bilder.map((b, i) => `<div class="sl-foto"><img src="${b}" alt="Foto ${i + 1}"><button type="button" data-weg="${i}" aria-label="Foto entfernen">×</button></div>`).join("");
     box.classList.toggle("hat-foto", bilder.length > 0);
@@ -145,7 +152,8 @@ async function schluesselAusgeben(vorgabe = {}) {
   const startObjekt = String(vorgabe.objekt_id || (objekte.length === 1 ? objekte[0].id : ""));
   const html = `<div class="dfehler"></div><form class="formular sl-form" onsubmit="return false">
     <label class="breit"><span class="pflicht">Objekt</span><select name="objekt_id"><option value="">Bitte wählen</option>${objekte.map((o) => `<option value="${o.id}" ${String(o.id) === startObjekt ? "selected" : ""}>${esc(anzeige("objekte", o))}</option>`).join("")}</select></label>
-    <div class="breit"><div class="sl-titel pflicht">Schlüssel</div><div id="slwahl" class="sl-wahl"></div></div>
+    <div class="breit"><div class="sl-titel">Schlüssel</div><div id="slwahl" class="sl-wahl"></div></div>
+    <div class="breit"><div class="sl-titel">Transponder (Zutrittskontrolle)</div><div id="slwahlT" class="sl-wahl"></div></div>
     <div class="breit sl-titel">Ausgegeben von</div>
     <label class="breit"><span class="pflicht">Name</span><input name="ausgeber_name" value="${esc(S.ich.name)}"></label>
     <div class="breit sl-titel">Erhalten von</div>
@@ -166,18 +174,18 @@ async function schluesselAusgeben(vorgabe = {}) {
     <div class="breit sl-us"><div class="us-box unterschrift-box" id="usA"></div><div class="us-box unterschrift-box" id="usE"></div></div>
   </form>`;
   let usA, usE, fotoA;
-  const p = dialog("Schlüssel ausgeben", html, [{ text: "Abbrechen" }, {
+  const p = dialog("Schlüssel und Transponder ausgeben", html, [{ text: "Abbrechen" }, {
     text: "Ausgeben und Protokoll erstellen", klasse: "haupt-k", aktion: async (hg) => {
       const fm = hg.querySelector("form");
       const gewaehlt = [...hg.querySelectorAll("[data-sl]:checked")].map((c) => ({ id: Number(c.dataset.sl), anzahl: Number((hg.querySelector(`[data-anz="${c.dataset.sl}"]`) || { value: 1 }).value) || 1 }));
       const tag = fm.rueck_tag.value;
       if (!fm.objekt_id.value) throw new Error("Bitte ein Objekt wählen.");
-      if (!gewaehlt.length) throw new Error("Bitte mindestens einen Schlüssel auswählen.");
+      if (!gewaehlt.length) throw new Error("Bitte mindestens einen Schlüssel oder Transponder auswählen.");
       if (!fm.empfaenger_name.value.trim()) throw new Error("Bitte den Namen der Person eintragen, die den Schlüssel erhält.");
       if (!fm.empfaenger_email.checkValidity() || !fm.empfaenger_email.value.trim()) throw new Error("Bitte eine gültige E-Mail-Adresse der Person eintragen.");
       if (!tag || !fm.rueck_zeit.value) throw new Error("Bitte Tag und Uhrzeit der Rückgabe angeben.");
       if (fm.erinnern.checked && fm.erinnerung_zeit.value > fm.rueck_zeit.value) throw new Error("Die Erinnerung muss vor der Rückgabezeit liegen.");
-      if (!fotoA.daten().length) throw new Error("Bitte ein Foto der ausgegebenen Schlüssel machen.");
+      if (!fotoA.daten().length) throw new Error("Bitte ein Foto der ausgegebenen Schlüssel und Transponder machen.");
       if (!usE.bild()) throw new Error("Bitte die Person, die den Schlüssel erhält, unterschreiben lassen.");
       const u = await api("POST", "schluesseluebergaben", {
         objekt_id: Number(fm.objekt_id.value), schluessel: gewaehlt, ausgeber_name: usA.name() || fm.ausgeber_name.value,
@@ -194,18 +202,22 @@ async function schluesselAusgeben(vorgabe = {}) {
   hg.querySelector(".dialog").classList.add("breit-dialog");
   const fm = hg.querySelector("form");
   const wahl = () => {
-    const liste = bestandAlle.schluessel.filter((s) => String(s.objekt_id) === fm.objekt_id.value);
-    hg.querySelector("#slwahl").innerHTML = !fm.objekt_id.value ? '<p class="klein">Bitte zuerst das Objekt wählen.</p>' : liste.length ? liste.map((s) => `
+    const alle = bestandAlle.schluessel.filter((s) => String(s.objekt_id) === fm.objekt_id.value);
+    zeichneWahl("#slwahl", alle.filter((s) => !slIstT(s)), "Schlüssel");
+    zeichneWahl("#slwahlT", alle.filter(slIstT), "Transponder");
+  };
+  const zeichneWahl = (ort, liste, wort) => {
+    hg.querySelector(ort).innerHTML = !fm.objekt_id.value ? '<p class="klein">Bitte zuerst das Objekt wählen.</p>' : liste.length ? liste.map((s) => `
       <label class="sl-k ${s.verfuegbar ? "" : "weg"}"><input type="checkbox" data-sl="${s.id}" ${s.verfuegbar ? "" : "disabled"}>
-        <span><b>${esc(s.nummer)}</b> ${esc(s.bezeichnung)}<br><span class="klein">${s.verfuegbar ? `${s.verfuegbar} von ${zahl(s.anzahl || 1)} da` : s.status && s.status !== "aktiv" ? esc(s.status) : `alle ausgegeben${s.inhaber[0] ? ", zuletzt an " + esc(s.inhaber[0].name) : ""}`}${s.aufbewahrung ? " · " + esc(s.aufbewahrung) : ""}</span></span>
-        ${s.verfuegbar > 1 ? `<input type="number" min="1" max="${s.verfuegbar}" value="1" data-anz="${s.id}" class="sl-anz" aria-label="Anzahl">` : ""}</label>`).join("") : '<p class="klein">Für dieses Objekt sind keine Schlüssel angelegt.</p>';
+        <span><b>${esc(s.nummer)}</b> ${esc(s.bezeichnung)}<br><span class="klein">${slIstT(s) && s.chip_nr ? `Chip ${esc(s.chip_nr)} · ` : ""}${s.verfuegbar ? `${s.verfuegbar} von ${zahl(s.anzahl || 1)} da` : s.status && s.status !== "aktiv" ? esc(s.status) : `alle ausgegeben${s.inhaber[0] ? ", zuletzt an " + esc(s.inhaber[0].name) : ""}`}${s.aufbewahrung ? " · " + esc(s.aufbewahrung) : ""}</span></span>
+        ${s.verfuegbar > 1 ? `<input type="number" min="1" max="${s.verfuegbar}" value="1" data-anz="${s.id}" class="sl-anz" aria-label="Anzahl">` : ""}</label>`).join("") : `<p class="klein">Für dieses Objekt sind keine ${wort} angelegt.</p>`;
   };
   fm.objekt_id.onchange = wahl; wahl();
   let erinnerungGeaendert = false;
   fm.erinnerung_zeit.oninput = () => { erinnerungGeaendert = true; };
   fm.rueck_zeit.oninput = () => { if (!erinnerungGeaendert && fm.rueck_zeit.value) fm.erinnerung_zeit.value = slMinus(fm.rueck_zeit.value, zeiten.vorlauf); };
   fm.erinnern.onchange = () => { fm.erinnerung_zeit.disabled = !fm.erinnern.checked; };
-  fotoA = slFotoFeld(hg.querySelector("#slFotoA"), "Foto der Schlüssel bei Ausgabe");
+  fotoA = slFotoFeld(hg.querySelector("#slFotoA"), "Foto der Schlüssel und Transponder bei Ausgabe");
   usA = unterschriftsfeld(hg.querySelector("#usA"), fm.ausgeber_name.value);
   usE = unterschriftsfeld(hg.querySelector("#usE"), "");
   hg.querySelector("#usA .us-kopf b").textContent = "Unterschrift Ausgabe (Casa)";
@@ -229,7 +241,7 @@ async function uebergabeAnsehen(uid) {
       <div><small>Rückgabe bis</small>${slZeit(u.rueckgabe_bis)} ${slMarke(u)}</div>
       <div><small>Erinnerung</small>${u.erinnerung_um ? slZeit(u.erinnerung_um) + (u.erinnert ? " · gesendet ✓" : "") : "keine"}</div>
       ${u.zweck ? `<div><small>Zweck</small>${esc(u.zweck)}</div>` : ""}</div>
-    <div class="tabelle-wrap"><table><thead><tr><th>Nr.</th><th>Schlüssel</th><th>Anzahl</th></tr></thead><tbody>${u.schluessel.map((s) => `<tr><td><b>${esc(s.nummer)}</b></td><td>${esc(s.bezeichnung)}</td><td>${s.anzahl}</td></tr>`).join("")}</tbody></table></div>
+    ${slTabellen(u)}
     ${u.fotos.length ? `<div class="sl-fotozeile">${u.fotos.some((f) => f.art === "ausgabe") ? `<div><span class="klein">Fotos bei Ausgabe</span><div class="sl-fotos">${slFotoHtml(u, "ausgabe")}</div></div>` : ""}${u.fotos.some((f) => f.art === "rueckgabe") ? `<div><span class="klein">Fotos bei Rückgabe</span><div class="sl-fotos">${slFotoHtml(u, "rueckgabe")}</div></div>` : ""}</div>` : ""}
     ${u.mail_fehler ? `<div class="warnung klein">Die E-Mail an ${esc(u.empfaenger_email)} ging nicht raus: ${esc(u.mail_fehler)}</div>` : ""}
     ${u.status !== "ausgegeben" ? `<p class="klein">Zurückgenommen am ${slZeit(u.rueckgabe_zeit)} von ${esc(u.rueckgabe_von || "")}${u.rueckgabe_bemerkung ? `. Bemerkung: ${esc(u.rueckgabe_bemerkung)}` : ""}</p>` : ""}`;
@@ -261,24 +273,24 @@ async function rueckgabezeitAendern(u) {
 
 async function schluesselRueckgabe(uid) {
   const u = await api("GET", `schluesseluebergaben/${uid}`);
-  const html = `<div class="dfehler"></div><p>${esc(u.empfaenger_name)}${u.empfaenger_firma ? ` (${esc(u.empfaenger_firma)})` : ""} gibt zurück. Haken weg bei Schlüsseln, die fehlen. Sie werden dann als verloren markiert.</p>
-    <div class="sl-wahl">${u.schluessel.map((s) => `<label class="sl-k"><input type="checkbox" data-zur="${s.id}" checked><span><b>${esc(s.nummer)}</b> ${esc(s.bezeichnung)}${s.anzahl > 1 ? ` (${s.anzahl} Stück)` : ""}</span></label>`).join("")}</div>
+  const html = `<div class="dfehler"></div><p>${esc(u.empfaenger_name)}${u.empfaenger_firma ? ` (${esc(u.empfaenger_firma)})` : ""} gibt zurück. Haken weg bei allem, was fehlt. Es wird dann als verloren markiert.</p>
+    <div class="sl-wahl">${u.schluessel.map((s) => `<label class="sl-k"><input type="checkbox" data-zur="${s.id}" checked><span>${slArtMarke(s)} <b>${esc(s.nummer)}</b> ${esc(s.bezeichnung)}${s.anzahl > 1 ? ` (${s.anzahl} Stück)` : ""}</span></label>`).join("")}</div>
     <form class="formular" onsubmit="return false"><label class="breit"><span>Bemerkung</span><textarea name="bemerkung" placeholder="z. B. Schlüssel beschädigt"></textarea></label></form>
-    ${u.fotos.some((f) => f.art === "ausgabe") ? `<div class="sl-vergleich"><span class="klein">So sahen die Schlüssel bei der Ausgabe aus:</span><div class="sl-fotos">${slFotoHtml(u, "ausgabe")}</div></div>` : ""}
+    ${u.fotos.some((f) => f.art === "ausgabe") ? `<div class="sl-vergleich"><span class="klein">So sah es bei der Ausgabe aus:</span><div class="sl-fotos">${slFotoHtml(u, "ausgabe")}</div></div>` : ""}
     <div class="sl-fotobox" id="slFotoR"></div>
     <div class="us-box unterschrift-box" id="usR"></div>`;
   let us, fotoR;
   const p = dialog(`Rückgabe ${u.nummer}`, html, [{ text: "Abbrechen" }, {
     text: "Rückgabe speichern", klasse: "haupt-k", aktion: async (hg) => {
       const fehlend = [...hg.querySelectorAll("[data-zur]:not(:checked)")].map((c) => Number(c.dataset.zur));
-      if (!fotoR.daten().length) throw new Error("Bitte ein Foto der zurückgegebenen Schlüssel machen.");
+      if (!fotoR.daten().length) throw new Error(`Bitte ein Foto der zurückgegebenen ${slWort(u.schluessel)} machen.`);
       const r = await api("POST", `schluesseluebergaben/${uid}/rueckgabe`, { bemerkung: hg.querySelector("[name=bemerkung]").value, unterschrift: us.bild(), fehlend, fotos: fotoR.daten() });
-      melde(fehlend.length ? `Rückgabe gespeichert, ${fehlend.length} Schlüssel als verloren markiert.` : "Rückgabe gespeichert.");
+      melde(fehlend.length ? `Rückgabe gespeichert, ${fehlend.length} als verloren markiert.` : "Rückgabe gespeichert.");
       return r;
     },
   }]);
   const hg = letzterDialog();
-  fotoR = slFotoFeld(hg.querySelector("#slFotoR"), "Foto der Schlüssel bei Rückgabe");
+  fotoR = slFotoFeld(hg.querySelector("#slFotoR"), `Foto der ${slWort(u.schluessel)} bei Rückgabe`);
   us = unterschriftsfeld(hg.querySelector("#usR"), S.ich.name);
   hg.querySelector("#usR .us-kopf b").textContent = "Unterschrift Rücknahme (Casa)";
   return p;
@@ -307,15 +319,14 @@ function schluesselProtokoll(u) {
     .fotos-t { font-size: 8pt; color: #939598; text-transform: uppercase; letter-spacing: .06em; margin-top: 4mm; }
     .fuss { position: fixed; bottom: 0; left: 0; right: 0; font-size: 8pt; color: #939598; text-align: center; }
   </style></head><body>
-    <div class="kopf"><div><div class="k">Schlüsselübergabeprotokoll · ${esc(u.nummer)}</div><h1>${esc(u.o_name || "")}</h1>${u.o_strasse ? `<div>${esc(u.o_strasse)}, ${esc([u.o_plz, u.o_ort].filter(Boolean).join(" "))}</div>` : ""}</div><img src="${location.origin}/logo.png" alt=""></div>
+    <div class="kopf"><div><div class="k">${u.schluessel.some(slIstT) ? "Übergabeprotokoll Schlüssel und Transponder" : "Schlüsselübergabeprotokoll"} · ${esc(u.nummer)}</div><h1>${esc(u.o_name || "")}</h1>${u.o_strasse ? `<div>${esc(u.o_strasse)}, ${esc([u.o_plz, u.o_ort].filter(Boolean).join(" "))}</div>` : ""}</div><img src="${location.origin}/logo.png" alt=""></div>
     <h2>Übergabe</h2>
     <div class="meta"><div><small>Ausgegeben von</small>${esc(u.ausgeber_name)}<br>Casa Concept Consulting GmbH &amp; Co. KG</div>
       <div><small>Erhalten von</small>${esc(u.empfaenger_name)}${u.empfaenger_firma ? `<br>${esc(u.empfaenger_firma)}` : ""}<br>${esc(u.empfaenger_email)}${u.empfaenger_tel ? ` · ${esc(u.empfaenger_tel)}` : ""}</div>
       <div><small>Ausgabe am</small>${slZeit(u.ausgabe_zeit)} Uhr</div><div><small>Zweck</small>${esc(u.zweck || "–")}</div></div>
-    <h2>Schlüssel</h2>
-    <table><thead><tr><th>Nr.</th><th>Bezeichnung</th><th>Anzahl</th></tr></thead><tbody>${u.schluessel.map((s) => `<tr><td><b>${esc(s.nummer)}</b></td><td>${esc(s.bezeichnung)}</td><td>${s.anzahl}</td></tr>`).join("")}</tbody></table>
+    ${slTabellen(u, true)}
     ${u.fotos.some((f) => f.art === "ausgabe") ? `<div class="fotos-t">Fotos bei Ausgabe</div><div class="fotos">${slFotoHtml(u, "ausgabe", true)}</div>` : ""}
-    <div class="pflicht"><b>Rückgabe bis ${slZeit(u.rueckgabe_bis)} Uhr</b> bei ${esc(u.ausgeber_name)}. Die Schlüssel dürfen nicht an Dritte weitergegeben werden. Ein Verlust ist sofort zu melden.</div>
+    <div class="pflicht"><b>Rückgabe bis ${slZeit(u.rueckgabe_bis)} Uhr</b> bei ${esc(u.ausgeber_name)}. Die ${slWort(u.schluessel)} dürfen nicht an Dritte weitergegeben werden. Ein Verlust ist sofort zu melden.</div>
     <div class="us"><div><div class="sig">${u.sig_ausgeber ? `<img src="${u.sig_ausgeber}" alt="">` : ""}</div><div class="l">Unterschrift Ausgabe: ${esc(u.ausgeber_name)}</div></div><div><div class="sig">${u.sig_empfaenger ? `<img src="${u.sig_empfaenger}" alt="">` : ""}</div><div class="l">Unterschrift Empfang: ${esc(u.empfaenger_name)}</div></div></div>
     <h2>Rückgabe</h2>
     ${zur ? `${u.fotos.some((f) => f.art === "rueckgabe") ? `<div class="fotos-t">Fotos bei Rückgabe</div><div class="fotos">${slFotoHtml(u, "rueckgabe", true)}</div>` : ""}<div class="meta"><div><small>Zurückgenommen am</small>${slZeit(u.rueckgabe_zeit)} Uhr</div><div><small>Zurückgenommen von</small>${esc(u.rueckgabe_von || "")}</div>${u.rueckgabe_bemerkung ? `<div style="grid-column:span 2"><small>Bemerkung</small>${esc(u.rueckgabe_bemerkung)}</div>` : ""}</div>

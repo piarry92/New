@@ -1101,3 +1101,5 @@ tr.zeile-rot td { background: color-mix(in srgb, #D92D20 7%, transparent); }
 .sl-foto-knopf { cursor: pointer; }
 .sl-vergleich, .sl-fotozeile { display: flex; flex-direction: column; gap: 6px; margin: 8px 0 12px; }
 .sl-fotozeile { flex-direction: row; flex-wrap: wrap; gap: 20px; }
+.sl-t { background: #E8F1FB; color: #1D4F91; border-color: transparent; }
+html[data-theme="dark"] .sl-t { background: rgba(80,140,220,.2); color: #A9C8F0; }
