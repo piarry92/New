@@ -188,6 +188,7 @@ const AKT_TEXT = {
   dokument: (e) => `hat das Dokument <a href="#/dokumente/${e.id}">${esc(e.info)}</a> hinzugefügt`,
   meldung: (e) => `hat die Störmeldung <a href="#/tickets/${e.id}">${esc(e.info)}</a> angelegt`,
   aufgabe: (e) => `hat die Wartungsaufgabe <a href="#/wartungen/${e.id}">${esc(e.info)}</a> angelegt`,
+  checkliste: (e) => `hat die Checkliste <a href="#/checklisten">${esc(e.info)}</a> durchgeführt${e.abweichungen ? `: ${e.abweichungen} Abweichungen` : ", alles i. O."}`,
   erledigt: (e) => `hat <a href="#/wartungen/${e.id}">${esc(e.info)}</a> erledigt: ${esc(e.ergebnis)}${e.gps ? " (mit Standort)" : ""}`,
 };
 function feldNamen(info) {
@@ -282,7 +283,7 @@ DETAIL.anlagen = async (el, id, q) => {
   let neuesteZuerst = true;
   const tl = () => {
     const liste = neuesteZuerst ? akt : [...akt].reverse();
-    el.querySelector("#tl").innerHTML = liste.length ? liste.map((e) => `<div class="tl-e"><div class="tl-p"></div><div class="tl-k"><b>${zeitText(e.zeit)}</b><span class="klein">${e.typ === "anlage" ? "Anlage" : e.typ === "ticket" ? "Meldung" : e.typ === "wartung" ? "Wartung" : "Dokument"}</span></div>
+    el.querySelector("#tl").innerHTML = liste.length ? liste.map((e) => `<div class="tl-e"><div class="tl-p"></div><div class="tl-k"><b>${zeitText(e.zeit)}</b><span class="klein">${e.typ === "anlage" ? "Anlage" : e.typ === "ticket" ? "Meldung" : e.typ === "wartung" ? "Wartung" : e.typ === "checkliste" ? "Checkliste" : "Dokument"}</span></div>
       <div class="tl-t"><b>${esc(e.wer || "Jemand")}</b> ${(AKT_TEXT[e.art] || (() => esc(e.art)))(e)}</div></div>`).join("") : '<p class="klein">Noch keine Aktivität.</p>';
     el.querySelector("#aktsort").textContent = neuesteZuerst ? "↑ Älteste zuerst" : "↓ Neueste zuerst";
   };
@@ -346,6 +347,7 @@ DETAIL.anlagen = async (el, id, q) => {
     { titel: "Meldungen", zahl: tickets.length, zeigen: (x) => tabelle(x, "tickets", { filter: f, extraFilter: ticketFilter, extraStart: "", neuAktion: () => bearbeiten("tickets", null, { objekt_id: a.objekt_id, anlage_id: a.id, gewerk: a.gewerk, dienstleister_id: a.dienstleister_id }) }) },
     { titel: "Wartungsplan", zahl: wart.length, zeigen: (x) => anlagenWartungsplan(x, a, wart, plan) },
     { titel: "Dokumente", zeigen: dokumenteReiter(f) },
+    { titel: "Checklisten", zeigen: (x) => checklistenReiter(x, { objekt_id: a.objekt_id, anlage_id: a.id }) },
   ], Number(q.get("reiter") || 0));
 };
 

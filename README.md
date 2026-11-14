@@ -44,6 +44,19 @@ Vorhandene Anlagen ohne Platz stehen links unter „Noch nicht im Plan“. Versc
 Finger zoomen. Oben lassen sich einzelne Gewerke aus- und einblenden. Für PDF-Grundrisse lädt der Browser einmalig
 einen Leser aus dem Internet.
 
+## Checklisten und Rundgänge
+
+- **Checkliste je Anlage** (Anlagenseite › Reiter „Checklisten“): eigene Prüfpunkte anlegen, je Punkt
+  „Abhaken“ (i. O. / Mangel / entfällt), „Wert eintragen“ mit Einheit und Sollbereich oder „Text“. Pflicht oder freiwillig,
+  Reihenfolge per Pfeil. Eine Checkliste lässt sich von einer anderen Anlage übernehmen.
+- **Rundgang je Objekt** (Objektseite › Reiter „Checklisten & Rundgänge“): Prüfpunkte nach Stationen
+  (z. B. Technikzentrale, Treppenhaus, Tiefgarage), auf Wunsch mit Bezug zu einer Anlage.
+- **Durchführen** am Handy oder Rechner: große Knöpfe, Werte mit Komma oder Punkt, Abweichungen vom Sollbereich
+  werden rot markiert, Fortschrittsbalken. Für jede Abweichung entsteht auf Wunsch gleich ein Mangel.
+- Rhythmus (täglich bis jährlich oder bei Bedarf) bestimmt die nächste Fälligkeit. Gesamtübersicht unter
+  „Checklisten & Rundgänge“ mit Filter „fällig“. Verlauf mit allen Werten je Durchgang.
+- Rechte: Listen anlegen und ändern mit „Wartungsplan ändern“, durchführen mit „Wartungen erledigen“.
+
 ## Mieter-QR-Code je Objekt
 
 Jedes Objekt hat zusätzlich einen eigenen QR-Code für Mieter (Objektseite, Karte „QR-Code für Mieter“).

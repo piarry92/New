@@ -41,7 +41,7 @@ SYM_PFAD = DATEN / "symbole"
 OBJ_PFAD = DATEN / "objektbilder"
 MAX_SYMBOL = 2 * 1024 * 1024
 MAX_UPLOAD = 25 * 1024 * 1024
-VERSION = "2026.11.15-3"  # muss zu VERSION in static/app.js passen
+VERSION = "2026.11.15-4"  # muss zu VERSION in static/app.js passen
 SITZUNG_TAGE = 7
 
 GEWERKE = [
@@ -49,6 +49,8 @@ GEWERKE = [
     "Sicherheitstechnik", "Türen/Tore", "Dach/Fassade", "Außenanlagen", "Reinigung",
     "Gebäudeautomation", "Flucht und Rettung", "Sonstiges",
 ]
+RHYTHMUS = {"täglich": 1, "wöchentlich": 7, "14-tägig": 14, "monatlich": 30, "vierteljährlich": 91,
+            "halbjährlich": 182, "jährlich": 365, "bei Bedarf": None}
 KAT_FARBEN = ["Rot", "Blau", "Grün", "Gelb", "Orange", "Grau", "Lila", "Petrol", "Schwarz"]
 GEFAEHRDUNG = ["gering", "mittel", "hoch"]
 GRUPPEN = [
@@ -189,6 +191,20 @@ RESSOURCEN: dict[str, dict] = {
             {"name": "bereich", "label": "Bereich (z. B. Brandschutz)", "typ": "text", "liste": True},
             {"name": "gefaehrdung", "label": "Gefährdung", "typ": "select", "optionen": GEFAEHRDUNG, "standard": "mittel", "liste": True},
             {"name": "frist_tage", "label": "Frist (Tage)", "typ": "number", "liste": True},
+        ],
+    },
+    "checklisten": {
+        "label": "Checklisten & Rundgänge", "einzahl": "Checkliste", "anzeige": ["titel"], "sort": "titel", "versteckt": True,
+        "felder": [
+            {"name": "titel", "label": "Titel", "typ": "text", "pflicht": True, "liste": True},
+            {"name": "art", "label": "Art", "typ": "select", "optionen": ["Anlage", "Rundgang"], "pflicht": True, "liste": True},
+            {"name": "objekt_id", "label": "Objekt", "typ": "ref", "ref": "objekte", "pflicht": True, "liste": True},
+            {"name": "anlage_id", "label": "Anlage", "typ": "ref", "ref": "anlagen", "filter": "objekt_id", "liste": True},
+            {"name": "rhythmus", "label": "Rhythmus", "typ": "select", "optionen": list(RHYTHMUS), "standard": "bei Bedarf", "liste": True},
+            {"name": "zustaendig", "label": "Zuständig", "typ": "text"},
+            {"name": "punkte", "label": "Prüfpunkte", "typ": "jsonliste", "intern": True},
+            {"name": "aktiv", "label": "Aktiv", "typ": "bool", "standard": 1},
+            {"name": "notiz", "label": "Notiz", "typ": "textarea"},
         ],
     },
     "symbole": {
@@ -353,6 +369,19 @@ CREATE TABLE IF NOT EXISTS einstellungen (
     schluessel TEXT PRIMARY KEY,
     wert TEXT
 );
+CREATE TABLE IF NOT EXISTS checklisten_durchgaenge (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    checkliste_id INTEGER NOT NULL,
+    objekt_id INTEGER,
+    anlage_id INTEGER,
+    zeit TEXT NOT NULL,
+    wer TEXT,
+    ergebnisse TEXT,
+    bemerkung TEXT,
+    abweichungen INTEGER DEFAULT 0,
+    lat REAL,
+    lon REAL
+);
 CREATE TABLE IF NOT EXISTS verlauf (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     zeit TEXT NOT NULL,
@@ -482,6 +511,35 @@ def wert_pruefen(feld: dict, wert):
             raise Fehler(400, f'Bitte „{feld["label"]}“ ausfüllen.')
         return None
     t = feld["typ"]
+    if t == "jsonliste":
+        if isinstance(wert, str):
+            try:
+                wert = json.loads(wert)
+            except ValueError:
+                raise Fehler(400, f'„{feld["label"]}“ ist ungültig.')
+        if not isinstance(wert, list) or len(wert) > 300:
+            raise Fehler(400, f'„{feld["label"]}“ ist ungültig.')
+        punkte = []
+        for p in wert:
+            if not isinstance(p, dict) or not str(p.get("text") or "").strip():
+                continue
+            typ = p.get("typ") if p.get("typ") in ("haken", "zahl", "text") else "haken"
+            def zahl_oder_nichts(v):
+                if v in (None, ""):
+                    return None
+                try:
+                    return float(str(v).replace(",", "."))
+                except ValueError:
+                    raise Fehler(400, f'Prüfpunkt „{str(p.get("text"))[:40]}“: Sollwert ist keine Zahl.')
+            try:
+                anlage = int(p["anlage_id"]) if p.get("anlage_id") not in (None, "") else None
+            except (TypeError, ValueError):
+                anlage = None
+            punkte.append({"text": str(p["text"]).strip()[:300], "typ": typ, "einheit": str(p.get("einheit") or "")[:20],
+                           "min": zahl_oder_nichts(p.get("min")), "max": zahl_oder_nichts(p.get("max")),
+                           "pflicht": bool(p.get("pflicht", True)), "bereich": str(p.get("bereich") or "").strip()[:120],
+                           "anlage_id": anlage, "hinweis": str(p.get("hinweis") or "").strip()[:300]})
+        return json.dumps(punkte, ensure_ascii=False)
     if t == "json":
         if isinstance(wert, str):
             try:
@@ -802,7 +860,7 @@ RESSOURCE_RECHT = {
     "symbole": "plaene_bearbeiten", "wartungen": "wartung_planen", "vertraege": "vertraege_bearbeiten",
     "dienstleister": "vertraege_bearbeiten", "zaehler": "zaehler_erfassen", "ablesungen": "zaehler_erfassen",
     "dokumente": "dokumente_hochladen", "kat_kategorien": "katalog_bearbeiten", "kat_gruppen": "katalog_bearbeiten",
-    "kat_typen": "katalog_bearbeiten", "kat_maengel": "katalog_bearbeiten",
+    "kat_typen": "katalog_bearbeiten", "kat_maengel": "katalog_bearbeiten", "checklisten": "wartung_planen",
 }
 
 
@@ -822,6 +880,8 @@ def benoetigtes_recht(m: str, teile: list[str]) -> str | None:
         return "einstellungen"
     if m == "DELETE":
         return "loeschen"
+    if t0 == "checklisten" and len(teile) == 3 and teile[2] == "durchgang":
+        return "wartung_erledigen"
     if t0 == "wartungen" and len(teile) == 3 and teile[2] == "erledigt":
         return "wartung_erledigen"
     if t0 == "tickets":
@@ -863,6 +923,79 @@ def qr_bremse(ip: str) -> None:
     _qr_zeiten[ip] = liste
 
 
+def checkliste_durchfuehren(con, benutzer, cid: int, d: dict) -> dict:
+    c = zeile(con.execute("SELECT * FROM checklisten WHERE id=?", (cid,)).fetchone())
+    if not c:
+        raise Fehler(404, "Checkliste nicht gefunden.")
+    punkte = json.loads(c["punkte"] or "[]")
+    eingaben = {}
+    for e in d.get("ergebnisse") or []:
+        if isinstance(e, dict) and isinstance(e.get("idx"), int):
+            eingaben[e["idx"]] = e
+    ergebnisse, abw, fehlt = [], [], []
+    for i, p in enumerate(punkte):
+        e = eingaben.get(i, {})
+        status = e.get("status") if e.get("status") in ("ok", "mangel", "na") else None
+        notiz = str(e.get("notiz") or "").strip()[:500]
+        wert = None
+        abweichung = False
+        if p["typ"] == "haken":
+            if status is None and p.get("pflicht"):
+                fehlt.append(p["text"])
+            abweichung = status == "mangel"
+        elif p["typ"] == "zahl":
+            roh = e.get("wert")
+            if roh not in (None, ""):
+                try:
+                    wert = float(str(roh).replace(",", "."))
+                except ValueError:
+                    raise Fehler(400, f'„{p["text"]}“: bitte eine Zahl eintragen.')
+            if wert is None and status != "na" and p.get("pflicht"):
+                fehlt.append(p["text"])
+            if wert is not None and ((p.get("min") is not None and wert < p["min"]) or (p.get("max") is not None and wert > p["max"])):
+                abweichung = True
+            if status == "mangel":
+                abweichung = True
+        else:
+            wert = str(e.get("wert") or "").strip()[:1000] or None
+            if not wert and status != "na" and p.get("pflicht"):
+                fehlt.append(p["text"])
+            abweichung = status == "mangel"
+        ergebnisse.append({**p, "status": status, "wert": wert, "notiz": notiz, "abweichung": abweichung})
+        if abweichung:
+            abw.append(ergebnisse[-1])
+    if fehlt:
+        raise Fehler(400, "Bitte noch ausfüllen: " + ", ".join(fehlt[:5]) + (" …" if len(fehlt) > 5 else ""))
+    lat = lon = None
+    try:
+        if d.get("lat") is not None:
+            lat, lon = float(d["lat"]), float(d["lon"])
+    except (TypeError, ValueError, KeyError):
+        lat = lon = None
+    cur = con.execute(
+        "INSERT INTO checklisten_durchgaenge (checkliste_id, objekt_id, anlage_id, zeit, wer, ergebnisse, bemerkung, abweichungen, lat, lon) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?)",
+        (cid, c["objekt_id"], c["anlage_id"], jetzt(), benutzer["name"], json.dumps(ergebnisse, ensure_ascii=False),
+         str(d.get("bemerkung") or "").strip()[:3000] or None, len(abw), lat, lon))
+    did = cur.lastrowid
+    tickets = []
+    if d.get("maengel_anlegen") and abw:
+        for e in abw:
+            wert_text = ""
+            if e["typ"] == "zahl" and e["wert"] is not None:
+                soll = " bis ".join(x for x in (f'{e["min"]:g}' if e.get("min") is not None else "", f'{e["max"]:g}' if e.get("max") is not None else "") if x)
+                wert_text = f'Messwert {e["wert"]:g} {e.get("einheit") or ""}'.strip() + (f" (Soll {soll} {e.get('einheit') or ''})".rstrip() if soll else "")
+            beschreibung = "\n".join(x for x in (f'Aus {c["art"].lower() == "rundgang" and "Rundgang" or "Checkliste"} „{c["titel"]}“',
+                                                  f'Station: {e["bereich"]}' if e.get("bereich") else "", wert_text, e.get("notiz")) if x)
+            tid = ticket_anlegen(con, benutzer, {
+                "objekt_id": c["objekt_id"], "anlage_id": e.get("anlage_id") or c["anlage_id"],
+                "titel": e["text"][:150], "beschreibung": beschreibung, "art": "Mangel", "gefaehrdung": "mittel",
+                "status": "Neu", "gemeldet_von": benutzer["name"], "mangel": f"Durchgang {did}"})
+            tickets.append(tid)
+    protokollieren(con, benutzer, "durchgeführt", "checklisten", cid, f"{len(abw)} Abweichungen")
+    return {"ok": True, "id": did, "abweichungen": len(abw), "tickets": len(tickets)}
+
+
 def anlage_aktivitaet(con, aid: int) -> list[dict]:
     if not con.execute("SELECT 1 FROM anlagen WHERE id=?", (aid,)).fetchone():
         raise Fehler(404, "Anlage nicht gefunden.")
@@ -886,6 +1019,10 @@ def anlage_aktivitaet(con, aid: int) -> list[dict]:
             ein.append({"zeit": h["datum"] + "T12:00:00", "wer": h["erfasst_von"], "art": "erledigt",
                         "info": wids[h["wartung_id"]]["titel"], "ergebnis": h["ergebnis"], "id": h["wartung_id"],
                         "typ": "wartung", "gps": h["lat"] is not None})
+    for dg in con.execute(
+            "SELECT d.*, c.titel FROM checklisten_durchgaenge d JOIN checklisten c ON c.id=d.checkliste_id WHERE d.anlage_id=?", (aid,)):
+        ein.append({"zeit": dg["zeit"], "wer": dg["wer"], "art": "checkliste", "info": dg["titel"], "id": dg["id"],
+                    "typ": "checkliste", "abweichungen": dg["abweichungen"]})
     ein.sort(key=lambda e: e["zeit"] or "", reverse=True)
     return ein
 
@@ -1204,6 +1341,34 @@ def beispieldaten(con) -> None:
             con.execute("UPDATE anlagen SET kategorie_id=?, gruppe_id=?, typ_id=?, nummer=?, details=? WHERE id=?",
                         (kid, gid, tid, nummer, json.dumps(details, ensure_ascii=False) if details else None, r["id"]))
 
+    # Beispiel-Checkliste je Anlage und Rundgang je Objekt
+    def punkt(text, typ="haken", einheit="", mini=None, maxi=None, bereich="", anlage=None, pflicht=True):
+        return {"text": text, "typ": typ, "einheit": einheit, "min": mini, "max": maxi, "bereich": bereich,
+                "anlage_id": anlage, "pflicht": pflicht}
+    cl1 = einfuegen(con, "checklisten", {
+        "titel": "Monatliche Sichtkontrolle RLT", "art": "Anlage", "objekt_id": o1, "anlage_id": anl["rlt"],
+        "rhythmus": "monatlich", "aktiv": 1, "punkte": json.dumps([
+            punkt("Filter-Differenzdruck Zuluft", "zahl", "Pa", 50, 250), punkt("Filter-Differenzdruck Abluft", "zahl", "Pa", 50, 250),
+            punkt("Keilriemen ohne Risse, Spannung in Ordnung"), punkt("Klappen öffnen und schließen"),
+            punkt("Kondensatablauf frei"), punkt("Ungewöhnliche Geräusche", "text", pflicht=False)], ensure_ascii=False)})
+    rg = einfuegen(con, "checklisten", {
+        "titel": "Wöchentlicher Objektrundgang", "art": "Rundgang", "objekt_id": o1, "rhythmus": "wöchentlich", "aktiv": 1,
+        "zustaendig": "Haustechnik", "punkte": json.dumps([
+            punkt("Vorlauftemperatur Heizung", "zahl", "°C", 50, 80, "Technikzentrale UG", anl["hz"]),
+            punkt("Anlagendruck Heizung", "zahl", "bar", 1.0, 2.5, "Technikzentrale UG", anl["hz"]),
+            punkt("Brandmeldezentrale ohne Störung", bereich="Technikzentrale UG", anlage=anl["bma"]),
+            punkt("Fluchtwege frei, Türen nicht verkeilt", bereich="Treppenhaus"),
+            punkt("Sicherheitsbeleuchtung in Ordnung", bereich="Treppenhaus"),
+            punkt("Aufzüge fahren, Notruf getestet", bereich="Kern", anlage=anl["a1"]),
+            punkt("Beleuchtung Tiefgarage in Ordnung", bereich="Tiefgarage"),
+            punkt("Dachabläufe frei", bereich="Dach"),
+            punkt("Zählerstand Allgemeinstrom", "zahl", "kWh", bereich="Technikzentrale UG", pflicht=False)], ensure_ascii=False)})
+    vorher = (dt.datetime.now() - dt.timedelta(days=8)).isoformat(timespec="seconds")
+    erg = [{**p, "status": "ok", "wert": w, "notiz": "", "abweichung": False}
+           for p, w in zip(json.loads(con.execute("SELECT punkte FROM checklisten WHERE id=?", (rg,)).fetchone()[0]),
+                           [62, 1.8, None, None, None, None, None, None, 152300])]
+    con.execute("INSERT INTO checklisten_durchgaenge (checkliste_id, objekt_id, zeit, wer, ergebnisse, abweichungen) VALUES (?,?,?,?,?,0)",
+                (rg, o1, vorher, "Haustechnik", json.dumps(erg, ensure_ascii=False)))
     zuordnen("Feuerlöscher %", "Feuerlöscher", "GLORIA", "ABC-Pulver 6 kg", {"Löschmittel": "ABC-Pulver", "Löschmitteleinheiten (LE)": 10})
     zuordnen("Tür %", "Tür", "Teckentrup", "T 30-1-FSA-42", {"Brandschutztür": True, "Feuerwiderstand": "T30", "Flügel": "1-flügelig", "Feststellanlage": True})
     zuordnen("Wandhydrant%", "Hydrant", "Hawle", "Wandhydrant Typ F")
@@ -1492,6 +1657,22 @@ class Handler(BaseHTTPRequestHandler):
                                 ("1" if d["oeffentlich_melden"] in (1, True, "1") else "0",))
                 protokollieren(con, b, "geändert", "einstellungen", None, ", ".join(d))
                 return self.json({k: einstellung(con, k) for k in EINSTELLUNGEN_STANDARD})
+        if erstes == "checklisten" and len(teile) == 3 and teile[2] == "durchgaenge" and m == "GET":
+            cid = self.id(teile[1])
+            return self.json([dict(r) for r in con.execute(
+                "SELECT id, zeit, wer, abweichungen, bemerkung FROM checklisten_durchgaenge WHERE checkliste_id=? ORDER BY zeit DESC LIMIT 300", (cid,))])
+        if erstes == "checklisten" and len(teile) == 3 and teile[2] == "durchgang" and m == "POST":
+            return self.json(checkliste_durchfuehren(con, b, self.id(teile[1]), self.body()), 201)
+        if erstes == "durchgaenge" and len(teile) == 2 and m == "GET":
+            r = con.execute("SELECT d.*, c.titel, c.art FROM checklisten_durchgaenge d JOIN checklisten c ON c.id=d.checkliste_id WHERE d.id=?",
+                            (self.id(teile[1]),)).fetchone()
+            if not r:
+                raise Fehler(404, "Durchgang nicht gefunden.")
+            aus = dict(r)
+            aus["ergebnisse"] = json.loads(r["ergebnisse"] or "[]")
+            aus["tickets"] = [dict(t) for t in con.execute(
+                "SELECT id, nummer, titel FROM tickets WHERE mangel=? ORDER BY id", (f"Durchgang {r['id']}",))]
+            return self.json(aus)
         if erstes == "objekte" and len(teile) == 3 and teile[2] == "qr-neu" and m == "POST":
             oid = self.id(teile[1])
             if not con.execute("SELECT 1 FROM objekte WHERE id=?", (oid,)).fetchone():
@@ -1638,6 +1819,22 @@ class Handler(BaseHTTPRequestHandler):
         zeilen = [dict(r) for r in con.execute(sql, werte)]
         for z in zeilen:
             z.pop("pfad", None)
+        if name == "checklisten" and zeilen:
+            letzte = {r[0]: (r[1], r[2]) for r in con.execute(
+                "SELECT checkliste_id, MAX(zeit), COUNT(*) FROM checklisten_durchgaenge GROUP BY checkliste_id")}
+            for z in zeilen:
+                l, n = letzte.get(z["id"], (None, 0))
+                z["letzte"] = l
+                z["durchgaenge"] = n
+                try:
+                    z["anzahl_punkte"] = len(json.loads(z.get("punkte") or "[]"))
+                except ValueError:
+                    z["anzahl_punkte"] = 0
+                tage = RHYTHMUS.get(z.get("rhythmus"))
+                z["naechste"] = None
+                if tage and z.get("aktiv"):
+                    basis = dt.date.fromisoformat(l[:10]) if l else heute()
+                    z["naechste"] = (basis + dt.timedelta(days=tage)).isoformat() if l else heute().isoformat()
         if name == "objekte" and zeilen:
             anl = {r[0]: r[1] for r in con.execute("SELECT objekt_id, COUNT(*) FROM anlagen GROUP BY objekt_id")}
             tik = {r[0]: r[1] for r in con.execute(

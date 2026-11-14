@@ -1,7 +1,7 @@
 /* Casa CAFM – Oberfläche (ohne Fremdbibliotheken) */
 "use strict";
 
-const VERSION = "2026.11.15-3"; // muss zu VERSION in app.py passen
+const VERSION = "2026.11.15-4"; // muss zu VERSION in app.py passen
 /* Hell- und Dunkelmodus: gemerkte Wahl, sonst wie das Gerät */
 const THEMA = (() => {
   let t = null;
@@ -72,6 +72,7 @@ const ICONS = {
   kalender: '<rect x="3" y="5" width="18" height="16" rx="1"/><path d="M3 10h18M8 3v4M16 3v4"/>',
   vertraege: '<path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 13h7M9 17h5"/>',
   dienstleister: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6 6 0 0 1 3.5 6"/>',
+  checklisten: '<path d="M9 5h10M9 12h10M9 19h10"/><path d="M3.5 5l1.5 1.5L7.5 4M3.5 12l1.5 1.5L7.5 11M3.5 19l1.5 1.5L7.5 18"/>',
   zugaenge: '<rect x="4" y="11" width="16" height="10" rx="1"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
   zaehler: '<circle cx="12" cy="13" r="8"/><path d="M12 13l4-4M8 5l-1-2M16 5l1-2"/>',
   dokumente: '<path d="M3 6h7l2 2h9v12H3z"/>',
@@ -177,6 +178,7 @@ const NAV = [
   "Betrieb",
   ["wartungen", "Wartungsplan", "#/wartungen"],
   ["tickets", "Mängel & Störungen", "#/tickets"],
+  ["checklisten", "Checklisten & Rundgänge", "#/checklisten"],
   ["kalender", "Kalender", "#/kalender"],
   "Verwaltung",
   ["vertraege", "Verträge", "#/vertraege"],
@@ -734,6 +736,7 @@ DETAIL.objekte = async (el, id, q) => {
     { titel: "Anlagen", zahl: anl.length, zeigen: (x) => tabelle(x, "anlagen", { filter: f }) },
     { titel: "Pläne", zahl: plaene.length, zeigen: (x) => planListe(x, f) },
     { titel: "Wartungsplan", zahl: wart.length, zeigen: (x) => tabelle(x, "wartungen", { filter: f, extraFilter: wartungFilter }) },
+    { titel: "Checklisten & Rundgänge", zeigen: (x) => checklistenReiter(x, { objekt_id: o.id }) },
     { titel: "Störmeldungen", zahl: tick.length, zeigen: (x) => tabelle(x, "tickets", { filter: f, extraFilter: ticketFilter, extraStart: "offen" }) },
     { titel: "Verträge", zahl: vert.length, zeigen: (x) => tabelle(x, "vertraege", { filter: f }) },
     { titel: "Zähler", zahl: zae.length, zeigen: (x) => tabelle(x, "zaehler", { filter: f }) },
