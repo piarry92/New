@@ -95,6 +95,10 @@ einen Leser aus dem Internet.
   Sachverständige, Ergebnis und alle Mängel mit Nummer, Ort, Einstufung (geringfügig, wesentlich, gefährlich) und
   Frist vor. Du prüfst jede Zeile, änderst oder ergänzt sie und übernimmst sie in den **SV-Mängelplan**.
   Auf Wunsch wird die Prüfung gleich im SV-Prüfplan eingetragen und der nächste Termin berechnet.
+- **Ohne API-Schlüssel, über den Claude-Chat:** Bericht hochladen, im Claude-Chat auswerten lassen („Werte den
+  SV-Bericht für Casa CAFM aus“ oder die Anleitung per „Anleitung kopieren“ einfügen), die Antwort kopieren und auf
+  der Anlage mit **„Auswertung von Claude einfügen“** einfügen (auch als .json-Datei). Danach prüfen und übernehmen
+  wie oben.
 - Text im Bericht, der wie eine Anweisung an eine KI aussieht, wird nicht befolgt; das Programm weist darauf hin.
 - **SV-Mängelplan** als Reiter im Objekt (und in der Anlage sowie unter SV-Prüfplan › SV-Mängel): Kennzahlen,
   Filter, „Behoben“, Störmeldung aus einem Mangel anlegen, Excel und Druckansicht im Casa-Design.

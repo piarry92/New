@@ -13,10 +13,9 @@ async function svBerichtKarte(box, a) {
   const ein = await einstellungenLaden();
   const kiAn = ein.ki_aktiv === "1";
   box.innerHTML = `<h3>SV-Berichte</h3>
-    <p class="klein">${kiAn ? "Lade den Prüfbericht als PDF oder Foto hoch. Die KI liest die Mängel heraus, du prüfst sie und übernimmst sie in den SV-Mängelplan des Objekts."
-      : "Lade den Prüfbericht hoch und trag die Mängel in den SV-Mängelplan ein. Die KI-Auswertung schaltet ein Administrator unter Einstellungen ein."}</p>
+    <p class="klein">Lade den Prüfbericht hoch. Gib ihn dann im Claude-Chat zum Auswerten und füge die Antwort hier mit „Auswertung von Claude einfügen“ ein. Du prüfst die Mängel und übernimmst sie in den SV-Mängelplan des Objekts.</p>
     ${doks.length ? `<div class="sv-berichte">${doks.map((d) => `<div class="sv-bericht"><a href="/api/dokumente/${d.id}/datei" target="_blank" rel="noopener">${icon("dokumente")}<span><b>${esc(d.titel)}</b><br><span class="klein">${datum(d.hochgeladen_am)} · ${esc(d.dateiname || "")}</span></span></a>
-      ${darf("tickets_bearbeiten") ? `<button class="knopf klein ${kiAn ? "haupt-k" : ""}" data-svaus="${d.id}">${kiAn ? "KI-Auswertung" : "Mängel eintragen"}</button>` : ""}</div>`).join("")}</div>` : '<p class="klein">Noch kein SV-Bericht hochgeladen.</p>'}
+      ${darf("tickets_bearbeiten") ? `<span class="sv-bk"><button class="knopf klein haupt-k" data-svclaude="${d.id}">Auswertung von Claude einfügen</button><button class="knopf klein" data-svaus="${d.id}">${kiAn ? "KI-Auswertung im Programm" : "Von Hand eintragen"}</button></span>` : ""}</div>`).join("")}</div>` : '<p class="klein">Noch kein SV-Bericht hochgeladen.</p>'}
     ${darf("dokumente_hochladen") ? `<div class="qr-knoepfe"><button class="knopf haupt-k" id="svhoch">${icon("plus")} SV-Bericht hochladen</button></div>` : ""}`;
   const hoch = box.querySelector("#svhoch");
   if (hoch) hoch.onclick = async () => {
@@ -24,12 +23,59 @@ async function svBerichtKarte(box, a) {
     if (!neu || !neu.id) return;
     const d = await api("GET", `dokumente/${neu.id}`);
     await svBerichtKarte(box, a);
-    if (d.id && darf("tickets_bearbeiten")) await svBerichtAuswerten({ ...d, objekt_id: a.objekt_id, anlage_id: a.id }, a, kiAn);
+    if (d.id && darf("tickets_bearbeiten") && kiAn) await svBerichtAuswerten({ ...d, objekt_id: a.objekt_id, anlage_id: a.id }, a, kiAn);
   };
+  box.querySelectorAll("[data-svclaude]").forEach((b) => b.onclick = async () => {
+    const d = doks.find((x) => x.id === Number(b.dataset.svclaude));
+    const aus = await svClaudeEinfuegen(d);
+    if (aus && await svPruefDialog(d, a, aus, false)) route();
+  });
   box.querySelectorAll("[data-svaus]").forEach((b) => b.onclick = async () => {
     const d = doks.find((x) => x.id === Number(b.dataset.svaus));
     if (await svBerichtAuswerten(d, a, kiAn)) route();
   });
+}
+
+/* ---------- Auswertung aus dem Claude-Chat einfügen ---------- */
+function svJsonFinden(text) {
+  const t = String(text || "").replace(/```(?:json)?/gi, "");
+  const start = t.indexOf("{"), ende = t.lastIndexOf("}");
+  if (start < 0 || ende <= start) throw new Error("Im eingefügten Text steht keine Auswertung. Bitte die ganze Antwort von Claude kopieren.");
+  try { return JSON.parse(t.slice(start, ende + 1)); }
+  catch (e) { throw new Error("Der eingefügte Text ist unvollständig. Bitte die ganze Antwort von Claude kopieren, vom ersten { bis zum letzten }."); }
+}
+
+async function svClaudeEinfuegen(dok) {
+  const html = `<div class="dfehler"></div>
+    <ol class="sv-schritte">
+      <li>Öffne einen Chat mit Claude und lade dort den SV-Bericht <b>${esc(dok.titel)}</b> hoch (<a href="/api/dokumente/${dok.id}/datei" target="_blank" rel="noopener">Bericht öffnen</a>).</li>
+      <li>Schreib dazu: „Werte den SV-Bericht für Casa CAFM aus.“ Oder kopier die genaue Anleitung mit <button class="knopf klein" type="button" id="svvorl">Anleitung kopieren</button> und füge sie in den Chat ein.</li>
+      <li>Kopier die Antwort von Claude komplett und füge sie unten ein. Eine gespeicherte Datei (.json oder .txt) geht auch.</li>
+    </ol>
+    <form class="formular" onsubmit="return false">
+      <label class="breit"><span>Antwort von Claude</span><textarea name="text" rows="10" placeholder="{ &quot;pruefdatum&quot;: … }"></textarea></label>
+      <label class="breit"><span>oder Datei</span><input type="file" name="datei" accept=".json,.txt,application/json,text/plain"></label>
+    </form>`;
+  const p = dialog(`Auswertung einfügen: ${dok.titel}`, html, [{ text: "Abbrechen" }, {
+    text: "Weiter zum Prüfen", klasse: "haupt-k", aktion: async (hg) => {
+      const fm = hg.querySelector("form");
+      let text = fm.text.value;
+      if (!text.trim() && fm.datei.files[0]) text = await fm.datei.files[0].text();
+      if (!text.trim()) throw new Error("Bitte die Antwort von Claude einfügen.");
+      const r = await api("PUT", `dokumente/${dok.id}/sv-auswertung`, { ergebnis: svJsonFinden(text) });
+      return r.auswertung;
+    },
+  }]);
+  const hg = letzterDialog();
+  hg.querySelector(".dialog").classList.add("breit-dialog");
+  hg.querySelector("#svvorl").onclick = async () => {
+    try {
+      const { text } = await api("GET", "sv-vorlage");
+      await navigator.clipboard.writeText(text);
+      melde("Anleitung kopiert. Jetzt im Claude-Chat einfügen und den Bericht dazu hochladen.");
+    } catch (e) { melde("Kopieren ging nicht. Bitte im Browser die Zwischenablage erlauben.", true); }
+  };
+  return p;
 }
 
 /* ---------- Auswertung prüfen und übernehmen ---------- */
@@ -73,7 +119,7 @@ async function svPruefDialog(dok, a, aus, kiAn) {
     ${aus && aus.uebernommen ? `<div class="warnung">Diese Auswertung wurde am ${datum(aus.uebernommen)} schon übernommen. Ein zweites Übernehmen legt die Mängel doppelt an.</div>` : ""}
     ${aus ? `<div class="sv-fakten">${fakten.map(([l, w]) => `<div><small>${esc(l)}</small>${esc(w)}</div>`).join("")}</div>
       ${aus.zusammenfassung ? `<p class="sv-zus">${esc(aus.zusammenfassung)}</p>` : ""}
-      <p class="klein">Ausgewertet von der KI am ${datum(aus.zeit)} ${String(aus.zeit || "").slice(11, 16)}${aus.von ? ` für ${esc(aus.von)}` : ""}. Bitte jeden Mangel mit dem Bericht vergleichen, die KI kann sich irren. Abgehakte Zeilen werden übernommen.</p>` : ""}
+      <p class="klein">${aus.modell === "Claude-Chat (eingefügt)" ? "Auswertung aus dem Claude-Chat, eingefügt" : "Ausgewertet von der KI"} am ${datum(aus.zeit)} ${String(aus.zeit || "").slice(11, 16)}${aus.von ? ` ${aus.modell === "Claude-Chat (eingefügt)" ? "von" : "für"} ${esc(aus.von)}` : ""}. Bitte jeden Mangel mit dem Bericht vergleichen, die KI kann sich irren. Abgehakte Zeilen werden übernommen.</p>` : ""}
     <div class="tabelle-wrap"><table class="sv-pruef"><thead><tr><th></th><th>Nr.</th><th>Mangel und Ort</th><th>Einstufung</th><th>Frist</th><th></th></tr></thead><tbody id="svz">${liste.map(zeile).join("")}</tbody></table></div>
     ${!liste.length ? '<p class="klein">Die KI hat keine Mängel gefunden.</p>' : ""}
     <div class="werkzeug" style="margin-top:10px"><button class="knopf klein" id="svplus" type="button">${icon("plus")} Mangel von Hand ergänzen</button>${kiAn && aus ? '<button class="knopf klein" id="svneu" type="button">Noch einmal auswerten</button>' : ""}</div>
@@ -94,7 +140,7 @@ async function svPruefDialog(dok, a, aus, kiAn) {
         maengel: gewaehlt.map(({ an, ...m }) => m), pruefdatum: fm.pruefdatum.value || null, ki: !!aus, auswertung_id: aus && aus.id,
         pruefung: pruef ? { wartung_id: sv[0].id, datum: fm.pruefdatum.value } : null,
       });
-      melde(`${r.angelegt} SV-Mängel übernommen${r.pruefung_eingetragen ? ", Prüfung im SV-Prüfplan eingetragen" : ""}.`);
+      melde(`${r.angelegt} ${r.angelegt === 1 ? "SV-Mangel" : "SV-Mängel"} übernommen${r.pruefung_eingetragen ? ", Prüfung im SV-Prüfplan eingetragen" : ""}.`);
       cacheLeeren();
       return r;
     },

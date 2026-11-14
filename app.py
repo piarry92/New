@@ -43,7 +43,7 @@ SYM_PFAD = DATEN / "symbole"
 OBJ_PFAD = DATEN / "objektbilder"
 MAX_SYMBOL = 2 * 1024 * 1024
 MAX_UPLOAD = 25 * 1024 * 1024
-VERSION = "2026.11.15-10"  # muss zu VERSION in static/app.js passen
+VERSION = "2026.11.15-11"  # muss zu VERSION in static/app.js passen
 SITZUNG_TAGE = 7
 
 GEWERKE = [
@@ -2139,6 +2139,17 @@ class Handler(BaseHTTPRequestHandler):
                 r = con.execute("SELECT * FROM sv_auswertungen WHERE dokument_id=? ORDER BY id DESC LIMIT 1", (did,)).fetchone()
                 return self.json({"auswertung": {**json.loads(r["ergebnis"]), "zeit": r["zeit"], "von": r["von"],
                                                  "uebernommen": r["uebernommen"], "id": r["id"]} if r else None})
+            if m == "PUT":
+                try:
+                    ergebnis = ki.ergebnis_saeubern(self.body().get("ergebnis"))
+                except ki.KiFehler as e:
+                    raise Fehler(400, str(e))
+                ergebnis["modell"] = "Claude-Chat (eingefügt)"
+                cur = con.execute("INSERT INTO sv_auswertungen (dokument_id, zeit, von, ergebnis) VALUES (?,?,?,?)",
+                                  (did, jetzt(), self.benutzer["name"], json.dumps(ergebnis, ensure_ascii=False)))
+                protokollieren(con, self.benutzer, "Auswertung eingefügt", "dokumente", did, f'{len(ergebnis["maengel"])} Mängel')
+                return self.json({"auswertung": {**ergebnis, "zeit": jetzt(), "von": self.benutzer["name"], "uebernommen": None,
+                                                 "id": cur.lastrowid}})
             if m == "POST":
                 if einstellung(con, "ki_aktiv") != "1":
                     raise Fehler(400, "Die KI-Auswertung ist ausgeschaltet. Ein Administrator schaltet sie unter Einstellungen ein.")
@@ -2161,6 +2172,8 @@ class Handler(BaseHTTPRequestHandler):
                         anlage_text = ", ".join(x for x in (a["bezeichnung"], a["sv_gegenstand"], a["hersteller"], a["typ"]) if x)
                 self._spaeter = (did, inhalt, endung, schluessel, anlage_text, self.benutzer["name"])
                 return None
+        if erstes == "sv-vorlage" and m == "GET":
+            return self.json({"text": ki.vorlage()})
         if erstes == "svberichte" and len(teile) == 3 and teile[2] == "uebernehmen" and m == "POST":
             return self.json(sv_uebernehmen(con, self.benutzer, self.rechte, self.id(teile[1]), self.body()))
         if erstes == "svpruefplan" and m == "GET":

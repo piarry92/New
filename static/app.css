@@ -1071,3 +1071,7 @@ html[data-theme="dark"] .sv-pruef textarea, html[data-theme="dark"] .sv-pruef in
 html[data-theme="dark"] .sv-zus { background: rgba(230,55,19,.12); }
 .sv-pruef select { min-width: 130px; }
 .sv-pruef input[type=date] { min-width: 150px; }
+.sv-bk { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.sv-schritte { padding-left: 20px; line-height: 1.6; margin: 0 0 12px; }
+.sv-schritte li { margin-bottom: 6px; }
+@media (max-width: 760px) { .sv-bericht { flex-direction: column; align-items: stretch; } .sv-bk { justify-content: flex-start; } }

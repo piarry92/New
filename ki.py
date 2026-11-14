@@ -128,3 +128,65 @@ def bericht_auswerten(schluessel: str, inhalt: bytes, endung: str, anlage_text: 
         raise KiFehler("Die Antwort der KI war unvollständig. Bitte noch einmal versuchen.") from e
     ergebnis["modell"] = antwort.model
     return ergebnis
+
+
+def vorlage() -> str:
+    """Anleitung, die man mit dem Bericht in einen Claude-Chat gibt."""
+    beispiel = {
+        "ist_pruefbericht": True, "pruefdatum": "JJJJ-MM-TT", "sachverstaendiger": "…", "pruefstelle": "…",
+        "pruefart": "…", "pruefgegenstand": "…", "gesamtergebnis": "|".join(GESAMT), "naechste_pruefung": "JJJJ-MM-TT oder null",
+        "zusammenfassung": "…", "hinweis_anweisung": False,
+        "maengel": [{"nummer": "1", "beschreibung": "…", "ort": "… oder null", "einstufung": "|".join(EINSTUFUNGEN),
+                     "frist": "JJJJ-MM-TT oder null", "frist_text": "Wortlaut der Frist oder null", "seite": 1}],
+    }
+    return (SYSTEM + "\n\nAntworte nur mit einem JSON-Block genau in diesem Aufbau, ohne weiteren Text:\n"
+            + json.dumps(beispiel, ensure_ascii=False, indent=2) + "\n\nHier ist der Prüfbericht:")
+
+
+def _text(v, n=2000):
+    if v is None:
+        return None
+    v = str(v).strip()
+    return v[:n] or None
+
+
+def _datum(v):
+    import datetime as _dt
+    v = _text(v, 10)
+    try:
+        return _dt.date.fromisoformat(v).isoformat() if v else None
+    except ValueError:
+        return None
+
+
+def ergebnis_saeubern(d) -> dict:
+    """Eingefügte Auswertung aus dem Chat prüfen und auf bekannte Felder kürzen."""
+    if not isinstance(d, dict):
+        raise KiFehler("Die eingefügte Auswertung hat nicht das erwartete Format.")
+    maengel = d.get("maengel")
+    if not isinstance(maengel, list):
+        raise KiFehler("In der eingefügten Auswertung fehlt die Mängelliste.")
+    if len(maengel) > 300:
+        raise KiFehler("Die Auswertung enthält zu viele Mängel (höchstens 300).")
+    aus = {
+        "ist_pruefbericht": d.get("ist_pruefbericht") is not False,
+        "pruefdatum": _datum(d.get("pruefdatum")), "sachverstaendiger": _text(d.get("sachverstaendiger"), 200),
+        "pruefstelle": _text(d.get("pruefstelle"), 200), "pruefart": _text(d.get("pruefart"), 200),
+        "pruefgegenstand": _text(d.get("pruefgegenstand"), 200),
+        "gesamtergebnis": d.get("gesamtergebnis") if d.get("gesamtergebnis") in GESAMT else "unklar",
+        "naechste_pruefung": _datum(d.get("naechste_pruefung")), "zusammenfassung": _text(d.get("zusammenfassung"), 2000) or "",
+        "hinweis_anweisung": bool(d.get("hinweis_anweisung")), "maengel": [],
+    }
+    for m in maengel:
+        if not isinstance(m, dict) or not _text(m.get("beschreibung")):
+            continue
+        try:
+            seite = int(m.get("seite")) if m.get("seite") not in (None, "") else None
+        except (TypeError, ValueError):
+            seite = None
+        aus["maengel"].append({
+            "nummer": _text(m.get("nummer"), 40), "beschreibung": _text(m.get("beschreibung")), "ort": _text(m.get("ort"), 300),
+            "einstufung": m.get("einstufung") if m.get("einstufung") in EINSTUFUNGEN else "unklar",
+            "frist": _datum(m.get("frist")), "frist_text": _text(m.get("frist_text"), 300), "seite": seite,
+        })
+    return aus
