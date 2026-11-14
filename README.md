@@ -88,6 +88,20 @@ einen Leser aus dem Internet.
   und rechnet den nächsten Termin aus. Bei offenen Mängeln entsteht auf Wunsch gleich eine Störmeldung.
 - Filter (überfällig, 90 Tage, ohne Termin, offene Mängel), Excel-Liste und Druckansicht im Casa-Design (als PDF speichern).
 
+## SV-Berichte mit KI auswerten, SV-Mängelplan
+
+- Auf jeder Anlage im SV-Prüfplan gibt es die Karte **SV-Berichte**: Prüfbericht als PDF oder Foto hochladen.
+- Ist die KI-Auswertung eingeschaltet, liest die KI (Claude von Anthropic) den Bericht und schlägt Prüfdatum,
+  Sachverständige, Ergebnis und alle Mängel mit Nummer, Ort, Einstufung (geringfügig, wesentlich, gefährlich) und
+  Frist vor. Du prüfst jede Zeile, änderst oder ergänzt sie und übernimmst sie in den **SV-Mängelplan**.
+  Auf Wunsch wird die Prüfung gleich im SV-Prüfplan eingetragen und der nächste Termin berechnet.
+- Text im Bericht, der wie eine Anweisung an eine KI aussieht, wird nicht befolgt; das Programm weist darauf hin.
+- **SV-Mängelplan** als Reiter im Objekt (und in der Anlage sowie unter SV-Prüfplan › SV-Mängel): Kennzahlen,
+  Filter, „Behoben“, Störmeldung aus einem Mangel anlegen, Excel und Druckansicht im Casa-Design.
+- Einschalten: Einstellungen › „KI-Auswertung der SV-Berichte“, API-Schlüssel von console.anthropic.com eintragen.
+  Der Bericht wird dafür an Anthropic übertragen. `start.bat` installiert das nötige Paket (`anthropic`) beim
+  ersten Start; dafür braucht der Rechner Internet. Ohne KI lassen sich die Mängel von Hand eintragen.
+
 ## E-Mail, Push und App
 
 - **E-Mail:** Ein Administrator trägt unter Einstellungen › „E-Mail-Versand (Mailserver)“ den Mailserver ein

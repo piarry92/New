@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import katalog_daten
+import ki
 import versand
 import base64
 import calendar
@@ -42,7 +43,7 @@ SYM_PFAD = DATEN / "symbole"
 OBJ_PFAD = DATEN / "objektbilder"
 MAX_SYMBOL = 2 * 1024 * 1024
 MAX_UPLOAD = 25 * 1024 * 1024
-VERSION = "2026.11.15-9"  # muss zu VERSION in static/app.js passen
+VERSION = "2026.11.15-10"  # muss zu VERSION in static/app.js passen
 SITZUNG_TAGE = 7
 
 GEWERKE = [
@@ -60,6 +61,8 @@ SV_GEGENSTAENDE = [
     "Wandhydranten / Steigleitungen", "Sicherheitsstromversorgung / Notstrom", "Sicherheitsbeleuchtung",
     "Feststellanlage (Brandschutztür)", "Aufzug", "Druckbehälter", "Elektrische Anlage", "Blitzschutzanlage", "Sonstiges",
 ]
+SV_EINSTUFUNGEN = ["geringfügig", "wesentlich", "gefährlich", "unklar"]
+SV_STATUS = ["offen", "in Arbeit", "behoben", "nachgeprüft"]
 SV_GRUNDLAGEN = [
     "Prüfverordnung des Landes (z. B. TPrüfVO Hessen)", "BetrSichV (zugelassene Überwachungsstelle)",
     "DGUV Vorschrift 3", "Baugenehmigung / Brandschutzkonzept", "Versicherer (z. B. VdS)", "Sonstige",
@@ -337,6 +340,28 @@ RESSOURCEN: dict[str, dict] = {
             {"name": "notiz", "label": "Notiz", "typ": "text", "liste": True},
         ],
     },
+    "sv_maengel": {
+        "label": "SV-Mängel", "einzahl": "SV-Mangel", "anzeige": ["beschreibung"], "sort": "frist",
+        "felder": [
+            {"name": "objekt_id", "label": "Objekt", "typ": "ref", "ref": "objekte", "pflicht": True, "liste": True},
+            {"name": "anlage_id", "label": "Anlage", "typ": "ref", "ref": "anlagen", "filter": "objekt_id", "liste": True},
+            {"name": "nummer", "label": "Nr. im Bericht", "typ": "text", "liste": True},
+            {"name": "beschreibung", "label": "Mangel", "typ": "textarea", "pflicht": True, "liste": True},
+            {"name": "ort", "label": "Ort", "typ": "text"},
+            {"name": "einstufung", "label": "Einstufung", "typ": "select", "optionen": SV_EINSTUFUNGEN, "liste": True},
+            {"name": "frist", "label": "Frist", "typ": "date", "liste": True},
+            {"name": "frist_text", "label": "Frist laut Bericht", "typ": "text"},
+            {"name": "status", "label": "Status", "typ": "select", "optionen": SV_STATUS, "standard": "offen", "liste": True},
+            {"name": "dienstleister_id", "label": "Beauftragt", "typ": "ref", "ref": "dienstleister"},
+            {"name": "behoben_am", "label": "Behoben am", "typ": "date"},
+            {"name": "massnahme", "label": "Maßnahme / Nachweis", "typ": "textarea"},
+            {"name": "bericht_id", "label": "SV-Bericht", "typ": "ref", "ref": "dokumente", "filter": "objekt_id"},
+            {"name": "pruefdatum", "label": "Prüfdatum", "typ": "date"},
+            {"name": "seite", "label": "Seite im Bericht", "typ": "number"},
+            {"name": "ticket_id", "label": "Störmeldung", "typ": "ref", "ref": "tickets", "intern": True, "lose": True},
+            {"name": "quelle", "label": "Erfasst durch", "typ": "text", "nurlesen": True},
+        ],
+    },
     "dokumente": {
         "label": "Dokumente", "einzahl": "Dokument", "anzeige": ["titel"], "sort": "-id",
         "felder": [
@@ -370,6 +395,14 @@ CREATE TABLE IF NOT EXISTS sitzungen (
     token TEXT PRIMARY KEY,
     benutzer_id INTEGER NOT NULL,
     ablauf TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS sv_auswertungen (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    dokument_id INTEGER NOT NULL,
+    zeit TEXT NOT NULL,
+    von TEXT,
+    ergebnis TEXT NOT NULL,
+    uebernommen TEXT
 );
 CREATE TABLE IF NOT EXISTS wartung_historie (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -784,8 +817,9 @@ def neuer_qr_token() -> str:
 
 EINSTELLUNGEN_STANDARD = {"basis_url": "", "oeffentlich_melden": "0", "oeffentlich_objekt": "1", "mail_aktiv": "0",
                           "smtp_host": "", "smtp_port": "587", "smtp_tls": "starttls", "smtp_user": "", "smtp_pass": "",
-                          "smtp_absender": "", "vapid_privat": "", "vapid_public": ""}
-EINSTELLUNGEN_OEFFENTLICH = ("basis_url", "oeffentlich_melden", "oeffentlich_objekt", "mail_aktiv")
+                          "smtp_absender": "", "vapid_privat": "", "vapid_public": "",
+                          "ki_aktiv": "0", "ki_schluessel": ""}
+EINSTELLUNGEN_OEFFENTLICH = ("basis_url", "oeffentlich_melden", "oeffentlich_objekt", "mail_aktiv", "ki_aktiv")
 EINSTELLUNGEN_SMTP = ("smtp_host", "smtp_port", "smtp_tls", "smtp_user", "smtp_absender")
 VERSAND: "versand.Versand | None" = None
 MIETER_THEMEN = {
@@ -934,7 +968,7 @@ def effektive_rechte(con, b) -> dict:
 
 RESSOURCE_RECHT = {
     "objekte": "anlagen_bearbeiten", "anlagen": "anlagen_bearbeiten", "plaene": "plaene_bearbeiten",
-    "symbole": "plaene_bearbeiten", "wartungen": "wartung_planen", "vertraege": "vertraege_bearbeiten",
+    "symbole": "plaene_bearbeiten", "wartungen": "wartung_planen", "sv_maengel": "tickets_bearbeiten", "vertraege": "vertraege_bearbeiten",
     "dienstleister": "vertraege_bearbeiten", "zaehler": "zaehler_erfassen", "ablesungen": "zaehler_erfassen",
     "dokumente": "dokumente_hochladen", "kat_kategorien": "katalog_bearbeiten", "kat_gruppen": "katalog_bearbeiten",
     "kat_typen": "katalog_bearbeiten", "kat_maengel": "katalog_bearbeiten", "checklisten": "wartung_planen",
@@ -959,6 +993,10 @@ def benoetigtes_recht(m: str, teile: list[str]) -> str | None:
         return "loeschen"
     if t0 == "checklisten" and len(teile) == 3 and teile[2] == "durchgang":
         return "wartung_erledigen"
+    if t0 == "dokumente" and len(teile) == 3 and teile[2] == "sv-auswertung":
+        return "tickets_bearbeiten"
+    if t0 == "svberichte":
+        return "tickets_bearbeiten"
     if t0 == "wartungen" and len(teile) == 3 and teile[2] == "erledigt":
         return "wartung_erledigen"
     if t0 == "tickets":
@@ -1268,6 +1306,49 @@ def wartungsplan(con, jahr: int, q: dict) -> dict:
     return {"jahr": jahr, "aufgaben": zeilen, "ohne_plan": ohne}
 
 
+def sv_uebernehmen(con, benutzer, rechte, did: int, d: dict) -> dict:
+    """Geprüfte Mängel aus einem SV-Bericht in den SV-Mängelplan übernehmen."""
+    dok = con.execute("SELECT * FROM dokumente WHERE id=?", (did,)).fetchone()
+    if not dok:
+        raise Fehler(404, "Bericht nicht gefunden.")
+    if not dok["objekt_id"]:
+        raise Fehler(400, "Der Bericht gehört zu keinem Objekt. Bitte zuerst ein Objekt zuordnen.")
+    maengel = d.get("maengel") or []
+    if not isinstance(maengel, list) or len(maengel) > 300:
+        raise Fehler(400, "Mängelliste ist ungültig.")
+    pruefdatum = d.get("pruefdatum") or None
+    if pruefdatum:
+        pruefdatum = wert_pruefen({"label": "Prüfdatum", "typ": "date"}, pruefdatum)
+    neu = []
+    for m in maengel:
+        if not isinstance(m, dict):
+            continue
+        sauber = daten_pruefen(RESSOURCEN["sv_maengel"], {
+            "objekt_id": dok["objekt_id"], "anlage_id": dok["anlage_id"], "bericht_id": did,
+            "nummer": m.get("nummer"), "beschreibung": m.get("beschreibung"), "ort": m.get("ort"),
+            "einstufung": m.get("einstufung") if m.get("einstufung") in SV_EINSTUFUNGEN else "unklar",
+            "frist": m.get("frist") or None, "frist_text": m.get("frist_text"), "status": "offen",
+            "pruefdatum": pruefdatum, "seite": m.get("seite"),
+        }, neu=True)
+        sauber["quelle"] = "KI-Auswertung, geprüft von " + benutzer["name"] if d.get("ki") else benutzer["name"]
+        neu.append(einfuegen(con, "sv_maengel", sauber))
+    pr = d.get("pruefung")
+    eingetragen = False
+    if pr and pr.get("wartung_id"):
+        if not rechte.get("wartung_erledigen"):
+            raise Fehler(403, "Dafür fehlt dir das Recht: Wartungen und Prüfungen als erledigt melden.")
+        wartung_erledigt(con, benutzer, int(pr["wartung_id"]), {
+            "datum": pr.get("datum") or pruefdatum, "ergebnis": "Mängel offen" if neu else "Ohne Mängel",
+            "bemerkung": f'SV-Bericht „{dok["titel"]}“' + (f", {len(neu)} Mängel im SV-Mängelplan" if neu else ""),
+        })
+        eingetragen = True
+    if d.get("auswertung_id"):
+        con.execute("UPDATE sv_auswertungen SET uebernommen=? WHERE id=? AND dokument_id=?",
+                    (jetzt(), int(d["auswertung_id"]), did))
+    protokollieren(con, benutzer, "übernommen", "dokumente", did, f"{len(neu)} SV-Mängel")
+    return {"ok": True, "angelegt": len(neu), "pruefung_eingetragen": eingetragen}
+
+
 def sv_pruefplan(con, q: dict) -> dict:
     """Alle sicherheitsrelevanten Anlagen mit ihren SV-Prüfungen."""
     bed, werte = ["a.sv_relevant=1"], []
@@ -1277,6 +1358,9 @@ def sv_pruefplan(con, q: dict) -> dict:
     tickets = {r[0]: r[1] for r in con.execute(
         "SELECT anlage_id, COUNT(*) FROM tickets WHERE anlage_id IS NOT NULL "
         "AND status NOT IN ('Erledigt','Abgeschlossen') GROUP BY anlage_id")}
+    sv_offen = {r[0]: r[1] for r in con.execute(
+        "SELECT anlage_id, COUNT(*) FROM sv_maengel WHERE anlage_id IS NOT NULL "
+        "AND status IN ('offen','in Arbeit') GROUP BY anlage_id")}
     zeilen = []
     for r in con.execute(
             "SELECT a.id, a.nummer, a.bezeichnung, a.objekt_id, a.standort, a.gewerk, a.planzeichen, a.symbol_id, "
@@ -1286,6 +1370,7 @@ def sv_pruefplan(con, q: dict) -> dict:
             werte):
         z = dict(r)
         z["tickets_offen"] = tickets.get(z["id"], 0)
+        z["sv_maengel_offen"] = sv_offen.get(z["id"], 0)
         z["pruefungen"] = []
         for w in con.execute("SELECT * FROM wartungen WHERE anlage_id=? AND aktiv=1 AND art='SV-Prüfung' "
                              "ORDER BY naechste", (z["id"],)):
@@ -1710,6 +1795,7 @@ class Handler(BaseHTTPRequestHandler):
                     raise Fehler(403, "Anfrage abgelehnt.")
                 if self.headers.get("X-CAFM") != "1":
                     raise Fehler(403, "Anfrage abgelehnt.")
+            self._spaeter = None
             with _db_lock:
                 con = db()
                 try:
@@ -1717,6 +1803,8 @@ class Handler(BaseHTTPRequestHandler):
                         self.api(con, methode, url.path[5:].strip("/").split("/"), parse_qs(url.query))
                 finally:
                     con.close()
+            if self._spaeter:
+                self.sv_auswerten(*self._spaeter)
         except Fehler as e:
             self.json({"fehler": e.text}, e.status)
         except BrokenPipeError:
@@ -1938,6 +2026,7 @@ class Handler(BaseHTTPRequestHandler):
                 if self.rechte.get("einstellungen"):
                     aus.update({k: einstellung(con, k) for k in EINSTELLUNGEN_SMTP})
                     aus["smtp_pass_gesetzt"] = bool(einstellung(con, "smtp_pass"))
+                    aus["ki_schluessel_gesetzt"] = bool(einstellung(con, "ki_schluessel") or os.environ.get("ANTHROPIC_API_KEY"))
                     aus["versand_fehler"] = VERSAND.letzter_fehler if VERSAND else ""
                 return self.json(aus)
             if m == "PUT":
@@ -1952,6 +2041,11 @@ class Handler(BaseHTTPRequestHandler):
                         con.execute("INSERT OR REPLACE INTO einstellungen VALUES (?, ?)", (k, wert))
                 if d.get("smtp_pass"):
                     con.execute("INSERT OR REPLACE INTO einstellungen VALUES ('smtp_pass', ?)", (str(d["smtp_pass"])[:300],))
+                if d.get("ki_schluessel"):
+                    con.execute("INSERT OR REPLACE INTO einstellungen VALUES ('ki_schluessel', ?)", (str(d["ki_schluessel"]).strip()[:300],))
+                if "ki_aktiv" in d:
+                    con.execute("INSERT OR REPLACE INTO einstellungen VALUES ('ki_aktiv', ?)",
+                                ("1" if d["ki_aktiv"] in (1, True, "1") else "0",))
                 if "mail_aktiv" in d:
                     con.execute("INSERT OR REPLACE INTO einstellungen VALUES ('mail_aktiv', ?)",
                                 ("1" if d["mail_aktiv"] in (1, True, "1") else "0",))
@@ -1968,9 +2062,10 @@ class Handler(BaseHTTPRequestHandler):
                 if "oeffentlich_melden" in d:
                     con.execute("INSERT OR REPLACE INTO einstellungen VALUES ('oeffentlich_melden', ?)",
                                 ("1" if d["oeffentlich_melden"] in (1, True, "1") else "0",))
-                protokollieren(con, b, "geändert", "einstellungen", None, ", ".join(k for k in d if k != "smtp_pass"))
+                protokollieren(con, b, "geändert", "einstellungen", None, ", ".join(k for k in d if k not in ("smtp_pass", "ki_schluessel")))
                 aus = {k: einstellung(con, k) for k in EINSTELLUNGEN_OEFFENTLICH + EINSTELLUNGEN_SMTP}
                 aus["smtp_pass_gesetzt"] = bool(einstellung(con, "smtp_pass"))
+                aus["ki_schluessel_gesetzt"] = bool(einstellung(con, "ki_schluessel") or os.environ.get("ANTHROPIC_API_KEY"))
                 return self.json(aus)
         if erstes == "checklisten" and len(teile) == 3 and teile[2] == "checkpoints":
             cid = self.id(teile[1])
@@ -2035,6 +2130,39 @@ class Handler(BaseHTTPRequestHandler):
             return self.json({"qr_token": con.execute("SELECT qr_token FROM anlagen WHERE id=?", (aid,)).fetchone()[0]})
         if erstes == "anlagen" and len(teile) == 3 and teile[2] == "aktivitaet" and m == "GET":
             return self.json(anlage_aktivitaet(con, self.id(teile[1])))
+        if erstes == "dokumente" and len(teile) == 3 and teile[2] == "sv-auswertung":
+            did = self.id(teile[1])
+            dok = con.execute("SELECT * FROM dokumente WHERE id=?", (did,)).fetchone()
+            if not dok or not dok["pfad"]:
+                raise Fehler(404, "Bericht nicht gefunden.")
+            if m == "GET":
+                r = con.execute("SELECT * FROM sv_auswertungen WHERE dokument_id=? ORDER BY id DESC LIMIT 1", (did,)).fetchone()
+                return self.json({"auswertung": {**json.loads(r["ergebnis"]), "zeit": r["zeit"], "von": r["von"],
+                                                 "uebernommen": r["uebernommen"], "id": r["id"]} if r else None})
+            if m == "POST":
+                if einstellung(con, "ki_aktiv") != "1":
+                    raise Fehler(400, "Die KI-Auswertung ist ausgeschaltet. Ein Administrator schaltet sie unter Einstellungen ein.")
+                schluessel = einstellung(con, "ki_schluessel") or os.environ.get("ANTHROPIC_API_KEY", "")
+                if not schluessel:
+                    raise Fehler(400, "Für die KI-Auswertung fehlt der Schlüssel. Ein Administrator trägt ihn unter Einstellungen ein.")
+                endung = (dok["dateiname"] or "").rsplit(".", 1)[-1].lower()
+                if endung not in ki.MEDIEN:
+                    raise Fehler(400, "Auswerten geht nur mit PDF oder Foto (JPG, PNG, WEBP).")
+                pfad = (DOK_PFAD / dok["pfad"]).resolve()
+                if not str(pfad).startswith(str(DOK_PFAD.resolve())) or not pfad.is_file():
+                    raise Fehler(404, "Datei nicht gefunden.")
+                inhalt = pfad.read_bytes()
+                if len(inhalt) > 30 * 1024 * 1024:
+                    raise Fehler(400, "Der Bericht ist zu groß für die Auswertung (höchstens 30 MB).")
+                anlage_text = ""
+                if dok["anlage_id"]:
+                    a = con.execute("SELECT bezeichnung, sv_gegenstand, hersteller, typ FROM anlagen WHERE id=?", (dok["anlage_id"],)).fetchone()
+                    if a:
+                        anlage_text = ", ".join(x for x in (a["bezeichnung"], a["sv_gegenstand"], a["hersteller"], a["typ"]) if x)
+                self._spaeter = (did, inhalt, endung, schluessel, anlage_text, self.benutzer["name"])
+                return None
+        if erstes == "svberichte" and len(teile) == 3 and teile[2] == "uebernehmen" and m == "POST":
+            return self.json(sv_uebernehmen(con, self.benutzer, self.rechte, self.id(teile[1]), self.body()))
         if erstes == "svpruefplan" and m == "GET":
             return self.json(sv_pruefplan(con, q))
         if erstes == "wartungsplan" and m == "GET":
@@ -2652,6 +2780,24 @@ class Handler(BaseHTTPRequestHandler):
         typ = mimetypes.guess_type(p.name)[0] or "application/octet-stream"
         self.senden(200, p.read_bytes(), typ, {"Cache-Control": "private, max-age=3600",
                                                 "Content-Security-Policy": "sandbox"})
+
+    def sv_auswerten(self, did, inhalt, endung, schluessel, anlage_text, wer):
+        """Läuft ohne Datenbank-Sperre, weil die KI bis zu einigen Minuten braucht."""
+        try:
+            ergebnis = ki.bericht_auswerten(schluessel, inhalt, endung, anlage_text)
+        except ki.KiFehler as e:
+            raise Fehler(400, str(e))
+        with _db_lock:
+            con = db()
+            try:
+                with con:
+                    cur = con.execute("INSERT INTO sv_auswertungen (dokument_id, zeit, von, ergebnis) VALUES (?,?,?,?)",
+                                      (did, jetzt(), wer, json.dumps(ergebnis, ensure_ascii=False)))
+                    protokollieren(con, {"name": wer}, "ausgewertet", "dokumente", did,
+                                   f'{len(ergebnis.get("maengel") or [])} Mängel erkannt')
+            finally:
+                con.close()
+        self.json({"auswertung": {**ergebnis, "zeit": jetzt(), "von": wer, "uebernommen": None, "id": cur.lastrowid}})
 
     def datei(self, con, did: int):
         r = con.execute("SELECT * FROM dokumente WHERE id=?", (did,)).fetchone()

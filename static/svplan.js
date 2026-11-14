@@ -86,9 +86,9 @@ function svDrucken(zeilen, objektText) {
 
 SEITEN.svpruefplan = async (el, _, q) => {
   await Promise.all([lade("objekte"), refsLaden("anlagen"), katLaden()]);
-  const z = { ansicht: q.get("ansicht") === "auswahl" ? "auswahl" : "plan", objekt: q.get("objekt") || "", status: "", q: "" };
+  const z = { ansicht: ["auswahl", "maengel"].includes(q.get("ansicht")) ? q.get("ansicht") : "plan", objekt: q.get("objekt") || "", status: "", q: "" };
   el.innerHTML = seitenkopf("SV-Prüfplan", "Sicherheitsrelevante Anlagen · Prüfung durch Sachverständige",
-    `<div class="umschalter"><button data-ans="plan">Prüfplan</button><button data-ans="auswahl">Anlagen auswählen</button></div>`)
+    `<div class="umschalter"><button data-ans="plan">Prüfplan</button><button data-ans="maengel">SV-Mängel</button><button data-ans="auswahl">Anlagen auswählen</button></div>`)
     + `<div class="werkzeug"><input type="search" placeholder="Anlage suchen" id="svq">
       <select id="svo"><option value="">Alle Objekte</option>${(S.cache.objekte || []).map((o) => `<option value="${o.id}" ${String(o.id) === z.objekt ? "selected" : ""}>${esc(anzeige("objekte", o))}</option>`).join("")}</select>
       <select id="svs"></select><span id="svk"></span><span class="anzahl" id="sva"></span></div><div id="svinhalt"></div>`;
@@ -106,7 +106,7 @@ SEITEN.svpruefplan = async (el, _, q) => {
       if (z.status === "ueber") return t != null && t < 0;
       if (z.status === "90") return t != null && t <= 90;
       if (z.status === "ohne") return !w;
-      if (z.status === "maengel") return a.tickets_offen > 0 || (w && w.letztes && w.letztes.ergebnis === "Mängel offen");
+      if (z.status === "maengel") return a.tickets_offen > 0 || a.sv_maengel_offen > 0 || (w && w.letztes && w.letztes.ergebnis === "Mängel offen");
       return true;
     });
   };
@@ -115,7 +115,7 @@ SEITEN.svpruefplan = async (el, _, q) => {
     const alle = [];
     for (const a of plan) { if (!a.pruefungen.length) alle.push({ a, w: null }); for (const w of a.pruefungen) alle.push({ a, w }); }
     const ueber = alle.filter((x) => x.w && tageBis(x.w.naechste) < 0).length, bald = alle.filter((x) => x.w && tageBis(x.w.naechste) >= 0 && tageBis(x.w.naechste) <= 90).length;
-    const ohne = alle.filter((x) => !x.w).length, maengel = plan.filter((a) => a.tickets_offen > 0).length;
+    const ohne = alle.filter((x) => !x.w).length, maengel = plan.filter((a) => a.tickets_offen > 0 || a.sv_maengel_offen > 0).length;
     const zeilen = zeilenPlan();
     el.querySelector("#sva").textContent = `${zeilen.length} Einträge`;
     el.querySelector("#svk").innerHTML = `${darf("export") ? `<button class="knopf" id="svcsv">${icon("export")} Excel</button>` : ""}<button class="knopf" id="svdruck">Drucken / PDF</button>`;
@@ -133,7 +133,7 @@ SEITEN.svpruefplan = async (el, _, q) => {
           <td>${esc((w && w.dl_name) || "")}${w && w.intervall_monate ? `<br><span class="klein">alle ${zahl(w.intervall_monate)} Monate</span>` : ""}</td>
           <td>${w ? svErgebnisMarke(w.letztes || (w.letzte ? { datum: w.letzte, ergebnis: "erledigt" } : null)) : ""}</td>
           <td>${w ? `<b>${datum(w.naechste)}</b><br>${faelligMarke(w.naechste)}` : '<span class="marke m-bald">kein Termin</span>'}</td>
-          <td>${a.tickets_offen ? `<span class="marke m-ueber">${a.tickets_offen} offen</span>` : ""}</td>
+          <td>${a.sv_maengel_offen ? `<span class="marke m-ueber">${a.sv_maengel_offen} SV-Mängel</span><br>` : ""}${a.tickets_offen ? `<span class="marke m-bald">${a.tickets_offen} Störmeldung${a.tickets_offen > 1 ? "en" : ""}</span>` : ""}</td>
           <td class="sv-akt">${w ? (darf("wartung_erledigen") ? `<button class="knopf haupt-k klein" data-erl="${w.id}">Prüfung eintragen</button>` : "")
             : (darf("wartung_planen") ? `<button class="knopf haupt-k klein" data-termin="${a.id}">${icon("plus")} Termin</button>` : "")}</td></tr>`).join("")
           || `<tr><td class="leer" colspan="8">Keine Einträge für diese Auswahl.</td></tr>`}</tbody></table></div>`
@@ -211,12 +211,14 @@ SEITEN.svpruefplan = async (el, _, q) => {
     const s = el.querySelector("#svs");
     s.innerHTML = statusOptionen().map(([w, t]) => `<option value="${w}" ${w === z.status ? "selected" : ""}>${t}</option>`).join("");
     const qs = z.objekt ? `?objekt_id=${z.objekt}` : "";
+    el.querySelector("#svs").hidden = el.querySelector("#svq").hidden = z.ansicht === "maengel";
+    if (z.ansicht === "maengel") { el.querySelector("#svk").innerHTML = ""; el.querySelector("#sva").textContent = ""; await svMaengelReiter(el.querySelector("#svinhalt"), z.objekt ? { objekt_id: z.objekt } : {}); return; }
     if (z.ansicht === "plan") { plan = (await api("GET", `svpruefplan${qs}`)).anlagen; zeichnenPlan(); }
     else { anlagen = await api("GET", `anlagen${qs}`); zeichnenAuswahl(); }
   };
   el.querySelectorAll("[data-ans]").forEach((b) => b.onclick = () => {
     z.ansicht = b.dataset.ans; z.status = "";
-    history.replaceState(null, "", `#/svpruefplan${z.ansicht === "auswahl" ? "?ansicht=auswahl" : ""}`);
+    history.replaceState(null, "", `#/svpruefplan${z.ansicht !== "plan" ? "?ansicht=" + z.ansicht : ""}`);
     laden();
   });
   el.querySelector("#svo").onchange = (e) => { z.objekt = e.target.value; laden(); };
@@ -233,7 +235,8 @@ SEITEN.svpruefplan = async (el, _, q) => {
     }
     if (ter) { if (await svTerminAnlegen(plan.find((x) => x.id === Number(ter.dataset.termin)))) laden(); return; }
     const tr = e.target.closest("tr[data-a]");
-    if (tr && z.ansicht === "plan") location.hash = tr.dataset.w ? `#/wartungen/${tr.dataset.w}` : `#/anlagen/${tr.dataset.a}`;
+    if (z.ansicht !== "plan") return;
+    if (tr) location.hash = tr.dataset.w ? `#/wartungen/${tr.dataset.w}` : `#/anlagen/${tr.dataset.a}`;
   });
   await laden();
 };

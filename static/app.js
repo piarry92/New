@@ -1,7 +1,7 @@
 /* Casa CAFM – Oberfläche (ohne Fremdbibliotheken) */
 "use strict";
 
-const VERSION = "2026.11.15-9"; // muss zu VERSION in app.py passen
+const VERSION = "2026.11.15-10"; // muss zu VERSION in app.py passen
 /* Hell- und Dunkelmodus: gemerkte Wahl, sonst wie das Gerät */
 const THEMA = (() => {
   let t = null;
@@ -35,7 +35,7 @@ const ROLLENNAMEN = { admin: "Administrator", benutzer: "Benutzer", zuschauer: "
 const darf = (r) => !!(S.ich && S.ich.rechte && S.ich.rechte[r]);
 const RECHT_RES = { objekte: "anlagen_bearbeiten", anlagen: "anlagen_bearbeiten", plaene: "plaene_bearbeiten", symbole: "plaene_bearbeiten",
   wartungen: "wartung_planen", vertraege: "vertraege_bearbeiten", dienstleister: "vertraege_bearbeiten", zaehler: "zaehler_erfassen",
-  ablesungen: "zaehler_erfassen", dokumente: "dokumente_hochladen" };
+  ablesungen: "zaehler_erfassen", dokumente: "dokumente_hochladen", sv_maengel: "tickets_bearbeiten" };
 const darfNeu = (res) => (res === "tickets" ? darf("tickets_anlegen") : darf(RECHT_RES[res]));
 const darfAendernRes = (res) => (res === "tickets" ? darf("tickets_bearbeiten") : darf(RECHT_RES[res]));
 const darfAendern = () => !!(S.ich && Object.entries(S.ich.rechte || {}).some(([k, v]) => v && k !== "export"));
@@ -716,7 +716,8 @@ DETAIL.objekte = async (el, id, q) => {
   const [o, anl, wart, tick, vert, zae, dok] = await Promise.all([
     api("GET", `objekte/${id}`), api("GET", `anlagen?objekt_id=${id}`), api("GET", `wartungen?objekt_id=${id}`),
     api("GET", `tickets?objekt_id=${id}&offen=1`), api("GET", `vertraege?objekt_id=${id}`), api("GET", `zaehler?objekt_id=${id}`), api("GET", `dokumente?objekt_id=${id}`)]);
-  const plaene = await api("GET", `plaene?objekt_id=${id}`);
+  const [plaene, svm] = await Promise.all([api("GET", `plaene?objekt_id=${id}`), api("GET", `sv_maengel?objekt_id=${id}`)]);
+  const svOffenZahl = svm.filter((m) => ["offen", "in Arbeit"].includes(m.status || "offen")).length;
   const ueber = wart.filter((w) => w.aktiv && tageBis(w.naechste) < 0).length;
   el.innerHTML = seitenkopf(o.name, o.kuerzel + (o.ort ? " · " + o.ort : ""),
     `${darf("anlagen_bearbeiten") ? `<button class="knopf" id="obild">${o.bild ? "Bild ändern" : "Bild hinzufügen"}</button><button class="knopf" id="bearb">Stammdaten bearbeiten</button>` : ""}<button class="knopf" id="oqr">QR-Etiketten</button><button class="knopf" onclick="print()">Drucken</button>`, ["#/objekte", "Objekte"]) + `
@@ -745,6 +746,7 @@ DETAIL.objekte = async (el, id, q) => {
     { titel: "Pläne", zahl: plaene.length, zeigen: (x) => planListe(x, f) },
     { titel: "Wartungsplan", zahl: wart.length, zeigen: (x) => tabelle(x, "wartungen", { filter: f, extraFilter: wartungFilter }) },
     { titel: "Checklisten & Rundgänge", zeigen: (x) => checklistenReiter(x, { objekt_id: o.id }) },
+    { titel: "SV-Mängelplan", zahl: svOffenZahl, zeigen: (x) => svMaengelReiter(x, { objekt_id: String(o.id) }) },
     { titel: "Störmeldungen", zahl: tick.length, zeigen: (x) => tabelle(x, "tickets", { filter: f, extraFilter: ticketFilter, extraStart: "offen" }) },
     { titel: "Verträge", zahl: vert.length, zeigen: (x) => tabelle(x, "vertraege", { filter: f }) },
     { titel: "Zähler", zahl: zae.length, zeigen: (x) => tabelle(x, "zaehler", { filter: f }) },

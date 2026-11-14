@@ -265,6 +265,7 @@ DETAIL.anlagen = async (el, id, q) => {
           ${a.sv_relevant ? ["sv_gegenstand", "sv_grundlage"].map(zeile).join("") : ""}</div>
       </div>
       <div>
+        ${a.sv_relevant ? '<div class="karte" id="svbk"></div><div class="abstand"></div>' : ""}
         <div class="karte" id="qrk"></div>
         <div class="abstand"></div>
         <div class="karte"><h3>${a.plan_id ? "Im Plan: " + esc(refText("plaene", a.plan_id)) : "Plan"}</h3>${a.plan_id ? planAusschnitt(a) : '<div id="aufplan"><p class="klein">Noch nicht auf einem Plan.</p></div>'}</div>
@@ -277,6 +278,7 @@ DETAIL.anlagen = async (el, id, q) => {
   </div>`;
 
   qrKarte(el.querySelector("#qrk"), a);
+  if (a.sv_relevant) svBerichtKarte(el.querySelector("#svbk"), a);
   if (q.get("mangel") === "1" && darf("tickets_anlegen")) {
     history.replaceState(null, "", `#/anlagen/${a.id}`);
     setTimeout(() => mangelDialog(a), 50);
@@ -353,6 +355,7 @@ DETAIL.anlagen = async (el, id, q) => {
     { titel: "Wartungsplan", zahl: wart.length, zeigen: (x) => anlagenWartungsplan(x, a, wart, plan) },
     { titel: "Dokumente", zeigen: dokumenteReiter(f) },
     { titel: "Checklisten", zeigen: (x) => checklistenReiter(x, { objekt_id: a.objekt_id, anlage_id: a.id }) },
+    ...(a.sv_relevant ? [{ titel: "SV-Mängel", zeigen: (x) => svMaengelReiter(x, { objekt_id: String(a.objekt_id), anlage_id: String(a.id) }) }] : []),
   ], Number(q.get("reiter") || 0));
 };
 
