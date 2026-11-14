@@ -128,6 +128,16 @@ einen Leser aus dem Internet.
 - **Rückgabe:** mit Foto, Unterschrift und Bemerkung; fehlende Schlüssel werden als verloren markiert.
 - Neues Recht „Schlüssel anlegen, ausgeben und zurücknehmen“ unter Zugänge & Rechte.
 
+## Berichtswesen je Objekt
+
+- Im Objekt oben auf **„Bericht“** klicken. Zeitraum wählen (letzter Monat, Quartal, Jahr oder eigener Zeitraum),
+  Titel und Anmerkung eintragen und die **Teilbereiche** an- oder abwählen: Überblick, Anlagenbestand, Wartungen
+  und Prüfungen, SV-Prüfplan, SV-Mängel, Mängel und Störungen, Checklisten und Rundgänge, Zähler und Verbrauch,
+  Verträge, Schlüssel und Transponder, Dokumente.
+- „Beträge und Kosten zeigen“ ist standardmäßig aus, damit Berichte an Auftraggeber keine Kosten enthalten.
+- Der Bericht öffnet sich im Casa-Design mit Deckblatt (Objektbild, Zeitraum, Inhalt), Kennzahlen, Diagrammen,
+  Tabellen und Seitenzahlen. Im Druckfenster „Als PDF speichern“ wählen. Die Auswahl merkt sich das Programm.
+
 ## E-Mail, Push und App
 
 - **E-Mail:** Ein Administrator trägt unter Einstellungen › „E-Mail-Versand (Mailserver)“ den Mailserver ein

@@ -1,7 +1,7 @@
 /* Casa CAFM – Oberfläche (ohne Fremdbibliotheken) */
 "use strict";
 
-const VERSION = "2026.11.15-14"; // muss zu VERSION in app.py passen
+const VERSION = "2026.11.15-15"; // muss zu VERSION in app.py passen
 /* Hell- und Dunkelmodus: gemerkte Wahl, sonst wie das Gerät */
 const THEMA = (() => {
   let t = null;
@@ -722,7 +722,7 @@ DETAIL.objekte = async (el, id, q) => {
   const svOffenZahl = svm.filter((m) => ["offen", "in Arbeit"].includes(m.status || "offen")).length;
   const ueber = wart.filter((w) => w.aktiv && tageBis(w.naechste) < 0).length;
   el.innerHTML = seitenkopf(o.name, o.kuerzel + (o.ort ? " · " + o.ort : ""),
-    `${darf("anlagen_bearbeiten") ? `<button class="knopf" id="obild">${o.bild ? "Bild ändern" : "Bild hinzufügen"}</button><button class="knopf" id="bearb">Stammdaten bearbeiten</button>` : ""}<button class="knopf" id="oqr">QR-Etiketten</button><button class="knopf" onclick="print()">Drucken</button>`, ["#/objekte", "Objekte"]) + `
+    `${darf("anlagen_bearbeiten") ? `<button class="knopf" id="obild">${o.bild ? "Bild ändern" : "Bild hinzufügen"}</button><button class="knopf" id="bearb">Stammdaten bearbeiten</button>` : ""}<button class="knopf haupt-k" id="obericht">${icon("export")} Bericht</button><button class="knopf" id="oqr">QR-Etiketten</button><button class="knopf" onclick="print()">Drucken</button>`, ["#/objekte", "Objekte"]) + `
     ${o.bild ? `<div class="objekt-banner"><img src="${objektBildUrl(o)}" alt="${esc(o.name)}"><div class="ob-text"><b>${esc(o.name)}</b><span>${esc([o.strasse, [o.plz, o.ort].filter(Boolean).join(" ")].filter(Boolean).join(", "))}</span></div></div><div class="abstand"></div>` : ""}
     <div class="raster k4">
       <div class="karte kennzahl orange"><div class="wert">${tick.length}</div><div class="text">offene Störmeldungen</div></div>
@@ -741,6 +741,7 @@ DETAIL.objekte = async (el, id, q) => {
   const ob = document.getElementById("obild");
   if (ob) ob.onclick = async () => { if (await objektBildWaehlen(o)) route(); };
   bildAblage(el.querySelector(".objekt-banner") || el.querySelector(".raster.k4"), o, route);
+  document.getElementById("obericht").onclick = () => berichtDialog(o);
   document.getElementById("oqr").onclick = () => etikettenDrucken(anl, `QR-Etiketten ${o.kuerzel}`);
   const f = { objekt_id: String(id) };
   reiterLeiste(el.querySelector("#r"), [

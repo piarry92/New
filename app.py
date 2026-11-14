@@ -45,7 +45,7 @@ OBJ_PFAD = DATEN / "objektbilder"
 SCHL_PFAD = DATEN / "schluesselfotos"
 MAX_SYMBOL = 2 * 1024 * 1024
 MAX_UPLOAD = 25 * 1024 * 1024
-VERSION = "2026.11.15-14"  # muss zu VERSION in static/app.js passen
+VERSION = "2026.11.15-15"  # muss zu VERSION in static/app.js passen
 SITZUNG_TAGE = 7
 
 GEWERKE = [
@@ -1667,6 +1667,153 @@ def schluessel_mail_gemeldet(con, kennung: str, ok: bool, fehler: str) -> None:
                     (fehler[:300], int(uid)))
 
 
+# ---------------------------------------------------------------------------
+# Berichtswesen je Objekt
+# ---------------------------------------------------------------------------
+BERICHT_TEILE = ["ueberblick", "anlagen", "wartung", "sv", "svmaengel", "tickets", "checklisten", "zaehler",
+                 "vertraege", "schluessel", "dokumente"]
+
+
+def objekt_bericht(con, oid: int, von: str, bis: str, teile: list, kosten: bool) -> dict:
+    o = zeile(con.execute("SELECT * FROM objekte WHERE id=?", (oid,)).fetchone())
+    if not o:
+        raise Fehler(404, "Objekt nicht gefunden.")
+    o.pop("qr_token", None)
+    hs = heute().isoformat()
+    bis_ende = bis + "T23:59:59"
+    aus = {"objekt": o, "von": von, "bis": bis, "erstellt": jetzt(), "teile": teile, "kosten": kosten}
+    anl = [dict(r) for r in con.execute("SELECT id, nummer, bezeichnung, gewerk, status, standort, hersteller, baujahr, sv_relevant, "
+                                        "pruefung_pflicht, wartung_pflicht FROM anlagen WHERE objekt_id=? "
+                                        "ORDER BY gewerk COLLATE NOCASE, nummer COLLATE NOCASE, bezeichnung COLLATE NOCASE", (oid,))]
+    namen = {a["id"]: a["bezeichnung"] for a in anl}
+    zaehle = lambda liste, feld: sorted(  # noqa: E731
+        ({k: sum(1 for x in liste if (x.get(feld) or "ohne Angabe") == k) for k in {x.get(feld) or "ohne Angabe" for x in liste}}).items(),
+        key=lambda kv: -kv[1])
+    tick_alle = [dict(r) for r in con.execute(
+        "SELECT id, nummer, titel, status, prioritaet, gewerk, art, anlage_id, gemeldet_am, erledigt_am, faellig_am, kosten "
+        "FROM tickets WHERE objekt_id=? ORDER BY gemeldet_am DESC", (oid,))]
+    offen_t = [t for t in tick_alle if t["status"] not in ("Erledigt", "Abgeschlossen")]
+    wart = [dict(r) for r in con.execute("SELECT * FROM wartungen WHERE objekt_id=? AND aktiv=1", (oid,))]
+    if "ueberblick" in teile:
+        aus["ueberblick"] = {
+            "anlagen": len(anl), "tickets_offen": len(offen_t),
+            "tickets_zeitraum": sum(1 for t in tick_alle if von <= (t["gemeldet_am"] or "") <= bis),
+            "wartung_ueberfaellig": sum(1 for w in wart if (w["naechste"] or "9") < hs),
+            "wartung_erledigt": con.execute("SELECT COUNT(*) FROM wartung_historie h JOIN wartungen w ON w.id=h.wartung_id "
+                                            "WHERE w.objekt_id=? AND h.datum BETWEEN ? AND ?", (oid, von, bis)).fetchone()[0],
+            "sv_maengel_offen": con.execute("SELECT COUNT(*) FROM sv_maengel WHERE objekt_id=? AND status IN ('offen','in Arbeit')",
+                                            (oid,)).fetchone()[0],
+            "rundgaenge": con.execute("SELECT COUNT(*) FROM checklisten_durchgaenge WHERE objekt_id=? AND zeit BETWEEN ? AND ?",
+                                      (oid, von, bis_ende)).fetchone()[0],
+        }
+    if "anlagen" in teile:
+        aus["anlagen"] = {"liste": anl[:400], "nach_gewerk": zaehle(anl, "gewerk"), "nach_status": zaehle(anl, "status"),
+                          "pflichtig": sum(1 for a in anl if a["pruefung_pflicht"] or a["wartung_pflicht"] or a["sv_relevant"])}
+    if "wartung" in teile:
+        erledigt = [dict(r) for r in con.execute(
+            "SELECT h.datum, h.ergebnis, h.bemerkung, h.erfasst_von, w.titel, w.art, w.anlage_id FROM wartung_historie h "
+            "JOIN wartungen w ON w.id=h.wartung_id WHERE w.objekt_id=? AND h.datum BETWEEN ? AND ? ORDER BY h.datum", (oid, von, bis))]
+        for e in erledigt:
+            e["anlage"] = namen.get(e["anlage_id"])
+        bis90 = (dt.date.fromisoformat(bis) + dt.timedelta(days=90)).isoformat()
+        aus["wartung"] = {
+            "erledigt": erledigt, "nach_ergebnis": zaehle(erledigt, "ergebnis"),
+            "ueberfaellig": [{"titel": w["titel"], "art": w["art"], "naechste": w["naechste"], "anlage": namen.get(w["anlage_id"])}
+                             for w in sorted(wart, key=lambda w: w["naechste"] or "") if (w["naechste"] or "9") < hs],
+            "anstehend": [{"titel": w["titel"], "art": w["art"], "naechste": w["naechste"], "anlage": namen.get(w["anlage_id"])}
+                          for w in sorted(wart, key=lambda w: w["naechste"] or "") if hs <= (w["naechste"] or "") <= bis90],
+            "aufgaben": len(wart),
+        }
+    if "sv" in teile:
+        aus["sv"] = sv_pruefplan(con, {"objekt_id": [str(oid)]})["anlagen"]
+    if "svmaengel" in teile:
+        sm = [dict(r) for r in con.execute("SELECT * FROM sv_maengel WHERE objekt_id=? ORDER BY CASE einstufung WHEN 'gefährlich' THEN 0 "
+                                           "WHEN 'wesentlich' THEN 1 ELSE 2 END, frist", (oid,))]
+        for m in sm:
+            m["anlage"] = namen.get(m["anlage_id"])
+        aus["svmaengel"] = {"offen": [m for m in sm if m["status"] in ("offen", "in Arbeit")],
+                            "behoben_zeitraum": [m for m in sm if m["status"] in ("behoben", "nachgeprüft") and von <= (m["behoben_am"] or "") <= bis],
+                            "neu_zeitraum": sum(1 for m in sm if von <= (m["erstellt"] or "")[:10] <= bis)}
+    if "tickets" in teile:
+        zr = [t for t in tick_alle if von <= (t["gemeldet_am"] or "") <= bis]
+        dauer = [(dt.date.fromisoformat(t["erledigt_am"]) - dt.date.fromisoformat(t["gemeldet_am"])).days for t in zr
+                 if t["erledigt_am"] and t["gemeldet_am"]]
+        for t in zr + offen_t:
+            t["anlage"] = namen.get(t["anlage_id"])
+            if not kosten:
+                t.pop("kosten", None)
+        aus["tickets"] = {"zeitraum": zr[:300], "offen": offen_t[:300], "nach_status": zaehle(zr, "status"),
+                          "nach_gewerk": zaehle(zr, "gewerk"), "nach_prioritaet": zaehle(zr, "prioritaet"),
+                          "dauer_tage": round(sum(dauer) / len(dauer), 1) if dauer else None,
+                          "monate": [[m, sum(1 for t in zr if (t["gemeldet_am"] or "")[:7] == m)] for m in _monate(von, bis)]}
+        if kosten:
+            aus["tickets"]["kosten"] = round(sum(t.get("kosten") or 0 for t in zr), 2)
+    if "checklisten" in teile:
+        dg = [dict(r) for r in con.execute(
+            "SELECT d.zeit, d.wer, d.abweichungen, d.pruef_status, d.anlage_id, c.titel, c.art FROM checklisten_durchgaenge d "
+            "JOIN checklisten c ON c.id=d.checkliste_id WHERE d.objekt_id=? AND d.zeit BETWEEN ? AND ? ORDER BY d.zeit", (oid, von, bis_ende))]
+        aus["checklisten"] = {"liste": dg, "abweichungen": sum(d["abweichungen"] or 0 for d in dg),
+                              "geprueft": sum(1 for d in dg if d["pruef_status"] == "bestaetigt"),
+                              "listen": con.execute("SELECT COUNT(*) FROM checklisten WHERE objekt_id=? AND aktiv=1", (oid,)).fetchone()[0]}
+    if "zaehler" in teile:
+        zl = []
+        for z in con.execute("SELECT * FROM zaehler WHERE objekt_id=? ORDER BY medium, nummer", (oid,)):
+            z = dict(z)
+            ab = [dict(r) for r in con.execute("SELECT datum, stand FROM ablesungen WHERE zaehler_id=? AND datum BETWEEN ? AND ? ORDER BY datum",
+                                               (z["id"], von, bis))]
+            vor = con.execute("SELECT datum, stand FROM ablesungen WHERE zaehler_id=? AND datum<? ORDER BY datum DESC LIMIT 1",
+                              (z["id"], von)).fetchone()
+            reihe = ([dict(vor)] if vor else []) + ab
+            faktor = z["faktor"] or 1
+            z["verbrauch"] = round((reihe[-1]["stand"] - reihe[0]["stand"]) * faktor, 3) if len(reihe) >= 2 else None
+            z["ablesungen"] = len(ab)
+            z["letzte"] = ab[-1] if ab else None
+            monate = {}
+            for a, b in zip(reihe, reihe[1:]):
+                monate[b["datum"][:7]] = round(monate.get(b["datum"][:7], 0) + (b["stand"] - a["stand"]) * faktor, 3)
+            z["monate"] = [[m, monate.get(m)] for m in _monate(von, bis)]
+            zl.append(z)
+        aus["zaehler"] = zl
+    if "vertraege" in teile:
+        vt = []
+        for v in con.execute("SELECT v.*, d.firma FROM vertraege v LEFT JOIN dienstleister d ON d.id=v.dienstleister_id "
+                             "WHERE v.objekt_id=? ORDER BY v.ende", (oid,)):
+            v = dict(v)
+            if v["ende"] and v["ende"] < von:
+                continue
+            if v["ende"] and v["kuendigungsfrist_monate"]:
+                v["kuendigen_bis"] = plus_monate(dt.date.fromisoformat(v["ende"]), -int(v["kuendigungsfrist_monate"])).isoformat()
+            if not kosten:
+                v.pop("betrag_jahr", None)
+            vt.append(v)
+        aus["vertraege"] = vt
+    if "schluessel" in teile:
+        ug = uebergaben_liste(con, {"objekt_id": [str(oid)]})
+        aus["schluessel"] = {
+            "zeitraum": [u for u in ug if von <= u["ausgabe_zeit"][:10] <= bis],
+            "offen": [u for u in ug if u["status"] == "ausgegeben"],
+            "verloren": [dict(r) for r in con.execute("SELECT nummer, bezeichnung, art FROM schluessel WHERE objekt_id=? AND status='verloren'", (oid,))],
+            "bestand": con.execute("SELECT COUNT(*) FROM schluessel WHERE objekt_id=?", (oid,)).fetchone()[0],
+        }
+        jz = jetzt()[:16]
+        aus["schluessel"]["zu_spaet"] = sum(1 for u in aus["schluessel"]["zeitraum"]
+                                            if (u["rueckgabe_zeit"] or jz)[:16] > u["rueckgabe_bis"])
+    if "dokumente" in teile:
+        aus["dokumente"] = [dict(r) for r in con.execute(
+            "SELECT titel, kategorie, dateiname, hochgeladen_am FROM dokumente WHERE objekt_id=? AND hochgeladen_am BETWEEN ? AND ? "
+            "ORDER BY hochgeladen_am", (oid, von, bis_ende))]
+    return aus
+
+
+def _monate(von: str, bis: str) -> list:
+    a, b = dt.date.fromisoformat(von[:7] + "-01"), dt.date.fromisoformat(bis[:7] + "-01")
+    aus = []
+    while a <= b and len(aus) < 36:
+        aus.append(a.isoformat()[:7])
+        a = plus_monate(a, 1)
+    return aus
+
+
 def sv_uebernehmen(con, benutzer, rechte, did: int, d: dict) -> dict:
     """Geprüfte Mängel aus einem SV-Bericht in den SV-Mängelplan übernehmen."""
     dok = con.execute("SELECT * FROM dokumente WHERE id=?", (did,)).fetchone()
@@ -2562,6 +2709,19 @@ class Handler(BaseHTTPRequestHandler):
                         anlage_text = ", ".join(x for x in (a["bezeichnung"], a["sv_gegenstand"], a["hersteller"], a["typ"]) if x)
                 self._spaeter = (did, inhalt, endung, schluessel, anlage_text, self.benutzer["name"])
                 return None
+        if erstes == "objekte" and len(teile) == 3 and teile[2] == "bericht" and m == "GET":
+            von = (q.get("von") or [""])[0]
+            bis = (q.get("bis") or [""])[0]
+            try:
+                dv, db_ = dt.date.fromisoformat(von), dt.date.fromisoformat(bis)
+            except ValueError:
+                raise Fehler(400, "Bitte einen gültigen Zeitraum wählen.")
+            if db_ < dv or (db_ - dv).days > 3 * 366:
+                raise Fehler(400, "Der Zeitraum ist ungültig (höchstens drei Jahre).")
+            teile_ = [t for t in (q.get("teile") or [""])[0].split(",") if t in BERICHT_TEILE]
+            if not teile_:
+                raise Fehler(400, "Bitte mindestens einen Teilbereich auswählen.")
+            return self.json(objekt_bericht(con, self.id(teile[1]), von, bis, teile_, (q.get("kosten") or ["0"])[0] == "1"))
         if erstes == "schluesselbestand" and m == "GET":
             oid = (q.get("objekt_id") or [""])[0]
             return self.json({"schluessel": schluessel_bestand(con, int(oid) if oid.isdigit() else None),

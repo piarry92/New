@@ -1103,3 +1103,6 @@ tr.zeile-rot td { background: color-mix(in srgb, #D92D20 7%, transparent); }
 .sl-fotozeile { flex-direction: row; flex-wrap: wrap; gap: 20px; }
 .sl-t { background: #E8F1FB; color: #1D4F91; border-color: transparent; }
 html[data-theme="dark"] .sl-t { background: rgba(80,140,220,.2); color: #A9C8F0; }
+.bt-kopf { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
+.bt-kopf .sl-titel { margin: 0 6px 0 0; }
+.bt-wahl { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px; }
