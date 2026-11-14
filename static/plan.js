@@ -212,7 +212,8 @@ SEITEN.plaene = async (el) => {
 };
 
 /* ---------- Plan-Arbeitsfläche ---------- */
-DETAIL.plaene = async (el, id, q) => {
+/* Plan-Arbeitsfläche; wird in der Standortansicht neben dem Baum gezeigt */
+async function planEditor(el, id, q) {
   await Promise.all([...["objekte", "plaene", "symbole"].map((r) => lade(r)), katLaden()]);
   let daten = await api("GET", `plaene/${id}/anlagen`);
   const plan = daten.plan;
@@ -298,7 +299,7 @@ DETAIL.plaene = async (el, id, q) => {
     ansicht.y = buehne.clientHeight / 2 - a.plan_y * bh * ansicht.s;
     anwenden();
   };
-  const neuLaden = async () => { daten = await api("GET", `plaene/${id}/anlagen`); zeichnen(); };
+  const neuLaden = async () => { daten = await api("GET", `plaene/${id}/anlagen`); zeichnen(); el.dispatchEvent(new CustomEvent("plangeaendert")); };
 
   /* Popup */
   const popupPosition = () => {
@@ -547,7 +548,11 @@ DETAIL.plaene = async (el, id, q) => {
   if (bild.complete && bild.naturalWidth) fertig(); else { bild.onload = () => { bild.onload = einpassen; fertig(); }; bild.onerror = () => melde("Der Grundriss konnte nicht geladen werden.", true); }
   const ro = new ResizeObserver(() => { if (document.body.contains(buehne)) einpassen(); else ro.disconnect(); });
   ro.observe(buehne);
-};
+  el.planApi = {
+    zeige: (aid) => { const a = daten.platziert.find((x) => x.id === aid); if (a) { zentrieren(a); popupZeigen(a); } return !!a; },
+    platzieren: (aid) => { const f = daten.frei.find((x) => x.id === aid); if (f && aendern) modusSetzen({ anlage: f.id, name: f.bezeichnung, gewerk: f.gewerk, zeichen: f.planzeichen, symbol_id: f.symbol_id, kategorie_id: f.kategorie_id, el: el.querySelector(`[data-anlage="${f.id}"]`) }); return !!f; },
+  };
+}
 
 /* Kleiner Planausschnitt für die Anlagen-Seite */
 function planAusschnitt(a) {

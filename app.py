@@ -1140,6 +1140,13 @@ def beispieldaten(con) -> None:
         pfad = f"{pid:06d}_{secrets.token_hex(6)}.png"
         (PLAN_PFAD / pfad).write_bytes(quelle.read_bytes())
         con.execute("UPDATE plaene SET pfad=? WHERE id=?", (pfad, pid))
+        for titel, gebaeude, etage in (("Grundriss EG", "Haupthaus", "EG"), ("Hallenplan", "Halle", "EG")):
+            ziel_objekt = o1 if gebaeude == "Haupthaus" else o2
+            p2 = ins("plaene", objekt_id=ziel_objekt, titel=titel, gebaeude=gebaeude, etage=etage,
+                     dateiname=quelle.name, breite=2400, hoehe=1500, notiz="Beispiel, gleicher Grundriss wie 2. OG")
+            pf2 = f"{p2:06d}_{secrets.token_hex(6)}.png"
+            (PLAN_PFAD / pf2).write_bytes(quelle.read_bytes())
+            con.execute("UPDATE plaene SET pfad=? WHERE id=?", (pf2, p2))
         for aid, x, y in [(anl["a1"], 0.475, 0.66), (anl["a2"], 0.51, 0.66), (anl["bma"], 0.69, 0.70),
                           (anl["hz"], 0.74, 0.80), (anl["rlt"], 0.49, 0.25)]:
             con.execute("UPDATE anlagen SET plan_id=?, plan_x=?, plan_y=? WHERE id=?", (pid, x, y, aid))

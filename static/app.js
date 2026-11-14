@@ -151,7 +151,7 @@ function zelle(ressource, f, z) {
 const NAV = [
   ["start", "Übersicht", "#/"],
   ["objekte", "Objekte", "#/objekte"],
-  ["plaene", "Pläne", "#/plaene"],
+  ["plaene", "Standorte & Pläne", "#/plaene"],
   ["anlagen", "Anlagen", "#/anlagen"],
   ["katalog", "Katalog", "#/katalog"],
   ["wartungen", "Wartungsplan", "#/wartungen"],
