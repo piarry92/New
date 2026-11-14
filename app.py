@@ -43,7 +43,7 @@ SYM_PFAD = DATEN / "symbole"
 OBJ_PFAD = DATEN / "objektbilder"
 MAX_SYMBOL = 2 * 1024 * 1024
 MAX_UPLOAD = 25 * 1024 * 1024
-VERSION = "2026.11.15-11"  # muss zu VERSION in static/app.js passen
+VERSION = "2026.11.15-12"  # muss zu VERSION in static/app.js passen
 SITZUNG_TAGE = 7
 
 GEWERKE = [
@@ -340,6 +340,21 @@ RESSOURCEN: dict[str, dict] = {
             {"name": "notiz", "label": "Notiz", "typ": "text", "liste": True},
         ],
     },
+    "schluessel": {
+        "label": "Schlüssel", "einzahl": "Schlüssel", "anzeige": ["nummer", "bezeichnung"], "sort": "nummer",
+        "felder": [
+            {"name": "objekt_id", "label": "Objekt", "typ": "ref", "ref": "objekte", "pflicht": True, "liste": True},
+            {"name": "nummer", "label": "Schlüssel-Nr.", "typ": "text", "pflicht": True, "liste": True},
+            {"name": "bezeichnung", "label": "Bezeichnung", "typ": "text", "pflicht": True, "liste": True},
+            {"name": "schliessanlage", "label": "Schließanlage / Profil", "typ": "text", "liste": True},
+            {"name": "schliessbereich", "label": "Schließt (Türen, Räume)", "typ": "textarea"},
+            {"name": "anzahl", "label": "Anzahl Exemplare", "typ": "number", "standard": 1, "liste": True},
+            {"name": "aufbewahrung", "label": "Aufbewahrung (Schrank, Haken)", "typ": "text", "liste": True},
+            {"name": "status", "label": "Zustand", "typ": "select", "optionen": ["aktiv", "verloren", "gesperrt", "außer Betrieb"],
+             "standard": "aktiv", "liste": True},
+            {"name": "notiz", "label": "Notiz", "typ": "textarea"},
+        ],
+    },
     "sv_maengel": {
         "label": "SV-Mängel", "einzahl": "SV-Mangel", "anzeige": ["beschreibung"], "sort": "frist",
         "felder": [
@@ -395,6 +410,38 @@ CREATE TABLE IF NOT EXISTS sitzungen (
     token TEXT PRIMARY KEY,
     benutzer_id INTEGER NOT NULL,
     ablauf TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS schluessel_uebergaben (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nummer TEXT,
+    objekt_id INTEGER NOT NULL,
+    schluessel TEXT NOT NULL,
+    ausgeber_id INTEGER,
+    ausgeber_name TEXT NOT NULL,
+    ausgeber_email TEXT,
+    empfaenger_name TEXT NOT NULL,
+    empfaenger_firma TEXT,
+    empfaenger_email TEXT NOT NULL,
+    empfaenger_tel TEXT,
+    zweck TEXT,
+    ausgabe_zeit TEXT NOT NULL,
+    rueckgabe_bis TEXT NOT NULL,
+    erinnerung_um TEXT,
+    quittung_senden INTEGER DEFAULT 1,
+    sig_ausgeber TEXT,
+    sig_empfaenger TEXT,
+    bemerkung TEXT,
+    status TEXT NOT NULL DEFAULT 'ausgegeben',
+    rueckgabe_zeit TEXT,
+    rueckgabe_von TEXT,
+    rueckgabe_bemerkung TEXT,
+    sig_rueckgabe TEXT,
+    quittung_gesendet TEXT,
+    erinnert TEXT,
+    ueberfaellig_gemeldet TEXT,
+    mail_versuche INTEGER DEFAULT 0,
+    mail_fehler TEXT,
+    erstellt TEXT
 );
 CREATE TABLE IF NOT EXISTS sv_auswertungen (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -818,8 +865,9 @@ def neuer_qr_token() -> str:
 EINSTELLUNGEN_STANDARD = {"basis_url": "", "oeffentlich_melden": "0", "oeffentlich_objekt": "1", "mail_aktiv": "0",
                           "smtp_host": "", "smtp_port": "587", "smtp_tls": "starttls", "smtp_user": "", "smtp_pass": "",
                           "smtp_absender": "", "vapid_privat": "", "vapid_public": "",
-                          "ki_aktiv": "0", "ki_schluessel": ""}
-EINSTELLUNGEN_OEFFENTLICH = ("basis_url", "oeffentlich_melden", "oeffentlich_objekt", "mail_aktiv", "ki_aktiv")
+                          "ki_aktiv": "0", "ki_schluessel": "", "feierabend": "17:00", "schluessel_vorlauf": "60"}
+EINSTELLUNGEN_OEFFENTLICH = ("basis_url", "oeffentlich_melden", "oeffentlich_objekt", "mail_aktiv", "ki_aktiv", "feierabend",
+                             "schluessel_vorlauf")
 EINSTELLUNGEN_SMTP = ("smtp_host", "smtp_port", "smtp_tls", "smtp_user", "smtp_absender")
 VERSAND: "versand.Versand | None" = None
 MIETER_THEMEN = {
@@ -921,6 +969,7 @@ RECHTE = [
     ("vertraege_bearbeiten", "Verträge und Dienstleister bearbeiten", "Verwaltung"),
     ("zaehler_erfassen", "Zähler anlegen und Zählerstände erfassen", "Verwaltung"),
     ("dokumente_hochladen", "Dokumente und Fotos hochladen", "Verwaltung"),
+    ("schluessel_verwalten", "Schlüssel anlegen, ausgeben und zurücknehmen", "Verwaltung"),
     ("export", "Listen nach Excel exportieren", "Verwaltung"),
     ("loeschen", "Einträge löschen", "Verwaltung"),
     ("katalog_bearbeiten", "Katalog pflegen: Kategorien, Hersteller, Bezeichnungen, Mängel", "System"),
@@ -968,7 +1017,8 @@ def effektive_rechte(con, b) -> dict:
 
 RESSOURCE_RECHT = {
     "objekte": "anlagen_bearbeiten", "anlagen": "anlagen_bearbeiten", "plaene": "plaene_bearbeiten",
-    "symbole": "plaene_bearbeiten", "wartungen": "wartung_planen", "sv_maengel": "tickets_bearbeiten", "vertraege": "vertraege_bearbeiten",
+    "symbole": "plaene_bearbeiten", "wartungen": "wartung_planen", "sv_maengel": "tickets_bearbeiten",
+    "schluessel": "schluessel_verwalten", "schluesseluebergaben": "schluessel_verwalten", "vertraege": "vertraege_bearbeiten",
     "dienstleister": "vertraege_bearbeiten", "zaehler": "zaehler_erfassen", "ablesungen": "zaehler_erfassen",
     "dokumente": "dokumente_hochladen", "kat_kategorien": "katalog_bearbeiten", "kat_gruppen": "katalog_bearbeiten",
     "kat_typen": "katalog_bearbeiten", "kat_maengel": "katalog_bearbeiten", "checklisten": "wartung_planen",
@@ -997,6 +1047,8 @@ def benoetigtes_recht(m: str, teile: list[str]) -> str | None:
         return "tickets_bearbeiten"
     if t0 == "svberichte":
         return "tickets_bearbeiten"
+    if t0 in ("schluesseluebergaben", "schluesselbestand"):
+        return None if m == "GET" else "schluessel_verwalten"
     if t0 == "wartungen" and len(teile) == 3 and teile[2] == "erledigt":
         return "wartung_erledigen"
     if t0 == "tickets":
@@ -1306,6 +1358,256 @@ def wartungsplan(con, jahr: int, q: dict) -> dict:
     return {"jahr": jahr, "aufgaben": zeilen, "ohne_plan": ohne}
 
 
+# ---------------------------------------------------------------------------
+# Schlüsselmanager
+# ---------------------------------------------------------------------------
+EMAIL_MUSTER = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def _zeitpunkt(wert, label: str) -> str:
+    try:
+        return dt.datetime.fromisoformat(str(wert)).isoformat(timespec="minutes")
+    except (TypeError, ValueError):
+        raise Fehler(400, f"{label} ist ungültig.")
+
+
+def schluessel_standardzeiten(con, tag: dt.date | None = None) -> dict:
+    tag = tag or heute()
+    hh, mm = (einstellung(con, "feierabend") or "17:00").split(":")
+    bis = dt.datetime.combine(tag, dt.time(int(hh), int(mm)))
+    vorlauf = int(einstellung(con, "schluessel_vorlauf") or 60)
+    return {"rueckgabe_bis": bis.isoformat(timespec="minutes"),
+            "erinnerung_um": (bis - dt.timedelta(minutes=vorlauf)).isoformat(timespec="minutes"),
+            "feierabend": f"{hh}:{mm}", "vorlauf": vorlauf}
+
+
+def schluessel_offen(con, ohne_uebergabe: int | None = None) -> dict:
+    """Wie viele Exemplare je Schlüssel gerade ausgegeben sind."""
+    offen: dict[int, int] = {}
+    for r in con.execute("SELECT id, schluessel FROM schluessel_uebergaben WHERE status='ausgegeben'"):
+        if r["id"] == ohne_uebergabe:
+            continue
+        for s in json.loads(r["schluessel"] or "[]"):
+            offen[s["id"]] = offen.get(s["id"], 0) + int(s.get("anzahl") or 1)
+    return offen
+
+
+def schluessel_bestand(con, objekt_id=None) -> list:
+    offen = schluessel_offen(con)
+    inhaber: dict[int, list] = {}
+    for r in con.execute("SELECT id, nummer, empfaenger_name, empfaenger_firma, rueckgabe_bis, schluessel FROM schluessel_uebergaben "
+                         "WHERE status='ausgegeben'"):
+        for s in json.loads(r["schluessel"] or "[]"):
+            inhaber.setdefault(s["id"], []).append({"uebergabe_id": r["id"], "nummer": r["nummer"], "name": r["empfaenger_name"],
+                                                     "firma": r["empfaenger_firma"], "bis": r["rueckgabe_bis"], "anzahl": s.get("anzahl", 1)})
+    sql, werte = "SELECT * FROM schluessel", []
+    if objekt_id:
+        sql += " WHERE objekt_id=?"
+        werte.append(objekt_id)
+    aus = []
+    for r in con.execute(sql + " ORDER BY nummer COLLATE NOCASE", werte):
+        z = dict(r)
+        z["ausgegeben"] = offen.get(z["id"], 0)
+        z["verfuegbar"] = max(int(z["anzahl"] or 1) - z["ausgegeben"], 0) if z["status"] in (None, "", "aktiv") else 0
+        z["inhaber"] = inhaber.get(z["id"], [])
+        aus.append(z)
+    return aus
+
+
+def uebergabe_laden(con, uid: int) -> dict:
+    r = con.execute("SELECT u.*, o.kuerzel AS o_kuerzel, o.name AS o_name, o.strasse AS o_strasse, o.plz AS o_plz, o.ort AS o_ort "
+                    "FROM schluessel_uebergaben u LEFT JOIN objekte o ON o.id=u.objekt_id WHERE u.id=?", (uid,)).fetchone()
+    if not r:
+        raise Fehler(404, "Übergabe nicht gefunden.")
+    z = dict(r)
+    z["schluessel"] = json.loads(z["schluessel"] or "[]")
+    return z
+
+
+def uebergaben_liste(con, q: dict) -> list:
+    bed, werte = [], []
+    for feld in ("objekt_id", "status"):
+        if q.get(feld) and q[feld][0]:
+            bed.append(f"u.{feld}=?")
+            werte.append(q[feld][0])
+    sql = ("SELECT u.id, u.nummer, u.objekt_id, u.schluessel, u.ausgeber_name, u.empfaenger_name, u.empfaenger_firma, u.empfaenger_email, "
+           "u.empfaenger_tel, u.zweck, u.ausgabe_zeit, u.rueckgabe_bis, u.erinnerung_um, u.status, u.rueckgabe_zeit, u.rueckgabe_von, "
+           "u.erinnert, u.quittung_gesendet, u.mail_fehler, o.kuerzel AS o_kuerzel, o.name AS o_name "
+           "FROM schluessel_uebergaben u LEFT JOIN objekte o ON o.id=u.objekt_id")
+    if bed:
+        sql += " WHERE " + " AND ".join(bed)
+    aus = []
+    for r in con.execute(sql + " ORDER BY CASE u.status WHEN 'ausgegeben' THEN 0 ELSE 1 END, u.rueckgabe_bis, u.id DESC LIMIT 500", werte):
+        z = dict(r)
+        z["schluessel"] = json.loads(z["schluessel"] or "[]")
+        aus.append(z)
+    return aus
+
+
+def _unterschrift(wert) -> str | None:
+    if not wert:
+        return None
+    wert = str(wert)
+    if not wert.startswith("data:image/png;base64,") or len(wert) > 600_000:
+        raise Fehler(400, "Die Unterschrift ist ungültig.")
+    return wert
+
+
+def uebergabe_anlegen(con, benutzer, d: dict) -> dict:
+    try:
+        objekt_id = int(d.get("objekt_id"))
+    except (TypeError, ValueError):
+        raise Fehler(400, "Bitte ein Objekt wählen.")
+    if not con.execute("SELECT 1 FROM objekte WHERE id=?", (objekt_id,)).fetchone():
+        raise Fehler(400, "Objekt nicht gefunden.")
+    name = str(d.get("empfaenger_name") or "").strip()[:200]
+    email = str(d.get("empfaenger_email") or "").strip()[:200]
+    ausgeber = str(d.get("ausgeber_name") or benutzer["name"]).strip()[:200]
+    if not name:
+        raise Fehler(400, "Bitte den Namen der Person eintragen, die den Schlüssel erhält.")
+    if not EMAIL_MUSTER.match(email):
+        raise Fehler(400, "Bitte eine gültige E-Mail-Adresse der Person eintragen, die den Schlüssel erhält.")
+    gewaehlt = d.get("schluessel") or []
+    if not isinstance(gewaehlt, list) or not gewaehlt or len(gewaehlt) > 50:
+        raise Fehler(400, "Bitte mindestens einen Schlüssel auswählen.")
+    offen = schluessel_offen(con)
+    liste = []
+    for g in gewaehlt:
+        try:
+            sid, anz = int(g.get("id")), max(int(g.get("anzahl") or 1), 1)
+        except (TypeError, ValueError, AttributeError):
+            raise Fehler(400, "Schlüsselauswahl ist ungültig.")
+        s = con.execute("SELECT * FROM schluessel WHERE id=? AND objekt_id=?", (sid, objekt_id)).fetchone()
+        if not s:
+            raise Fehler(400, "Ein gewählter Schlüssel gehört nicht zu diesem Objekt.")
+        if s["status"] not in (None, "", "aktiv"):
+            raise Fehler(400, f'Schlüssel {s["nummer"]} ist {s["status"]} und kann nicht ausgegeben werden.')
+        frei = int(s["anzahl"] or 1) - offen.get(sid, 0)
+        if anz > frei:
+            raise Fehler(400, f'Von Schlüssel {s["nummer"]} sind nur noch {max(frei, 0)} Exemplare da.')
+        liste.append({"id": sid, "nummer": s["nummer"], "bezeichnung": s["bezeichnung"], "anzahl": anz})
+    std = schluessel_standardzeiten(con)
+    bis = _zeitpunkt(d.get("rueckgabe_bis") or std["rueckgabe_bis"], "Rückgabe bis")
+    erinnerung = None
+    if d.get("erinnern", True):
+        erinnerung = _zeitpunkt(d.get("erinnerung_um") or std["erinnerung_um"], "Erinnerung")
+    jetzt_ = jetzt()
+    if bis <= jetzt_[:16]:
+        raise Fehler(400, "Der Rückgabezeitpunkt liegt in der Vergangenheit.")
+    sig_e = _unterschrift(d.get("sig_empfaenger"))
+    if not sig_e:
+        raise Fehler(400, "Bitte die Person, die den Schlüssel erhält, unterschreiben lassen.")
+    cur = con.execute(
+        "INSERT INTO schluessel_uebergaben (objekt_id, schluessel, ausgeber_id, ausgeber_name, ausgeber_email, empfaenger_name, "
+        "empfaenger_firma, empfaenger_email, empfaenger_tel, zweck, ausgabe_zeit, rueckgabe_bis, erinnerung_um, quittung_senden, "
+        "sig_ausgeber, sig_empfaenger, bemerkung, erstellt) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (objekt_id, json.dumps(liste, ensure_ascii=False), benutzer["id"], ausgeber, benutzer["email"], name,
+         str(d.get("empfaenger_firma") or "").strip()[:200] or None, email, str(d.get("empfaenger_tel") or "").strip()[:60] or None,
+         str(d.get("zweck") or "").strip()[:500] or None, jetzt_, bis, erinnerung, 1 if d.get("quittung", True) else 0,
+         _unterschrift(d.get("sig_ausgeber")), sig_e, str(d.get("bemerkung") or "").strip()[:2000] or None, jetzt_))
+    uid = cur.lastrowid
+    nummer = f"SÜ-{heute().year}-{uid:04d}"
+    con.execute("UPDATE schluessel_uebergaben SET nummer=? WHERE id=?", (nummer, uid))
+    protokollieren(con, benutzer, "Schlüssel ausgegeben", "schluessel_uebergaben", uid,
+                   f'{nummer} an {name}: ' + ", ".join(s["nummer"] for s in liste))
+    return uebergabe_laden(con, uid)
+
+
+def uebergabe_aendern(con, benutzer, uid: int, d: dict) -> dict:
+    u = uebergabe_laden(con, uid)
+    if u["status"] != "ausgegeben":
+        raise Fehler(400, "Diese Übergabe ist schon abgeschlossen.")
+    if "rueckgabe_bis" in d:
+        bis = _zeitpunkt(d["rueckgabe_bis"], "Rückgabe bis")
+        con.execute("UPDATE schluessel_uebergaben SET rueckgabe_bis=?, ueberfaellig_gemeldet=NULL WHERE id=?", (bis, uid))
+    if "erinnerung_um" in d:
+        er = _zeitpunkt(d["erinnerung_um"], "Erinnerung") if d["erinnerung_um"] else None
+        con.execute("UPDATE schluessel_uebergaben SET erinnerung_um=?, erinnert=NULL, mail_versuche=0 WHERE id=?", (er, uid))
+    protokollieren(con, benutzer, "Rückgabezeit geändert", "schluessel_uebergaben", uid, u["nummer"])
+    return uebergabe_laden(con, uid)
+
+
+def uebergabe_rueckgabe(con, benutzer, uid: int, d: dict) -> dict:
+    u = uebergabe_laden(con, uid)
+    if u["status"] != "ausgegeben":
+        raise Fehler(400, "Diese Schlüssel sind schon zurückgegeben.")
+    con.execute("UPDATE schluessel_uebergaben SET status='zurueck', rueckgabe_zeit=?, rueckgabe_von=?, rueckgabe_bemerkung=?, "
+                "sig_rueckgabe=? WHERE id=?", (jetzt(), benutzer["name"], str(d.get("bemerkung") or "").strip()[:2000] or None,
+                                              _unterschrift(d.get("unterschrift")), uid))
+    if d.get("fehlend"):
+        for sid in d["fehlend"]:
+            con.execute("UPDATE schluessel SET status='verloren', geaendert=? WHERE id=?", (jetzt(), int(sid)))
+    protokollieren(con, benutzer, "Schlüssel zurückgenommen", "schluessel_uebergaben", uid, u["nummer"])
+    return uebergabe_laden(con, uid)
+
+
+def _zeit_text(iso: str) -> str:
+    t = dt.datetime.fromisoformat(iso)
+    return f'{t.strftime("%d.%m.%Y")} um {t.strftime("%H:%M")} Uhr'
+
+
+def _schluessel_text(u: dict) -> str:
+    liste = json.loads(u["schluessel"]) if isinstance(u["schluessel"], str) else u["schluessel"]
+    return "\n".join(f'– {x["nummer"]} {x["bezeichnung"]}' + (f' ({x["anzahl"]} Stück)' if int(x.get("anzahl") or 1) > 1 else "")
+                     for x in liste)
+
+
+def schluessel_mails_holen(con, mail_moeglich: bool) -> list:
+    """Vom Versanddienst aufgerufen: Quittungen und Erinnerungen an Empfänger, Überfällig-Hinweise intern."""
+    jetzt_ = dt.datetime.now().isoformat(timespec="minutes")
+    # überfällig: intern Bescheid geben (unabhängig vom Mailversand)
+    for u in con.execute("SELECT u.*, o.kuerzel AS o_kuerzel FROM schluessel_uebergaben u LEFT JOIN objekte o ON o.id=u.objekt_id "
+                         "WHERE u.status='ausgegeben' AND u.rueckgabe_bis<? AND u.ueberfaellig_gemeldet IS NULL", (jetzt_,)).fetchall():
+        if u["ausgeber_id"]:
+            benachrichtigen(con, u["ausgeber_id"], f'sl-ueber:{u["id"]}:{u["rueckgabe_bis"]}', f'Schlüssel nicht zurück: {u["empfaenger_name"]}',
+                            f'{u["nummer"]} ({u["o_kuerzel"] or ""}) sollte bis {_zeit_text(u["rueckgabe_bis"])} zurück sein.',
+                            "#/schluessel", "warnung")
+        con.execute("UPDATE schluessel_uebergaben SET ueberfaellig_gemeldet=? WHERE id=?", (jetzt_, u["id"]))
+    if not mail_moeglich:
+        return []
+    aus = []
+    for u in con.execute("SELECT u.*, o.kuerzel AS o_kuerzel, o.name AS o_name, o.strasse AS o_strasse, o.ort AS o_ort "
+                         "FROM schluessel_uebergaben u LEFT JOIN objekte o ON o.id=u.objekt_id "
+                         "WHERE u.mail_versuche<5 AND ((u.quittung_senden=1 AND u.quittung_gesendet IS NULL AND u.ausgabe_zeit>=?) "
+                         "OR (u.status='ausgegeben' AND u.erinnerung_um IS NOT NULL AND u.erinnerung_um<=? AND u.erinnert IS NULL "
+                         "AND u.rueckgabe_bis>?)) LIMIT 20",
+                         ((dt.datetime.now() - dt.timedelta(days=2)).isoformat(timespec="seconds"), jetzt_, jetzt_)).fetchall():
+        u = dict(u)
+        objekt = " ".join(x for x in (u["o_name"], f'({u["o_strasse"]}, {u["o_ort"]})' if u["o_strasse"] else "") if x)
+        liste = _schluessel_text(u)
+        gruss = f'\n\nMit freundlichen Grüßen\n{u["ausgeber_name"]}\nCasa Concept Consulting GmbH & Co. KG'
+        extern = {"antwort_an": u["ausgeber_email"] or "",
+                  "fuss": "Casa Concept Consulting GmbH & Co. KG · Diese E-Mail wurde automatisch zu Ihrer Schlüsselübergabe versendet."}
+        heute_ = u["rueckgabe_bis"][:10] == jetzt_[:10]
+        if u["quittung_senden"] == 1 and not u["quittung_gesendet"]:
+            aus.append({"id": f'q:{u["id"]}', "an": u["empfaenger_email"],
+                        "betreff": f'Schlüsselübergabe {u["nummer"]}: {u["o_name"] or ""}'.strip(),
+                        "text": f'Guten Tag {u["empfaenger_name"]},\n\nSie haben am {_zeit_text(u["ausgabe_zeit"])} für das Objekt {objekt} '
+                                f'folgende Schlüssel erhalten:\n{liste}\n\nBitte geben Sie die Schlüssel '
+                                f'{"heute" if heute_ else "bis zum " + dt.date.fromisoformat(u["rueckgabe_bis"][:10]).strftime("%d.%m.%Y")} '
+                                f'bis spätestens {u["rueckgabe_bis"][11:16]} Uhr bei {u["ausgeber_name"]} zurück.' + gruss,
+                        "extern": extern})
+        elif u["erinnerung_um"] and not u["erinnert"]:
+            aus.append({"id": f'e:{u["id"]}', "an": u["empfaenger_email"],
+                        "betreff": f'Erinnerung: Schlüsselrückgabe {"heute " if heute_ else ""}bis {u["rueckgabe_bis"][11:16]} Uhr',
+                        "text": f'Guten Tag {u["empfaenger_name"]},\n\nwir möchten Sie daran erinnern, die Schlüssel für das Objekt {objekt} '
+                                f'{"heute" if heute_ else "am " + dt.date.fromisoformat(u["rueckgabe_bis"][:10]).strftime("%d.%m.%Y")} '
+                                f'bis spätestens {u["rueckgabe_bis"][11:16]} Uhr bei {u["ausgeber_name"]} zurückzugeben:\n{liste}\n\n'
+                                f'Übergabeprotokoll {u["nummer"]} vom {_zeit_text(u["ausgabe_zeit"])}.' + gruss,
+                        "extern": extern})
+    return aus
+
+
+def schluessel_mail_gemeldet(con, kennung: str, ok: bool, fehler: str) -> None:
+    art, uid = kennung.split(":")
+    if ok:
+        spalte = "quittung_gesendet" if art == "q" else "erinnert"
+        con.execute(f"UPDATE schluessel_uebergaben SET {spalte}=?, mail_versuche=0, mail_fehler=NULL WHERE id=?", (jetzt(), int(uid)))
+    else:
+        con.execute("UPDATE schluessel_uebergaben SET mail_versuche=COALESCE(mail_versuche,0)+1, mail_fehler=? WHERE id=?",
+                    (fehler[:300], int(uid)))
+
+
 def sv_uebernehmen(con, benutzer, rechte, did: int, d: dict) -> dict:
     """Geprüfte Mängel aus einem SV-Bericht in den SV-Mängelplan übernehmen."""
     dok = con.execute("SELECT * FROM dokumente WHERE id=?", (did,)).fetchone()
@@ -1569,6 +1871,14 @@ def beispieldaten(con) -> None:
         if letzte:
             con.execute("INSERT INTO wartung_historie (wartung_id, datum, ergebnis, erfasst_von) VALUES (?,?,?,?)",
                         (wid, letzte, "Ohne Mängel", "Beispieldaten"))
+    for o, nr, bez, anlage, anz, ort in [
+        (o1, "S-01", "Haupteingang und Treppenhaus", "Beispiel-Schließanlage HS 1", 3, "Schlüsselschrank Empfang, Haken 1"),
+        (o1, "S-02", "Technikräume UG", "Beispiel-Schließanlage HS 1", 2, "Schlüsselschrank Empfang, Haken 2"),
+        (o1, "S-03", "Dachzugang", "Beispiel-Schließanlage HS 1", 1, "Schlüsselschrank Empfang, Haken 3"),
+        (o1, "S-04", "Feuerwehrschlüssel (Generalhauptschlüssel)", "Beispiel-Schließanlage HS 1", 1, "Schlüsseldepot Feuerwehr"),
+        (o2, "S-01", "Halle 2 und Technikraum", "Beispiel-Schließanlage BW 7", 2, "Schlüsselkasten Büro"),
+    ]:
+        ins("schluessel", objekt_id=o, nummer=nr, bezeichnung=bez, schliessanlage=anlage, anzahl=anz, aufbewahrung=ort, status="aktiv")
     sys_user = {"name": "Beispieldaten"}
     for o, a, t, p, s, tage, dlid in [
         (o1, anl["a2"], "Aufzug B bleibt zwischen Etagen stehen", "Hoch", "Warten auf Dienstleister", -3, dl["auf"]),
@@ -2043,6 +2353,19 @@ class Handler(BaseHTTPRequestHandler):
                     con.execute("INSERT OR REPLACE INTO einstellungen VALUES ('smtp_pass', ?)", (str(d["smtp_pass"])[:300],))
                 if d.get("ki_schluessel"):
                     con.execute("INSERT OR REPLACE INTO einstellungen VALUES ('ki_schluessel', ?)", (str(d["ki_schluessel"]).strip()[:300],))
+                if "feierabend" in d:
+                    wert = str(d["feierabend"] or "").strip()
+                    if not re.match(r"^([01]\d|2[0-3]):[0-5]\d$", wert):
+                        raise Fehler(400, "Feierabend bitte als Uhrzeit angeben, z. B. 17:00.")
+                    con.execute("INSERT OR REPLACE INTO einstellungen VALUES ('feierabend', ?)", (wert,))
+                if "schluessel_vorlauf" in d:
+                    try:
+                        wert = int(d["schluessel_vorlauf"])
+                    except (TypeError, ValueError):
+                        raise Fehler(400, "Die Vorlaufzeit muss eine Zahl in Minuten sein.")
+                    if not 0 <= wert <= 720:
+                        raise Fehler(400, "Die Vorlaufzeit muss zwischen 0 und 720 Minuten liegen.")
+                    con.execute("INSERT OR REPLACE INTO einstellungen VALUES ('schluessel_vorlauf', ?)", (str(wert),))
                 if "ki_aktiv" in d:
                     con.execute("INSERT OR REPLACE INTO einstellungen VALUES ('ki_aktiv', ?)",
                                 ("1" if d["ki_aktiv"] in (1, True, "1") else "0",))
@@ -2172,6 +2495,26 @@ class Handler(BaseHTTPRequestHandler):
                         anlage_text = ", ".join(x for x in (a["bezeichnung"], a["sv_gegenstand"], a["hersteller"], a["typ"]) if x)
                 self._spaeter = (did, inhalt, endung, schluessel, anlage_text, self.benutzer["name"])
                 return None
+        if erstes == "schluesselbestand" and m == "GET":
+            oid = (q.get("objekt_id") or [""])[0]
+            return self.json({"schluessel": schluessel_bestand(con, int(oid) if oid.isdigit() else None),
+                              "zeiten": schluessel_standardzeiten(con)})
+        if erstes == "schluesseluebergaben":
+            if len(teile) == 1 and m == "GET":
+                return self.json(uebergaben_liste(con, q))
+            if len(teile) == 1 and m == "POST":
+                return self.json(uebergabe_anlegen(con, self.benutzer, self.body()), 201)
+            if len(teile) == 2 and m == "GET":
+                return self.json(uebergabe_laden(con, self.id(teile[1])))
+            if len(teile) == 2 and m == "PUT":
+                return self.json(uebergabe_aendern(con, self.benutzer, self.id(teile[1]), self.body()))
+            if len(teile) == 3 and teile[2] == "rueckgabe" and m == "POST":
+                return self.json(uebergabe_rueckgabe(con, self.benutzer, self.id(teile[1]), self.body()))
+            if len(teile) == 3 and teile[2] == "mail" and m == "POST":
+                con.execute("UPDATE schluessel_uebergaben SET quittung_senden=1, quittung_gesendet=NULL, mail_versuche=0, "
+                            "ausgabe_zeit=ausgabe_zeit WHERE id=?", (self.id(teile[1]),))
+                return self.json({"ok": True})
+            raise Fehler(404, "Nicht gefunden.")
         if erstes == "sv-vorlage" and m == "GET":
             return self.json({"text": ki.vorlage()})
         if erstes == "svberichte" and len(teile) == 3 and teile[2] == "uebernehmen" and m == "POST":
@@ -2944,6 +3287,8 @@ def main():
             beispieldaten(con)
     global VERSAND
     VERSAND = versand.Versand(db, _db_lock, einstellung, faellige_erinnerungen, jetzt)
+    VERSAND.extern_holen = schluessel_mails_holen
+    VERSAND.extern_melden = schluessel_mail_gemeldet
     VERSAND.starten()
     srv = ThreadingHTTPServer((a.host, a.port), Handler)
     print(f"Casa CAFM läuft: http://{'localhost' if a.host in ('127.0.0.1', '0.0.0.0') else a.host}:{a.port}")

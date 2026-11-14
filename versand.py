@@ -108,6 +108,9 @@ def vapid_kopf(d: int, oeffentlich: str, endpunkt: str, kontakt: str) -> str:
 # Versand
 # ---------------------------------------------------------------------------
 class Versand:
+    extern_holen = None   # Funktion(con, mail_moeglich) -> Liste {"id", "an", "betreff", "text", "extern"}
+    extern_melden = None  # Funktion(con, id, ok, fehler)
+
     def __init__(self, db, lock, einstellung, faellige_erinnerungen, jetzt):
         self.db, self.lock, self.einstellung = db, lock, einstellung
         self.faellige_erinnerungen, self.jetzt = faellige_erinnerungen, jetzt
@@ -130,7 +133,8 @@ class Versand:
         return int(privat, 16), oeff
 
     # --- E-Mail ----------------------------------------------------------
-    def mail_senden(self, cfg: dict, an: str, betreff: str, text: str, link: str = "") -> None:
+    def mail_senden(self, cfg: dict, an: str, betreff: str, text: str, link: str = "", extern: dict | None = None) -> None:
+        """extern: Mail an Personen ohne Zugang (Sie-Form), z. B. {"antwort_an": "...", "fuss": "..."}."""
         if not cfg.get("smtp_host"):
             raise RuntimeError("Kein Mailserver eingetragen.")
         absender = cfg.get("smtp_absender") or cfg.get("smtp_user")
@@ -139,22 +143,28 @@ class Versand:
         url = (cfg.get("basis_url") or "").rstrip("/")
         ziel = f"{url}/{link.lstrip('/')}" if url and link else ""
         msg = EmailMessage()
-        msg["Subject"] = f"Casa CAFM: {betreff}"
-        msg["From"] = formataddr(("Casa CAFM", absender))
+        if extern is not None:
+            ziel = ""
+        msg["Subject"] = betreff if extern is not None else f"Casa CAFM: {betreff}"
+        msg["From"] = formataddr(("Casa Concept Consulting" if extern is not None else "Casa CAFM", absender))
+        if extern and extern.get("antwort_an"):
+            msg["Reply-To"] = extern["antwort_an"]
         msg["To"] = an
         msg["Message-ID"] = make_msgid(domain=absender.split("@")[-1] if "@" in absender else None)
-        msg.set_content(f"{betreff}\n\n{text}\n\n" + (f"Öffnen: {ziel}\n\n" if ziel else "")
-                        + "Diese Nachricht kommt automatisch aus Casa CAFM. Einstellen lässt sie sich im Programm unter Einstellungen.")
+        fuss = ((extern or {}).get("fuss") or "Casa Concept Consulting GmbH & Co. KG") if extern is not None else \
+            "Diese Nachricht kommt automatisch aus Casa CAFM. Einstellen lässt sie sich im Programm unter Einstellungen."
+        msg.set_content(f"{betreff}\n\n{text}\n\n" + (f"Öffnen: {ziel}\n\n" if ziel else "") + fuss)
+        text_html = html.escape(text).replace("\n", "<br>")
         knopf = (f'<p style="margin:22px 0"><a href="{html.escape(ziel)}" style="background:#E63713;color:#fff;text-decoration:none;'
                  f'padding:11px 20px;border-radius:8px;font-weight:bold;display:inline-block">Im Programm öffnen</a></p>') if ziel else ""
         msg.add_alternative(f"""<!doctype html><html><body style="margin:0;background:#F5F6F8;font-family:Calibri,Carlito,Arial,sans-serif;color:#3C3C3B">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:28px 12px">
 <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;background:#fff;border-radius:14px;border-top:5px solid #E63713">
 <tr><td style="padding:24px 28px">
-<div style="font-size:12px;letter-spacing:.14em;color:#E63713;font-weight:bold">CASA CAFM</div>
+<div style="font-size:12px;letter-spacing:.14em;color:#E63713;font-weight:bold">{"CASA CONCEPT CONSULTING" if extern is not None else "CASA CAFM"}</div>
 <h1 style="font-size:21px;margin:8px 0 10px;color:#3C3C3B">{html.escape(betreff)}</h1>
-<p style="font-size:15px;line-height:1.5;margin:0;color:#626366">{html.escape(text)}</p>{knopf}
-<p style="font-size:12px;color:#939598;margin:18px 0 0">Diese Nachricht kommt automatisch aus Casa CAFM. Einstellen lässt sie sich im Programm unter Einstellungen.</p>
+<p style="font-size:15px;line-height:1.5;margin:0;color:#3C3C3B">{text_html}</p>{knopf}
+<p style="font-size:12px;color:#939598;margin:18px 0 0">{html.escape(fuss)}</p>
 </td></tr></table>
 <p style="font-size:11px;color:#939598">Casa Concept Consulting GmbH &amp; Co. KG · www.ccc-frankfurt.com</p>
 </td></tr></table></body></html>""", subtype="html")
@@ -211,6 +221,7 @@ class Versand:
                     for i in keine_mail:
                         con.execute("UPDATE benachrichtigungen SET gemailt=2 WHERE id=?", (i,))
                     mails = [m for m in mails if m["id"] not in keine_mail]
+                    externe = self.extern_holen(con, cfg.get("mail_aktiv") == "1" and bool(cfg.get("smtp_host"))) if self.extern_holen else []
                     pushes = [dict(r) for r in con.execute(
                         "SELECT n.id, n.benutzer_id FROM benachrichtigungen n WHERE n.gepusht=0 ORDER BY n.id LIMIT 50")]
                     abos = {}
@@ -227,6 +238,23 @@ class Versand:
             except Exception as e:  # noqa: BLE001
                 self.letzter_fehler = f"{self.jetzt()}: {e}"
                 fehler_mail.append(m["id"])
+        extern_ergebnis = []
+        for x in externe:
+            try:
+                self.mail_senden(cfg, x["an"], x["betreff"], x["text"], "", x.get("extern") or {})
+                extern_ergebnis.append((x["id"], True, ""))
+            except Exception as e:  # noqa: BLE001
+                self.letzter_fehler = f"{self.jetzt()}: {e}"
+                extern_ergebnis.append((x["id"], False, str(e)))
+        if extern_ergebnis and self.extern_melden:
+            with self.lock:
+                con = self.db()
+                try:
+                    with con:
+                        for i, ok, f in extern_ergebnis:
+                            self.extern_melden(con, i, ok, f)
+                finally:
+                    con.close()
         gesendet = set()
         for p in pushes:
             for a in abos.get(p["id"], []):

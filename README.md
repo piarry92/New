@@ -106,6 +106,22 @@ einen Leser aus dem Internet.
   Der Bericht wird dafür an Anthropic übertragen. `start.bat` installiert das nötige Paket (`anthropic`) beim
   ersten Start; dafür braucht der Rechner Internet. Ohne KI lassen sich die Mängel von Hand eintragen.
 
+## Schlüsselmanager
+
+- Menü Verwaltung › **Schlüssel** (und Reiter „Schlüssel“ im Objekt): Schlüsselbestand je Objekt mit Nummer,
+  Schließanlage, Anzahl Exemplare, Aufbewahrung; man sieht, wie viele da sind und wer welchen Schlüssel hat.
+- **Schlüssel ausgeben:** Objekt und Schlüssel wählen, ausgebende Person (Casa) und empfangende Person mit Name,
+  Firma, **E-Mail-Adresse (Pflicht)** und Telefon, Zweck, Rückgabe (Standard: heute bis Feierabend), Unterschrift
+  beider Seiten. Danach öffnet sich das **Schlüsselübergabeprotokoll** im Casa-Design zum Drucken oder als PDF.
+- **E-Mails an die empfangende Person** (Sie-Form, Antworten gehen an die ausgebende Person): auf Wunsch sofort das
+  Protokoll und eine **Erinnerung vor der Rückgabe**, standardmäßig 60 Minuten vor Feierabend. Feierabend und
+  Vorlauf stellt ein Administrator unter Einstellungen › „Schlüsselrückgabe“ ein; bei jeder Übergabe lassen sich
+  Rückgabezeit und Erinnerung einzeln ändern. Voraussetzung ist der eingerichtete Mailserver.
+- Ist ein Schlüssel nach der Rückgabezeit nicht zurück, bekommt die ausgebende Person eine Benachrichtigung
+  (Glocke, E-Mail, Push).
+- **Rückgabe:** mit Unterschrift und Bemerkung; fehlende Schlüssel werden als verloren markiert.
+- Neues Recht „Schlüssel anlegen, ausgeben und zurücknehmen“ unter Zugänge & Rechte.
+
 ## E-Mail, Push und App
 
 - **E-Mail:** Ein Administrator trägt unter Einstellungen › „E-Mail-Versand (Mailserver)“ den Mailserver ein

@@ -1075,3 +1075,19 @@ html[data-theme="dark"] .sv-zus { background: rgba(230,55,19,.12); }
 .sv-schritte { padding-left: 20px; line-height: 1.6; margin: 0 0 12px; }
 .sv-schritte li { margin-bottom: 6px; }
 @media (max-width: 760px) { .sv-bericht { flex-direction: column; align-items: stretch; } .sv-bk { justify-content: flex-start; } }
+
+/* Schlüsselmanager */
+.sl-titel { font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--orange, #E63713); margin-top: 6px; }
+.sl-titel.pflicht::after { content: " *"; }
+.sl-wahl { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 8px; margin-top: 6px; }
+.sl-k { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--rand-stark); border-radius: 12px; cursor: pointer; font-weight: 400 !important; }
+.sl-k:has(input:checked) { border-color: var(--orange, #E63713); background: color-mix(in srgb, var(--orange, #E63713) 7%, transparent); }
+.sl-k.weg { opacity: .5; cursor: not-allowed; }
+.sl-k > span { flex: 1; }
+.sl-anz { width: 64px !important; min-height: 34px !important; }
+.sl-us { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+@media (max-width: 760px) { .sl-us { grid-template-columns: 1fr; } }
+tr.zeile-rot td { background: color-mix(in srgb, #D92D20 7%, transparent); }
+.fehlertext { color: #B42318; }
+.us-box { display: flex; flex-direction: column; gap: 6px; }
+.us-box .us-feld { height: 140px; }

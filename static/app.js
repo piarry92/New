@@ -1,7 +1,7 @@
 /* Casa CAFM – Oberfläche (ohne Fremdbibliotheken) */
 "use strict";
 
-const VERSION = "2026.11.15-11"; // muss zu VERSION in app.py passen
+const VERSION = "2026.11.15-12"; // muss zu VERSION in app.py passen
 /* Hell- und Dunkelmodus: gemerkte Wahl, sonst wie das Gerät */
 const THEMA = (() => {
   let t = null;
@@ -35,7 +35,7 @@ const ROLLENNAMEN = { admin: "Administrator", benutzer: "Benutzer", zuschauer: "
 const darf = (r) => !!(S.ich && S.ich.rechte && S.ich.rechte[r]);
 const RECHT_RES = { objekte: "anlagen_bearbeiten", anlagen: "anlagen_bearbeiten", plaene: "plaene_bearbeiten", symbole: "plaene_bearbeiten",
   wartungen: "wartung_planen", vertraege: "vertraege_bearbeiten", dienstleister: "vertraege_bearbeiten", zaehler: "zaehler_erfassen",
-  ablesungen: "zaehler_erfassen", dokumente: "dokumente_hochladen", sv_maengel: "tickets_bearbeiten" };
+  ablesungen: "zaehler_erfassen", dokumente: "dokumente_hochladen", sv_maengel: "tickets_bearbeiten", schluessel: "schluessel_verwalten" };
 const darfNeu = (res) => (res === "tickets" ? darf("tickets_anlegen") : darf(RECHT_RES[res]));
 const darfAendernRes = (res) => (res === "tickets" ? darf("tickets_bearbeiten") : darf(RECHT_RES[res]));
 const darfAendern = () => !!(S.ich && Object.entries(S.ich.rechte || {}).some(([k, v]) => v && k !== "export"));
@@ -73,6 +73,7 @@ const ICONS = {
   vertraege: '<path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 13h7M9 17h5"/>',
   dienstleister: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6 6 0 0 1 3.5 6"/>',
   checklisten: '<path d="M9 5h10M9 12h10M9 19h10"/><path d="M3.5 5l1.5 1.5L7.5 4M3.5 12l1.5 1.5L7.5 11M3.5 19l1.5 1.5L7.5 18"/>',
+  schluessel: '<circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M16 7l3 3M14 9l2 2"/>',
   svpruefplan: '<path d="M12 3l7 3v5c0 5-3.5 8.5-7 10-3.5-1.5-7-5-7-10V6z"/><path d="M12 8v5M12 16h.01"/>',
   pruefungen: '<path d="M12 3l7 3v5c0 5-3.5 8.5-7 10-3.5-1.5-7-5-7-10V6z"/><path d="M8.5 12l2.5 2.5 4.5-5"/>',
   zugaenge: '<rect x="4" y="11" width="16" height="10" rx="1"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
@@ -189,6 +190,7 @@ const NAV = [
   "Verwaltung",
   ["vertraege", "Verträge", "#/vertraege"],
   ["dienstleister", "Dienstleister", "#/dienstleister"],
+  ["schluessel", "Schlüssel", "#/schluessel"],
   ["zaehler", "Zähler", "#/zaehler"],
   ["dokumente", "Dokumente", "#/dokumente"],
   "System",
@@ -748,6 +750,7 @@ DETAIL.objekte = async (el, id, q) => {
     { titel: "Checklisten & Rundgänge", zeigen: (x) => checklistenReiter(x, { objekt_id: o.id }) },
     { titel: "SV-Mängelplan", zahl: svOffenZahl, zeigen: (x) => svMaengelReiter(x, { objekt_id: String(o.id) }) },
     { titel: "Störmeldungen", zahl: tick.length, zeigen: (x) => tabelle(x, "tickets", { filter: f, extraFilter: ticketFilter, extraStart: "offen" }) },
+    { titel: "Schlüssel", zeigen: (x) => schluesselBereich(x, o.id, "aus") },
     { titel: "Verträge", zahl: vert.length, zeigen: (x) => tabelle(x, "vertraege", { filter: f }) },
     { titel: "Zähler", zahl: zae.length, zeigen: (x) => tabelle(x, "zaehler", { filter: f }) },
     { titel: "Dokumente", zahl: dok.length, zeigen: dokumenteReiter(f) },
