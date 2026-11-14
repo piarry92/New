@@ -41,6 +41,7 @@ SYM_PFAD = DATEN / "symbole"
 OBJ_PFAD = DATEN / "objektbilder"
 MAX_SYMBOL = 2 * 1024 * 1024
 MAX_UPLOAD = 25 * 1024 * 1024
+VERSION = "2026.11.15-1"  # muss zu VERSION in static/app.js passen
 SITZUNG_TAGE = 7
 
 GEWERKE = [
@@ -1338,7 +1339,7 @@ class Handler(BaseHTTPRequestHandler):
         if erstes == "status" and m == "GET":
             b = self.angemeldet(con)
             erster_start = con.execute("SELECT COUNT(*) FROM benutzer").fetchone()[0] == 0
-            return self.json({"benutzer": self.oeffentlich(b, con), "einrichten": erster_start})
+            return self.json({"benutzer": self.oeffentlich(b, con), "einrichten": erster_start, "version": VERSION})
 
         if erstes == "einrichten" and m == "POST":
             if con.execute("SELECT COUNT(*) FROM benutzer").fetchone()[0]:
@@ -1526,6 +1527,8 @@ class Handler(BaseHTTPRequestHandler):
                     protokollieren(con, b, "angelegt", name, neue_id)
                 return self.json(zeile(con.execute(f'SELECT * FROM "{name}" WHERE id=?', (neue_id,)).fetchone()), 201)
             raise Fehler(405, "Nicht erlaubt.")
+        if len(rest) > 1:
+            raise Fehler(404, "Nicht gefunden.")
         rid = self.id(rest[0])
         alt = zeile(con.execute(f'SELECT * FROM "{name}" WHERE id=?', (rid,)).fetchone())
         if not alt:

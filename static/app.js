@@ -1,6 +1,7 @@
 /* Casa CAFM – Oberfläche (ohne Fremdbibliotheken) */
 "use strict";
 
+const VERSION = "2026.11.15-1"; // muss zu VERSION in app.py passen
 const S = { ich: null, schema: null, cache: {}, einheiten: {} };
 const $app = document.getElementById("app");
 
@@ -501,15 +502,40 @@ function objektKachel(o) {
       <div class="klein">${esc(adresse || "Keine Adresse")}</div>
       <div class="ok-zahlen">${o.anlagen_anzahl || 0} Anlagen${o.objektleiter ? ` · ${esc(o.objektleiter)}` : ""}</div></div></a>`;
 }
-async function objektBildWaehlen(o) {
-  const input = document.createElement("input");
-  input.type = "file"; input.accept = "image/*";
-  const d = await new Promise((ok) => { input.onchange = () => ok(input.files[0]); input.click(); });
-  if (!d) return false;
+async function objektBildSpeichern(o, datei) {
+  if (!datei) return false;
+  if (!/^image\//.test(datei.type) && !/\.(jpe?g|png|webp|gif|bmp|heic)$/i.test(datei.name)) { melde("Bitte ein Bild wählen (JPG, PNG oder WEBP).", true); return false; }
   try {
-    await api("PUT", `objekte/${o.id}/bild`, { inhalt: await bildVerkleinern(d, 1800) });
+    melde("Bild wird gespeichert …");
+    let inhalt;
+    try { inhalt = await bildVerkleinern(datei, 1800); }
+    catch (e) { throw new Error("Dieses Bild kann der Browser nicht öffnen. Bitte als JPG oder PNG speichern und noch einmal versuchen."); }
+    const r = await api("PUT", `objekte/${o.id}/bild`, { inhalt });
+    if (!r || !r.bild) throw new Error("Das Bild wurde nicht gespeichert. Bitte das Programm einmal neu starten: das schwarze Fenster schließen und start.bat wieder öffnen.");
     cacheLeeren(); melde("Bild gespeichert."); return true;
   } catch (e) { melde(e.message, true); return false; }
+}
+async function objektBildWaehlen(o) {
+  const input = document.createElement("input");
+  input.type = "file"; input.accept = "image/*"; input.style.display = "none";
+  document.body.appendChild(input);
+  const d = await new Promise((ok) => {
+    input.addEventListener("change", () => ok(input.files[0]), { once: true });
+    window.addEventListener("focus", () => setTimeout(() => ok(input.files[0] || null), 800), { once: true });
+    input.click();
+  });
+  input.remove();
+  return objektBildSpeichern(o, d);
+}
+/* Bild per Ziehen auf Kachel oder Banner ablegen */
+function bildAblage(el, o, nachher) {
+  if (!el || !darf("anlagen_bearbeiten")) return;
+  el.addEventListener("dragover", (e) => { if ([...(e.dataTransfer.items || [])].some((i) => i.kind === "file")) { e.preventDefault(); el.classList.add("ablage"); } });
+  el.addEventListener("dragleave", () => el.classList.remove("ablage"));
+  el.addEventListener("drop", async (e) => {
+    e.preventDefault(); el.classList.remove("ablage");
+    if (await objektBildSpeichern(o, e.dataTransfer.files[0])) nachher();
+  });
 }
 SEITEN.objekte = async (el) => {
   let ansicht = "kacheln";
@@ -528,6 +554,10 @@ SEITEN.objekte = async (el) => {
       const w = ziel.querySelector("#osuche").value.trim().toLowerCase();
       const liste = objekte.filter((o) => !w || [o.kuerzel, o.name, o.strasse, o.plz, o.ort, o.objektleiter, o.eigentuemer].join(" ").toLowerCase().includes(w));
       raster.innerHTML = liste.map(objektKachel).join("") || '<div class="karte leer">Noch keine Objekte. Leg oben das erste an.</div>';
+      raster.querySelectorAll(".objekt-karte").forEach((k) => {
+        const o = objekte.find((x) => `#/objekte/${x.id}` === k.getAttribute("href"));
+        bildAblage(k, o, zeichnen);
+      });
     };
     filtern();
     ziel.querySelector("#osuche").addEventListener("input", filtern);
@@ -665,6 +695,7 @@ DETAIL.objekte = async (el, id, q) => {
   if (b) b.onclick = async () => { const e = await bearbeiten("objekte", o); if (e === "geloescht") location.hash = "#/objekte"; else if (e) route(); };
   const ob = document.getElementById("obild");
   if (ob) ob.onclick = async () => { if (await objektBildWaehlen(o)) route(); };
+  bildAblage(el.querySelector(".objekt-banner") || el.querySelector(".raster.k4"), o, route);
   document.getElementById("oqr").onclick = () => etikettenDrucken(anl, `QR-Etiketten ${o.kuerzel}`);
   const f = { objekt_id: String(id) };
   reiterLeiste(el.querySelector("#r"), [
@@ -856,6 +887,13 @@ async function route() {
   window.scrollTo(0, 0);
 }
 
+function versionPruefen(serverVersion) {
+  if (serverVersion === VERSION) return;
+  const b = document.createElement("div");
+  b.className = "versions-hinweis";
+  b.innerHTML = `<b>Bitte das Programm neu starten.</b> Die Dateien sind neu, das Programm im schwarzen Fenster läuft aber noch mit der alten Version. Fenster schließen, <b>start.bat</b> wieder öffnen, dann diese Seite neu laden.`;
+  document.body.prepend(b);
+}
 async function start() {
   const s = await api("GET", "schema");
   S.schema = s.ressourcen;
@@ -877,6 +915,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   if (location.pathname.startsWith("/m/")) return qrSeite(decodeURIComponent(location.pathname.slice(3)));
   try {
     const st = await api("GET", "status");
+    versionPruefen(st.version);
     if (st.benutzer) { S.ich = st.benutzer; await start(); }
     else zeigeAnmeldung(st.einrichten);
   } catch (e) {
