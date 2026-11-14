@@ -1091,3 +1091,13 @@ tr.zeile-rot td { background: color-mix(in srgb, #D92D20 7%, transparent); }
 .fehlertext { color: #B42318; }
 .us-box { display: flex; flex-direction: column; gap: 6px; }
 .us-box .us-feld { height: 140px; }
+.sl-fotobox { border: 1px dashed var(--rand-stark); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.sl-fotobox.hat-foto { border-style: solid; border-color: var(--ok); }
+.pflicht-stern { font-size: 11px; color: var(--orange, #E63713); font-weight: 700; text-transform: uppercase; letter-spacing: .06em; margin-left: 6px; }
+.sl-fotos { display: flex; flex-wrap: wrap; gap: 8px; }
+.sl-foto { position: relative; }
+.sl-foto img, .sl-fotos img { width: 96px; height: 96px; object-fit: cover; border-radius: 10px; border: 1px solid var(--rand); display: block; }
+.sl-foto button { position: absolute; top: -6px; right: -6px; width: 24px; height: 24px; border-radius: 50%; border: 0; background: #3C3C3B; color: #fff; cursor: pointer; line-height: 1; }
+.sl-foto-knopf { cursor: pointer; }
+.sl-vergleich, .sl-fotozeile { display: flex; flex-direction: column; gap: 6px; margin: 8px 0 12px; }
+.sl-fotozeile { flex-direction: row; flex-wrap: wrap; gap: 20px; }

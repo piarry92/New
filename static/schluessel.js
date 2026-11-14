@@ -94,6 +94,47 @@ async function schluesselBereich(ziel, festesObjekt, ansicht = "aus") {
   await laden();
 }
 
+/* ---------- Fotos der Schlüssel (Pflicht bei Ausgabe und Rückgabe) ---------- */
+function slBildVerkleinern(datei, max = 1600) {
+  return new Promise((ok, nein) => {
+    const url = URL.createObjectURL(datei), img = new Image();
+    img.onload = () => {
+      const f = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+      const cv = document.createElement("canvas");
+      cv.width = Math.round(img.naturalWidth * f); cv.height = Math.round(img.naturalHeight * f);
+      cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
+      URL.revokeObjectURL(url);
+      ok(cv.toDataURL("image/jpeg", 0.8));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); nein(new Error("Dieses Bild lässt sich nicht lesen. Bitte ein Foto als JPG oder PNG nehmen.")); };
+    img.src = url;
+  });
+}
+
+function slFotoFeld(box, titel) {
+  const bilder = [];
+  box.innerHTML = `<div class="sl-foto-kopf"><b>${esc(titel)}</b> <span class="pflicht-stern">Pflicht</span></div>
+    <div class="sl-fotos"></div>
+    <label class="knopf sl-foto-knopf">${icon("plus")} Foto aufnehmen<input type="file" accept="image/*" capture="environment" multiple hidden></label>
+    <span class="klein">Alle ausgegebenen Schlüssel gut erkennbar fotografieren, Nummern lesbar.</span>`;
+  const zeigen = () => {
+    box.querySelector(".sl-fotos").innerHTML = bilder.map((b, i) => `<div class="sl-foto"><img src="${b}" alt="Foto ${i + 1}"><button type="button" data-weg="${i}" aria-label="Foto entfernen">×</button></div>`).join("");
+    box.classList.toggle("hat-foto", bilder.length > 0);
+  };
+  box.querySelector("input").onchange = async (e) => {
+    for (const d of [...e.target.files]) {
+      if (bilder.length >= 6) { melde("Höchstens 6 Fotos.", true); break; }
+      try { bilder.push(await slBildVerkleinern(d)); } catch (err) { melde(err.message, true); }
+    }
+    e.target.value = "";
+    zeigen();
+  };
+  box.addEventListener("click", (e) => { const w = e.target.closest("[data-weg]"); if (w) { bilder.splice(Number(w.dataset.weg), 1); zeigen(); } });
+  return { daten: () => [...bilder] };
+}
+const slFotoHtml = (u, art, gross = false) => u.fotos.filter((f) => f.art === art).map((f) =>
+  `<a href="/api/schluesselfotos/${f.id}" target="_blank" rel="noopener"><img class="${gross ? "" : "sl-mini"}" src="${location.origin}/api/schluesselfotos/${f.id}" alt="Foto ${art === "ausgabe" ? "Ausgabe" : "Rückgabe"}"></a>`).join("");
+
 /* ---------- Ausgabe ---------- */
 async function schluesselAusgeben(vorgabe = {}) {
   const ein = await einstellungenLaden(true);
@@ -121,9 +162,10 @@ async function schluesselAusgeben(vorgabe = {}) {
     <label class="check breit"><input type="checkbox" name="quittung" checked> Übergabeprotokoll gleich per E-Mail an die Person schicken</label>
     ${ein.mail_aktiv !== "1" ? '<div class="warnung breit klein">Der E-Mail-Versand ist noch nicht eingerichtet. Erinnerung und Protokoll gehen erst raus, wenn ein Administrator unter Einstellungen den Mailserver einträgt.</div>' : ""}
     <p class="klein breit">Die Erinnerung kommt standardmäßig ${zeiten.vorlauf} Minuten vor Feierabend (${zeiten.feierabend} Uhr). Beides lässt sich hier für jede Übergabe ändern, die Standardwerte unter Einstellungen.</p>
+    <div class="breit sl-fotobox" id="slFotoA"></div>
     <div class="breit sl-us"><div class="us-box unterschrift-box" id="usA"></div><div class="us-box unterschrift-box" id="usE"></div></div>
   </form>`;
-  let usA, usE;
+  let usA, usE, fotoA;
   const p = dialog("Schlüssel ausgeben", html, [{ text: "Abbrechen" }, {
     text: "Ausgeben und Protokoll erstellen", klasse: "haupt-k", aktion: async (hg) => {
       const fm = hg.querySelector("form");
@@ -135,13 +177,14 @@ async function schluesselAusgeben(vorgabe = {}) {
       if (!fm.empfaenger_email.checkValidity() || !fm.empfaenger_email.value.trim()) throw new Error("Bitte eine gültige E-Mail-Adresse der Person eintragen.");
       if (!tag || !fm.rueck_zeit.value) throw new Error("Bitte Tag und Uhrzeit der Rückgabe angeben.");
       if (fm.erinnern.checked && fm.erinnerung_zeit.value > fm.rueck_zeit.value) throw new Error("Die Erinnerung muss vor der Rückgabezeit liegen.");
+      if (!fotoA.daten().length) throw new Error("Bitte ein Foto der ausgegebenen Schlüssel machen.");
       if (!usE.bild()) throw new Error("Bitte die Person, die den Schlüssel erhält, unterschreiben lassen.");
       const u = await api("POST", "schluesseluebergaben", {
         objekt_id: Number(fm.objekt_id.value), schluessel: gewaehlt, ausgeber_name: usA.name() || fm.ausgeber_name.value,
         empfaenger_name: usE.name() || fm.empfaenger_name.value, empfaenger_firma: fm.empfaenger_firma.value, empfaenger_email: fm.empfaenger_email.value,
         empfaenger_tel: fm.empfaenger_tel.value, zweck: fm.zweck.value, rueckgabe_bis: `${tag}T${fm.rueck_zeit.value}`,
         erinnern: fm.erinnern.checked, erinnerung_um: fm.erinnern.checked ? `${tag}T${fm.erinnerung_zeit.value}` : null,
-        quittung: fm.quittung.checked, sig_ausgeber: usA.bild(), sig_empfaenger: usE.bild(),
+        quittung: fm.quittung.checked, sig_ausgeber: usA.bild(), sig_empfaenger: usE.bild(), fotos: fotoA.daten(),
       });
       melde(`Übergabe ${u.nummer} gespeichert.`);
       return u;
@@ -162,6 +205,7 @@ async function schluesselAusgeben(vorgabe = {}) {
   fm.erinnerung_zeit.oninput = () => { erinnerungGeaendert = true; };
   fm.rueck_zeit.oninput = () => { if (!erinnerungGeaendert && fm.rueck_zeit.value) fm.erinnerung_zeit.value = slMinus(fm.rueck_zeit.value, zeiten.vorlauf); };
   fm.erinnern.onchange = () => { fm.erinnerung_zeit.disabled = !fm.erinnern.checked; };
+  fotoA = slFotoFeld(hg.querySelector("#slFotoA"), "Foto der Schlüssel bei Ausgabe");
   usA = unterschriftsfeld(hg.querySelector("#usA"), fm.ausgeber_name.value);
   usE = unterschriftsfeld(hg.querySelector("#usE"), "");
   hg.querySelector("#usA .us-kopf b").textContent = "Unterschrift Ausgabe (Casa)";
@@ -186,6 +230,7 @@ async function uebergabeAnsehen(uid) {
       <div><small>Erinnerung</small>${u.erinnerung_um ? slZeit(u.erinnerung_um) + (u.erinnert ? " · gesendet ✓" : "") : "keine"}</div>
       ${u.zweck ? `<div><small>Zweck</small>${esc(u.zweck)}</div>` : ""}</div>
     <div class="tabelle-wrap"><table><thead><tr><th>Nr.</th><th>Schlüssel</th><th>Anzahl</th></tr></thead><tbody>${u.schluessel.map((s) => `<tr><td><b>${esc(s.nummer)}</b></td><td>${esc(s.bezeichnung)}</td><td>${s.anzahl}</td></tr>`).join("")}</tbody></table></div>
+    ${u.fotos.length ? `<div class="sl-fotozeile">${u.fotos.some((f) => f.art === "ausgabe") ? `<div><span class="klein">Fotos bei Ausgabe</span><div class="sl-fotos">${slFotoHtml(u, "ausgabe")}</div></div>` : ""}${u.fotos.some((f) => f.art === "rueckgabe") ? `<div><span class="klein">Fotos bei Rückgabe</span><div class="sl-fotos">${slFotoHtml(u, "rueckgabe")}</div></div>` : ""}</div>` : ""}
     ${u.mail_fehler ? `<div class="warnung klein">Die E-Mail an ${esc(u.empfaenger_email)} ging nicht raus: ${esc(u.mail_fehler)}</div>` : ""}
     ${u.status !== "ausgegeben" ? `<p class="klein">Zurückgenommen am ${slZeit(u.rueckgabe_zeit)} von ${esc(u.rueckgabe_von || "")}${u.rueckgabe_bemerkung ? `. Bemerkung: ${esc(u.rueckgabe_bemerkung)}` : ""}</p>` : ""}`;
   const knoepfe = [{ text: "Schließen" }, { text: "Protokoll drucken", aktion: () => { schluesselProtokoll(u); return false; } }];
@@ -219,17 +264,21 @@ async function schluesselRueckgabe(uid) {
   const html = `<div class="dfehler"></div><p>${esc(u.empfaenger_name)}${u.empfaenger_firma ? ` (${esc(u.empfaenger_firma)})` : ""} gibt zurück. Haken weg bei Schlüsseln, die fehlen. Sie werden dann als verloren markiert.</p>
     <div class="sl-wahl">${u.schluessel.map((s) => `<label class="sl-k"><input type="checkbox" data-zur="${s.id}" checked><span><b>${esc(s.nummer)}</b> ${esc(s.bezeichnung)}${s.anzahl > 1 ? ` (${s.anzahl} Stück)` : ""}</span></label>`).join("")}</div>
     <form class="formular" onsubmit="return false"><label class="breit"><span>Bemerkung</span><textarea name="bemerkung" placeholder="z. B. Schlüssel beschädigt"></textarea></label></form>
+    ${u.fotos.some((f) => f.art === "ausgabe") ? `<div class="sl-vergleich"><span class="klein">So sahen die Schlüssel bei der Ausgabe aus:</span><div class="sl-fotos">${slFotoHtml(u, "ausgabe")}</div></div>` : ""}
+    <div class="sl-fotobox" id="slFotoR"></div>
     <div class="us-box unterschrift-box" id="usR"></div>`;
-  let us;
+  let us, fotoR;
   const p = dialog(`Rückgabe ${u.nummer}`, html, [{ text: "Abbrechen" }, {
     text: "Rückgabe speichern", klasse: "haupt-k", aktion: async (hg) => {
       const fehlend = [...hg.querySelectorAll("[data-zur]:not(:checked)")].map((c) => Number(c.dataset.zur));
-      const r = await api("POST", `schluesseluebergaben/${uid}/rueckgabe`, { bemerkung: hg.querySelector("[name=bemerkung]").value, unterschrift: us.bild(), fehlend });
+      if (!fotoR.daten().length) throw new Error("Bitte ein Foto der zurückgegebenen Schlüssel machen.");
+      const r = await api("POST", `schluesseluebergaben/${uid}/rueckgabe`, { bemerkung: hg.querySelector("[name=bemerkung]").value, unterschrift: us.bild(), fehlend, fotos: fotoR.daten() });
       melde(fehlend.length ? `Rückgabe gespeichert, ${fehlend.length} Schlüssel als verloren markiert.` : "Rückgabe gespeichert.");
       return r;
     },
   }]);
   const hg = letzterDialog();
+  fotoR = slFotoFeld(hg.querySelector("#slFotoR"), "Foto der Schlüssel bei Rückgabe");
   us = unterschriftsfeld(hg.querySelector("#usR"), S.ich.name);
   hg.querySelector("#usR .us-kopf b").textContent = "Unterschrift Rücknahme (Casa)";
   return p;
@@ -254,6 +303,8 @@ function schluesselProtokoll(u) {
     .us { margin-top: 6mm; display: flex; gap: 12mm; } .us > div { flex: 1; font-size: 9pt; }
     .us .sig { height: 22mm; display: flex; align-items: flex-end; } .us .sig img { max-height: 22mm; max-width: 100%; }
     .us .l { border-top: .3mm solid #3C3C3B; padding-top: 1.5mm; }
+    .fotos { display: flex; flex-wrap: wrap; gap: 3mm; margin-top: 3mm; } .fotos img { height: 38mm; max-width: 60mm; object-fit: cover; border-radius: 1.5mm; border: .2mm solid #D9DADB; }
+    .fotos-t { font-size: 8pt; color: #939598; text-transform: uppercase; letter-spacing: .06em; margin-top: 4mm; }
     .fuss { position: fixed; bottom: 0; left: 0; right: 0; font-size: 8pt; color: #939598; text-align: center; }
   </style></head><body>
     <div class="kopf"><div><div class="k">Schlüsselübergabeprotokoll · ${esc(u.nummer)}</div><h1>${esc(u.o_name || "")}</h1>${u.o_strasse ? `<div>${esc(u.o_strasse)}, ${esc([u.o_plz, u.o_ort].filter(Boolean).join(" "))}</div>` : ""}</div><img src="${location.origin}/logo.png" alt=""></div>
@@ -263,14 +314,15 @@ function schluesselProtokoll(u) {
       <div><small>Ausgabe am</small>${slZeit(u.ausgabe_zeit)} Uhr</div><div><small>Zweck</small>${esc(u.zweck || "–")}</div></div>
     <h2>Schlüssel</h2>
     <table><thead><tr><th>Nr.</th><th>Bezeichnung</th><th>Anzahl</th></tr></thead><tbody>${u.schluessel.map((s) => `<tr><td><b>${esc(s.nummer)}</b></td><td>${esc(s.bezeichnung)}</td><td>${s.anzahl}</td></tr>`).join("")}</tbody></table>
+    ${u.fotos.some((f) => f.art === "ausgabe") ? `<div class="fotos-t">Fotos bei Ausgabe</div><div class="fotos">${slFotoHtml(u, "ausgabe", true)}</div>` : ""}
     <div class="pflicht"><b>Rückgabe bis ${slZeit(u.rueckgabe_bis)} Uhr</b> bei ${esc(u.ausgeber_name)}. Die Schlüssel dürfen nicht an Dritte weitergegeben werden. Ein Verlust ist sofort zu melden.</div>
     <div class="us"><div><div class="sig">${u.sig_ausgeber ? `<img src="${u.sig_ausgeber}" alt="">` : ""}</div><div class="l">Unterschrift Ausgabe: ${esc(u.ausgeber_name)}</div></div><div><div class="sig">${u.sig_empfaenger ? `<img src="${u.sig_empfaenger}" alt="">` : ""}</div><div class="l">Unterschrift Empfang: ${esc(u.empfaenger_name)}</div></div></div>
     <h2>Rückgabe</h2>
-    ${zur ? `<div class="meta"><div><small>Zurückgenommen am</small>${slZeit(u.rueckgabe_zeit)} Uhr</div><div><small>Zurückgenommen von</small>${esc(u.rueckgabe_von || "")}</div>${u.rueckgabe_bemerkung ? `<div style="grid-column:span 2"><small>Bemerkung</small>${esc(u.rueckgabe_bemerkung)}</div>` : ""}</div>
+    ${zur ? `${u.fotos.some((f) => f.art === "rueckgabe") ? `<div class="fotos-t">Fotos bei Rückgabe</div><div class="fotos">${slFotoHtml(u, "rueckgabe", true)}</div>` : ""}<div class="meta"><div><small>Zurückgenommen am</small>${slZeit(u.rueckgabe_zeit)} Uhr</div><div><small>Zurückgenommen von</small>${esc(u.rueckgabe_von || "")}</div>${u.rueckgabe_bemerkung ? `<div style="grid-column:span 2"><small>Bemerkung</small>${esc(u.rueckgabe_bemerkung)}</div>` : ""}</div>
       <div class="us"><div><div class="sig">${u.sig_rueckgabe ? `<img src="${u.sig_rueckgabe}" alt="">` : ""}</div><div class="l">Unterschrift Rücknahme: ${esc(u.rueckgabe_von || "")}</div></div><div></div></div>`
       : `<div class="meta"><div><small>Zurück am</small>&nbsp;</div><div><small>Bemerkung</small>&nbsp;</div></div><div class="us"><div><div class="sig"></div><div class="l">Unterschrift Rücknahme</div></div><div><div class="sig"></div><div class="l">Unterschrift Rückgabe</div></div></div>`}
     <div class="fuss">Casa Concept Consulting GmbH &amp; Co. KG · www.ccc-frankfurt.com</div>
-    <script>window.onload = () => setTimeout(() => print(), 300);<\/script></body></html>`;
+    <script>window.onload = () => setTimeout(() => print(), 400);<\/script></body></html>`;
   const f = window.open("", "_blank");
   if (!f) { melde("Das Druckfenster wurde blockiert. Bitte Pop-ups für diese Seite erlauben.", true); return; }
   f.document.open(); f.document.write(html); f.document.close();

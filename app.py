@@ -14,6 +14,7 @@ import katalog_daten
 import ki
 import versand
 import base64
+import binascii
 import calendar
 import csv
 import datetime as dt
@@ -41,9 +42,10 @@ DOK_PFAD = DATEN / "dokumente"
 PLAN_PFAD = DATEN / "plaene"
 SYM_PFAD = DATEN / "symbole"
 OBJ_PFAD = DATEN / "objektbilder"
+SCHL_PFAD = DATEN / "schluesselfotos"
 MAX_SYMBOL = 2 * 1024 * 1024
 MAX_UPLOAD = 25 * 1024 * 1024
-VERSION = "2026.11.15-12"  # muss zu VERSION in static/app.js passen
+VERSION = "2026.11.15-13"  # muss zu VERSION in static/app.js passen
 SITZUNG_TAGE = 7
 
 GEWERKE = [
@@ -443,6 +445,14 @@ CREATE TABLE IF NOT EXISTS schluessel_uebergaben (
     mail_fehler TEXT,
     erstellt TEXT
 );
+CREATE TABLE IF NOT EXISTS schluessel_fotos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    uebergabe_id INTEGER NOT NULL,
+    art TEXT NOT NULL,
+    pfad TEXT NOT NULL,
+    zeit TEXT NOT NULL,
+    von TEXT
+);
 CREATE TABLE IF NOT EXISTS sv_auswertungen (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     dokument_id INTEGER NOT NULL,
@@ -563,6 +573,7 @@ def db_anlegen() -> None:
     PLAN_PFAD.mkdir(parents=True, exist_ok=True)
     SYM_PFAD.mkdir(parents=True, exist_ok=True)
     OBJ_PFAD.mkdir(parents=True, exist_ok=True)
+    SCHL_PFAD.mkdir(parents=True, exist_ok=True)
     with db() as con:
         for name, res in RESSOURCEN.items():
             spalten = ["id INTEGER PRIMARY KEY AUTOINCREMENT"]
@@ -1414,6 +1425,37 @@ def schluessel_bestand(con, objekt_id=None) -> list:
     return aus
 
 
+def schluessel_fotos_pruefen(fotos, art_text: str) -> list:
+    """Fotos als data-URL prüfen, bevor etwas gespeichert wird. Mindestens eins ist Pflicht."""
+    if not isinstance(fotos, list) or not fotos:
+        raise Fehler(400, f"Bitte ein Foto der Schlüssel bei der {art_text} machen.")
+    if len(fotos) > 6:
+        raise Fehler(400, "Höchstens 6 Fotos je Übergabe.")
+    aus = []
+    for f in fotos:
+        if not isinstance(f, str) or "," not in f or not f.startswith("data:image/"):
+            raise Fehler(400, "Ein Foto ist ungültig.")
+        try:
+            inhalt = base64.b64decode(f.split(",", 1)[1], validate=True)
+        except (ValueError, binascii.Error):
+            raise Fehler(400, "Ein Foto ist ungültig.")
+        endung = bild_endung(inhalt)
+        if endung not in ("jpg", "png", "webp"):
+            raise Fehler(400, "Fotos bitte als JPG, PNG oder WEBP.")
+        if len(inhalt) > 6 * 1024 * 1024:
+            raise Fehler(400, "Ein Foto ist zu groß (höchstens 6 MB).")
+        aus.append((inhalt, endung))
+    return aus
+
+
+def schluessel_fotos_speichern(con, uid: int, art: str, fotos: list, wer: str) -> None:
+    for inhalt, endung in fotos:
+        name = f"{uid}_{art}_{secrets.token_hex(6)}.{endung}"
+        (SCHL_PFAD / name).write_bytes(inhalt)
+        con.execute("INSERT INTO schluessel_fotos (uebergabe_id, art, pfad, zeit, von) VALUES (?,?,?,?,?)",
+                    (uid, art, name, jetzt(), wer))
+
+
 def uebergabe_laden(con, uid: int) -> dict:
     r = con.execute("SELECT u.*, o.kuerzel AS o_kuerzel, o.name AS o_name, o.strasse AS o_strasse, o.plz AS o_plz, o.ort AS o_ort "
                     "FROM schluessel_uebergaben u LEFT JOIN objekte o ON o.id=u.objekt_id WHERE u.id=?", (uid,)).fetchone()
@@ -1421,6 +1463,8 @@ def uebergabe_laden(con, uid: int) -> dict:
         raise Fehler(404, "Übergabe nicht gefunden.")
     z = dict(r)
     z["schluessel"] = json.loads(z["schluessel"] or "[]")
+    z["fotos"] = [{"id": f["id"], "art": f["art"], "zeit": f["zeit"]} for f in con.execute(
+        "SELECT id, art, zeit FROM schluessel_fotos WHERE uebergabe_id=? ORDER BY id", (uid,))]
     return z
 
 
@@ -1497,6 +1541,7 @@ def uebergabe_anlegen(con, benutzer, d: dict) -> dict:
     sig_e = _unterschrift(d.get("sig_empfaenger"))
     if not sig_e:
         raise Fehler(400, "Bitte die Person, die den Schlüssel erhält, unterschreiben lassen.")
+    fotos = schluessel_fotos_pruefen(d.get("fotos"), "Ausgabe")
     cur = con.execute(
         "INSERT INTO schluessel_uebergaben (objekt_id, schluessel, ausgeber_id, ausgeber_name, ausgeber_email, empfaenger_name, "
         "empfaenger_firma, empfaenger_email, empfaenger_tel, zweck, ausgabe_zeit, rueckgabe_bis, erinnerung_um, quittung_senden, "
@@ -1508,6 +1553,7 @@ def uebergabe_anlegen(con, benutzer, d: dict) -> dict:
     uid = cur.lastrowid
     nummer = f"SÜ-{heute().year}-{uid:04d}"
     con.execute("UPDATE schluessel_uebergaben SET nummer=? WHERE id=?", (nummer, uid))
+    schluessel_fotos_speichern(con, uid, "ausgabe", fotos, benutzer["name"])
     protokollieren(con, benutzer, "Schlüssel ausgegeben", "schluessel_uebergaben", uid,
                    f'{nummer} an {name}: ' + ", ".join(s["nummer"] for s in liste))
     return uebergabe_laden(con, uid)
@@ -1531,6 +1577,8 @@ def uebergabe_rueckgabe(con, benutzer, uid: int, d: dict) -> dict:
     u = uebergabe_laden(con, uid)
     if u["status"] != "ausgegeben":
         raise Fehler(400, "Diese Schlüssel sind schon zurückgegeben.")
+    fotos = schluessel_fotos_pruefen(d.get("fotos"), "Rückgabe")
+    schluessel_fotos_speichern(con, uid, "rueckgabe", fotos, benutzer["name"])
     con.execute("UPDATE schluessel_uebergaben SET status='zurueck', rueckgabe_zeit=?, rueckgabe_von=?, rueckgabe_bemerkung=?, "
                 "sig_rueckgabe=? WHERE id=?", (jetzt(), benutzer["name"], str(d.get("bemerkung") or "").strip()[:2000] or None,
                                               _unterschrift(d.get("unterschrift")), uid))
@@ -2499,6 +2547,14 @@ class Handler(BaseHTTPRequestHandler):
             oid = (q.get("objekt_id") or [""])[0]
             return self.json({"schluessel": schluessel_bestand(con, int(oid) if oid.isdigit() else None),
                               "zeiten": schluessel_standardzeiten(con)})
+        if erstes == "schluesselfotos" and len(teile) == 2 and m == "GET":
+            r = con.execute("SELECT pfad FROM schluessel_fotos WHERE id=?", (self.id(teile[1]),)).fetchone()
+            pf = (SCHL_PFAD / r["pfad"]).resolve() if r else None
+            if not pf or not str(pf).startswith(str(SCHL_PFAD.resolve())) or not pf.is_file():
+                raise Fehler(404, "Foto nicht gefunden.")
+            typ = mimetypes.guess_type(pf.name)[0] or "image/jpeg"
+            return self.senden(200, pf.read_bytes(), typ, {"Cache-Control": "private, max-age=86400",
+                                                            "Content-Security-Policy": "sandbox"})
         if erstes == "schluesseluebergaben":
             if len(teile) == 1 and m == "GET":
                 return self.json(uebergaben_liste(con, q))
