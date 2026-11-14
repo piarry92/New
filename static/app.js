@@ -48,6 +48,7 @@ const ICONS = {
   dienstleister: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6 6 0 0 1 3.5 6"/>',
   zaehler: '<circle cx="12" cy="13" r="8"/><path d="M12 13l4-4M8 5l-1-2M16 5l1-2"/>',
   dokumente: '<path d="M3 6h7l2 2h9v12H3z"/>',
+  plaene: '<path d="M3 5l6-2 6 2 6-2v16l-6 2-6-2-6 2z"/><path d="M9 3v16M15 5v16"/>',
   einstellungen: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
   suche: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>',
   menue: '<path d="M3 6h18M3 12h18M3 18h18"/>',
@@ -134,6 +135,7 @@ function zelle(ressource, f, z) {
 const NAV = [
   ["start", "Übersicht", "#/"],
   ["objekte", "Objekte", "#/objekte"],
+  ["plaene", "Pläne", "#/plaene"],
   ["anlagen", "Anlagen", "#/anlagen"],
   ["wartungen", "Wartung & Prüfung", "#/wartungen"],
   ["tickets", "Störmeldungen", "#/tickets"],
@@ -407,7 +409,7 @@ function seitenkopf(titel, kicker = "", aktionen = "", zurueck = "") {
 }
 
 function stammdaten(ressource, z, ohne = []) {
-  return `<div class="felder">${S.schema[ressource].felder.filter((f) => !ohne.includes(f.name) && z[f.name] != null && z[f.name] !== "").map((f) =>
+  return `<div class="felder">${S.schema[ressource].felder.filter((f) => !f.intern && !ohne.includes(f.name) && z[f.name] != null && z[f.name] !== "").map((f) =>
     `<div class="feld ${f.typ === "textarea" ? "breit" : ""}"><div class="lbl">${esc(f.label)}</div><div class="val">${f.typ === "ref"
       ? `<a href="#/${f.ref}/${z[f.name]}">${zelle(ressource, f, z)}</a>` : zelle(ressource, f, z)}</div></div>`).join("") || '<span class="klein">Keine Angaben.</span>'}</div>`;
 }
@@ -570,6 +572,7 @@ DETAIL.objekte = async (el, id, q) => {
   const [o, anl, wart, tick, vert, zae, dok] = await Promise.all([
     api("GET", `objekte/${id}`), api("GET", `anlagen?objekt_id=${id}`), api("GET", `wartungen?objekt_id=${id}`),
     api("GET", `tickets?objekt_id=${id}&offen=1`), api("GET", `vertraege?objekt_id=${id}`), api("GET", `zaehler?objekt_id=${id}`), api("GET", `dokumente?objekt_id=${id}`)]);
+  const plaene = await api("GET", `plaene?objekt_id=${id}`);
   const ueber = wart.filter((w) => w.aktiv && tageBis(w.naechste) < 0).length;
   el.innerHTML = seitenkopf(o.name, o.kuerzel + (o.ort ? " · " + o.ort : ""),
     `${darfAendern() ? '<button class="knopf" id="bearb">Stammdaten bearbeiten</button>' : ""}<button class="knopf" onclick="print()">Drucken</button>`, ["#/objekte", "Objekte"]) + `
@@ -585,6 +588,7 @@ DETAIL.objekte = async (el, id, q) => {
   const f = { objekt_id: String(id) };
   reiterLeiste(el.querySelector("#r"), [
     { titel: "Anlagen", zahl: anl.length, zeigen: (x) => tabelle(x, "anlagen", { filter: f }) },
+    { titel: "Pläne", zahl: plaene.length, zeigen: (x) => planListe(x, f) },
     { titel: "Wartung & Prüfung", zahl: wart.length, zeigen: (x) => tabelle(x, "wartungen", { filter: f, extraFilter: wartungFilter }) },
     { titel: "Störmeldungen", zahl: tick.length, zeigen: (x) => tabelle(x, "tickets", { filter: f, extraFilter: ticketFilter, extraStart: "offen" }) },
     { titel: "Verträge", zahl: vert.length, zeigen: (x) => tabelle(x, "vertraege", { filter: f }) },
@@ -599,11 +603,24 @@ DETAIL.anlagen = async (el, id, q) => {
   const a = await api("GET", `anlagen/${id}`);
   el.innerHTML = seitenkopf(a.bezeichnung, [refText("objekte", a.objekt_id), a.gewerk].filter(Boolean).join(" · "),
     `${darfAendern() ? `<button class="knopf" id="stoer">${icon("plus")} Störung melden</button><button class="knopf" id="bearb">Bearbeiten</button>` : ""}`, [`#/objekte/${a.objekt_id}`, refText("objekte", a.objekt_id)]) +
-    `<div class="karte">${stammdaten("anlagen", a, ["bezeichnung"])}</div><div id="r"></div>`;
+    `<div class="${a.plan_id ? "raster k2" : ""}"><div class="karte">${stammdaten("anlagen", a, ["bezeichnung", "plan_id"])}</div>
+    ${a.plan_id ? `<div class="karte"><h3>Im Plan: ${esc(refText("plaene", a.plan_id))}</h3>${planAusschnitt(a)}</div>` : ""}</div>
+    ${!a.plan_id && darfAendern() ? '<div class="abstand"></div><div class="karte" id="aufplan"></div>' : ""}<div id="r"></div>`;
   const b = document.getElementById("bearb");
   if (b) b.onclick = async () => { const e = await bearbeiten("anlagen", a); if (e === "geloescht") location.hash = "#/anlagen"; else if (e) route(); };
   const s = document.getElementById("stoer");
   if (s) s.onclick = async () => { const t = await bearbeiten("tickets", null, { objekt_id: a.objekt_id, anlage_id: a.id, gewerk: a.gewerk }); if (t) location.hash = `#/tickets/${t.id}`; };
+  const ap = document.getElementById("aufplan");
+  if (ap) {
+    const pl = await api("GET", `plaene?objekt_id=${a.objekt_id}`);
+    ap.innerHTML = pl.length
+      ? `<h3>Noch nicht im Plan</h3><div class="werkzeug" style="margin:0"><select id="apsel">${pl.map((p) => `<option value="${p.id}">${esc([p.titel, p.etage].filter(Boolean).join(" · "))}</option>`).join("")}</select><button class="knopf haupt-k" id="apgo">Auf Plan setzen</button></div>`
+      : `<h3>Noch nicht im Plan</h3><p class="klein">Für dieses Objekt gibt es noch keinen Grundriss.</p><button class="knopf" id="apneu">Grundriss hochladen</button>`;
+    const go = document.getElementById("apgo");
+    if (go) go.onclick = () => { location.hash = `#/plaene/${document.getElementById("apsel").value}?platzieren=${a.id}`; };
+    const nu = document.getElementById("apneu");
+    if (nu) nu.onclick = async () => { const e = await planHochladen({ objekt_id: a.objekt_id }); if (e) location.hash = `#/plaene/${e.id}?platzieren=${a.id}`; };
+  }
   const f = { anlage_id: String(id) };
   const v = { objekt_id: a.objekt_id, anlage_id: a.id };
   reiterLeiste(el.querySelector("#r"), [

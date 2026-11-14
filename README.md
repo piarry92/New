@@ -8,6 +8,7 @@ Es läuft im Browser und braucht nur Python, sonst nichts.
 | Bereich | Was du damit machst |
 | --- | --- |
 | Übersicht | Offene Störmeldungen, überfällige und bald fällige Wartungen und Prüfungen, Kündigungsfristen auf einen Blick |
+| Pläne | Grundriss hochladen (PNG, JPG oder PDF). Geräte und Anlagen aus der Seitenleiste auf den Plan ziehen, verschieben, anklicken. Farbiger Ring zeigt den Zustand: grün in Ordnung, gelb bald fällig, rot Störung oder überfällig |
 | Objekte | Liegenschaften mit Stammdaten. Je Objekt alle Anlagen, Termine, Meldungen, Verträge, Zähler und Dokumente |
 | Anlagen | Technische Anlagen mit Gewerk, Standort, Hersteller, Baujahr und Zustand |
 | Wartung & Prüfung | Intervalle und Fälligkeiten. „Als erledigt melden“ rechnet den nächsten Termin selbst aus. Bei offenen Mängeln entsteht auf Wunsch gleich eine Störmeldung |
@@ -20,6 +21,16 @@ Es läuft im Browser und braucht nur Python, sonst nichts.
 | Einstellungen | Zugänge mit drei Rollen (Administrator, Bearbeiten, Nur lesen), Passwort ändern, Liste der letzten Änderungen |
 
 Jede Liste lässt sich mit einem Klick als Excel-Liste (CSV) speichern. Die Suche oben findet alles.
+
+## So arbeitest du mit Plänen
+
+1. Unter **Pläne** auf „Grundriss hochladen“ klicken, Objekt, Titel und Etage eintragen.
+2. Links ein Symbol (etwa „Feuerlöscher“) auf die richtige Stelle im Plan ziehen. Am Handy: Symbol antippen, dann die Stelle im Plan antippen.
+3. Das Programm legt die Anlage an und setzt sie auf den Plan. Anklicken zeigt Zustand, offene Störmeldungen und nächsten Termin.
+
+Vorhandene Anlagen ohne Platz stehen links unter „Noch nicht im Plan“. Verschieben geht durch Ziehen. Mausrad oder zwei
+Finger zoomen. Oben lassen sich einzelne Gewerke aus- und einblenden. Für PDF-Grundrisse lädt der Browser einmalig
+einen Leser aus dem Internet.
 
 ## Starten
 

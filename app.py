@@ -35,6 +35,7 @@ STATIC = BASIS / "static"
 DATEN = Path(os.environ.get("CAFM_DATEN", BASIS / "daten"))
 DB_PFAD = DATEN / "cafm.sqlite"
 DOK_PFAD = DATEN / "dokumente"
+PLAN_PFAD = DATEN / "plaene"
 MAX_UPLOAD = 25 * 1024 * 1024
 SITZUNG_TAGE = 7
 
@@ -87,6 +88,22 @@ RESSOURCEN: dict[str, dict] = {
             {"name": "status", "label": "Zustand", "typ": "select",
              "optionen": ["In Betrieb", "Eingeschränkt", "Außer Betrieb", "Stillgelegt"], "liste": True},
             {"name": "notiz", "label": "Notiz", "typ": "textarea"},
+            {"name": "plan_id", "label": "Plan", "typ": "ref", "ref": "plaene", "nurlesen": True, "lose": True},
+            {"name": "plan_x", "label": "Plan x", "typ": "number", "nurlesen": True, "intern": True},
+            {"name": "plan_y", "label": "Plan y", "typ": "number", "nurlesen": True, "intern": True},
+        ],
+    },
+    "plaene": {
+        "label": "Pläne", "einzahl": "Plan", "anzeige": ["titel"], "sort": "titel", "datei": True,
+        "felder": [
+            {"name": "objekt_id", "label": "Objekt", "typ": "ref", "ref": "objekte", "pflicht": True, "liste": True},
+            {"name": "titel", "label": "Titel (z. B. Grundriss 2. OG)", "typ": "text", "pflicht": True, "liste": True},
+            {"name": "gebaeude", "label": "Gebäude / Bauteil", "typ": "text", "liste": True},
+            {"name": "etage", "label": "Etage", "typ": "text", "liste": True},
+            {"name": "notiz", "label": "Notiz", "typ": "textarea"},
+            {"name": "dateiname", "label": "Datei", "typ": "text", "nurlesen": True},
+            {"name": "breite", "label": "Breite (px)", "typ": "number", "nurlesen": True, "intern": True},
+            {"name": "hoehe", "label": "Höhe (px)", "typ": "number", "nurlesen": True, "intern": True},
         ],
     },
     "wartungen": {
@@ -269,12 +286,13 @@ def db() -> sqlite3.Connection:
 def db_anlegen() -> None:
     DATEN.mkdir(parents=True, exist_ok=True)
     DOK_PFAD.mkdir(parents=True, exist_ok=True)
+    PLAN_PFAD.mkdir(parents=True, exist_ok=True)
     with db() as con:
         for name, res in RESSOURCEN.items():
             spalten = ["id INTEGER PRIMARY KEY AUTOINCREMENT"]
             for f in res["felder"]:
                 spalten.append(f'"{f["name"]}" {SQL_TYP.get(f["typ"], "TEXT")}')
-            if name == "dokumente":
+            if name == "dokumente" or res.get("datei"):
                 spalten.append('"pfad" TEXT')
             spalten += ['"erstellt" TEXT', '"geaendert" TEXT']
             con.execute(f'CREATE TABLE IF NOT EXISTS "{name}" ({", ".join(spalten)})')
@@ -287,7 +305,7 @@ def db_anlegen() -> None:
         for idx in [
             "anlagen(objekt_id)", "wartungen(objekt_id)", "wartungen(naechste)", "tickets(objekt_id)",
             "tickets(status)", "vertraege(objekt_id)", "zaehler(objekt_id)", "ablesungen(zaehler_id)",
-            "dokumente(objekt_id)", "wartung_historie(wartung_id)", "ticket_kommentare(ticket_id)",
+            "dokumente(objekt_id)", "anlagen(plan_id)", "plaene(objekt_id)", "wartung_historie(wartung_id)", "ticket_kommentare(ticket_id)",
         ]:
             tab, spalte = idx[:-1].split("(")
             con.execute(f'CREATE INDEX IF NOT EXISTS "ix_{tab}_{spalte}" ON {idx}')
@@ -474,6 +492,74 @@ def einfuegen(con, tabelle: str, sauber: dict) -> int:
     return cur.lastrowid
 
 
+def bild_endung(inhalt: bytes) -> str | None:
+    if inhalt.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "png"
+    if inhalt.startswith(b"\xff\xd8\xff"):
+        return "jpg"
+    if inhalt[:4] == b"RIFF" and inhalt[8:12] == b"WEBP":
+        return "webp"
+    if inhalt[:6] in (b"GIF87a", b"GIF89a"):
+        return "gif"
+    return None
+
+
+def plan_anlagen(con, pid: int) -> dict:
+    plan = zeile(con.execute("SELECT * FROM plaene WHERE id=?", (pid,)).fetchone())
+    if not plan:
+        raise Fehler(404, "Plan nicht gefunden.")
+    plan.pop("pfad", None)
+    h = heute()
+    hs, in30 = h.isoformat(), (h + dt.timedelta(days=30)).isoformat()
+    tickets = {r[0]: r[1] for r in con.execute(
+        "SELECT anlage_id, COUNT(*) FROM tickets WHERE anlage_id IS NOT NULL "
+        "AND status NOT IN ('Erledigt','Abgeschlossen') GROUP BY anlage_id")}
+    naechste = {r[0]: r[1] for r in con.execute(
+        "SELECT anlage_id, MIN(naechste) FROM wartungen WHERE aktiv=1 AND anlage_id IS NOT NULL GROUP BY anlage_id")}
+    alle = []
+    for r in con.execute("SELECT * FROM anlagen WHERE objekt_id=? ORDER BY bezeichnung", (plan["objekt_id"],)):
+        a = dict(r)
+        a["tickets_offen"] = tickets.get(a["id"], 0)
+        a["naechste"] = naechste.get(a["id"])
+        if a["tickets_offen"] or (a["naechste"] and a["naechste"] < hs) or a["status"] == "Außer Betrieb":
+            a["ampel"] = "rot"
+        elif (a["naechste"] and a["naechste"] <= in30) or a["status"] == "Eingeschränkt":
+            a["ampel"] = "gelb"
+        else:
+            a["ampel"] = "gruen"
+        alle.append(a)
+    return {"plan": plan,
+            "platziert": [a for a in alle if a["plan_id"] == pid],
+            "frei": [a for a in alle if not a["plan_id"]]}
+
+
+def anlage_position(con, benutzer, aid: int, d: dict) -> dict:
+    a = zeile(con.execute("SELECT * FROM anlagen WHERE id=?", (aid,)).fetchone())
+    if not a:
+        raise Fehler(404, "Anlage nicht gefunden.")
+    if d.get("plan_id") in (None, "", 0):
+        con.execute("UPDATE anlagen SET plan_id=NULL, plan_x=NULL, plan_y=NULL, geaendert=? WHERE id=?",
+                    (jetzt(), aid))
+        protokollieren(con, benutzer, "vom Plan genommen", "anlagen", aid)
+        return {"ok": True}
+    try:
+        pid, x, y = int(d["plan_id"]), float(d["x"]), float(d["y"])
+    except (KeyError, TypeError, ValueError):
+        raise Fehler(400, "Position ist ungültig.")
+    if not (0 <= x <= 1 and 0 <= y <= 1):
+        raise Fehler(400, "Die Position liegt außerhalb des Plans.")
+    plan = con.execute("SELECT objekt_id FROM plaene WHERE id=?", (pid,)).fetchone()
+    if not plan:
+        raise Fehler(404, "Plan nicht gefunden.")
+    if plan["objekt_id"] != a["objekt_id"]:
+        raise Fehler(400, "Die Anlage gehört zu einem anderen Objekt als der Plan.")
+    con.execute("UPDATE anlagen SET plan_id=?, plan_x=?, plan_y=?, geaendert=? WHERE id=?",
+                (pid, round(x, 5), round(y, 5), jetzt(), aid))
+    if a["plan_id"] != pid:
+        protokollieren(con, benutzer, "auf Plan gesetzt", "anlagen", aid, f"Plan {pid}")
+    return {"ok": True}
+
+
 def verbrauch(con, zaehler_id: int) -> dict:
     z = zeile(con.execute("SELECT * FROM zaehler WHERE id=?", (zaehler_id,)).fetchone())
     if not z:
@@ -634,6 +720,21 @@ def beispieldaten(con) -> None:
         ins("ablesungen", zaehler_id=z2, datum=datum, stand=round(stand2, 1))
         stand1 += 9000 + (i % 4) * 900
         stand2 += 160 + (i % 3) * 25
+    # Beispiel-Grundriss mit gesetzten Anlagen
+    quelle = STATIC / "demo" / "grundriss-beispiel.png"
+    if quelle.is_file():
+        pid = ins("plaene", objekt_id=o1, titel="Grundriss 2. OG", gebaeude="Haupthaus", etage="2. OG",
+                  dateiname=quelle.name, breite=2400, hoehe=1500)
+        pfad = f"{pid:06d}_{secrets.token_hex(6)}.png"
+        (PLAN_PFAD / pfad).write_bytes(quelle.read_bytes())
+        con.execute("UPDATE plaene SET pfad=? WHERE id=?", (pfad, pid))
+        for aid, x, y in [(anl["a1"], 0.475, 0.66), (anl["a2"], 0.51, 0.66), (anl["bma"], 0.69, 0.70),
+                          (anl["hz"], 0.74, 0.80), (anl["rlt"], 0.49, 0.25)]:
+            con.execute("UPDATE anlagen SET plan_id=?, plan_x=?, plan_y=? WHERE id=?", (pid, x, y, aid))
+        for nr, (x, y) in enumerate([(0.15, 0.49), (0.62, 0.49), (0.93, 0.49), (0.36, 0.86)], 1):
+            fid = ins("anlagen", objekt_id=o1, bezeichnung=f"Feuerlöscher {nr}", gewerk="Brandschutz",
+                      standort="Haupthaus, 2. OG", typ="ABC-Pulver 6 kg", status="In Betrieb")
+            con.execute("UPDATE anlagen SET plan_id=?, plan_x=?, plan_y=? WHERE id=?", (pid, x, y, fid))
 
 
 # ---------------------------------------------------------------------------
@@ -827,6 +928,18 @@ class Handler(BaseHTTPRequestHandler):
             return self.datei(con, self.id(teile[1]))
         if erstes == "dokumente" and len(teile) == 1 and m == "POST":
             return self.hochladen(con, b)
+        if erstes == "plaene" and len(teile) == 1 and m == "POST":
+            return self.plan_hochladen(con, b, None)
+        if erstes == "plaene" and len(teile) == 3:
+            pid = self.id(teile[1])
+            if teile[2] == "bild" and m == "GET":
+                return self.plan_bild(con, pid)
+            if teile[2] == "bild" and m == "PUT":
+                return self.plan_hochladen(con, b, pid)
+            if teile[2] == "anlagen" and m == "GET":
+                return self.json(plan_anlagen(con, pid))
+        if erstes == "anlagen" and len(teile) == 3 and teile[2] == "position" and m == "POST":
+            return self.json(anlage_position(con, b, self.id(teile[1]), self.body()))
 
         if erstes in RESSOURCEN:
             return self.crud(con, m, erstes, teile[1:], q)
@@ -885,10 +998,13 @@ class Handler(BaseHTTPRequestHandler):
             abh = self.abhaengige(con, name, rid)
             if abh:
                 raise Fehler(409, f"Kann nicht gelöscht werden, es hängen noch Einträge daran: {abh}.")
-            if name == "dokumente" and alt.get("pfad"):
-                p = (DOK_PFAD / alt["pfad"]).resolve()
-                if str(p).startswith(str(DOK_PFAD.resolve())) and p.is_file():
+            if name in ("dokumente", "plaene") and alt.get("pfad"):
+                ordner = DOK_PFAD if name == "dokumente" else PLAN_PFAD
+                p = (ordner / alt["pfad"]).resolve()
+                if str(p).startswith(str(ordner.resolve())) and p.is_file():
                     p.unlink()
+            if name == "plaene":
+                con.execute("UPDATE anlagen SET plan_id=NULL, plan_x=NULL, plan_y=NULL WHERE plan_id=?", (rid,))
             con.execute(f'DELETE FROM "{name}" WHERE id=?', (rid,))
             if name == "wartungen":
                 con.execute("DELETE FROM wartung_historie WHERE wartung_id=?", (rid,))
@@ -902,7 +1018,7 @@ class Handler(BaseHTTPRequestHandler):
         teile = []
         for anderer, res in RESSOURCEN.items():
             for f in res["felder"]:
-                if f["typ"] == "ref" and f["ref"] == name:
+                if f["typ"] == "ref" and f["ref"] == name and not f.get("lose"):
                     n = con.execute(f'SELECT COUNT(*) FROM "{anderer}" WHERE "{f["name"]}"=?', (rid,)).fetchone()[0]
                     if n:
                         teile.append(f'{n} × {res["label"]}')
@@ -931,6 +1047,11 @@ class Handler(BaseHTTPRequestHandler):
         zeilen = [dict(r) for r in con.execute(sql, werte)]
         for z in zeilen:
             z.pop("pfad", None)
+        if name == "plaene":
+            anzahl = {r[0]: r[1] for r in con.execute(
+                "SELECT plan_id, COUNT(*) FROM anlagen WHERE plan_id IS NOT NULL GROUP BY plan_id")}
+            for z in zeilen:
+                z["anlagen_anzahl"] = anzahl.get(z["id"], 0)
         return zeilen
 
     def export(self, con, name: str):
@@ -984,6 +1105,58 @@ class Handler(BaseHTTPRequestHandler):
         con.execute("UPDATE dokumente SET pfad=? WHERE id=?", (pfad, neue_id))
         protokollieren(con, b, "hochgeladen", "dokumente", neue_id, name)
         return self.json({"id": neue_id}, 201)
+
+    def plan_hochladen(self, con, b, pid: int | None):
+        d = self.body()
+        try:
+            inhalt = base64.b64decode(d.get("inhalt") or "", validate=True)
+        except ValueError:
+            raise Fehler(400, "Das Bild konnte nicht gelesen werden.")
+        if not inhalt:
+            raise Fehler(400, "Bitte einen Grundriss auswählen.")
+        if len(inhalt) > MAX_UPLOAD:
+            raise Fehler(413, "Der Grundriss ist zu groß (höchstens 25 MB).")
+        endung = bild_endung(inhalt)
+        if not endung:
+            raise Fehler(400, "Bitte den Grundriss als PNG, JPG oder PDF hochladen.")
+        try:
+            breite, hoehe = int(d.get("breite") or 0), int(d.get("hoehe") or 0)
+        except (TypeError, ValueError):
+            breite = hoehe = 0
+        name = re.sub(r"[^\w.\- äöüÄÖÜß]", "_", os.path.basename(str(d.get("dateiname") or "grundriss")))[:150]
+        if pid is None:
+            sauber = daten_pruefen(RESSOURCEN["plaene"], d, neu=True)
+            sauber.update({"dateiname": name, "breite": breite, "hoehe": hoehe})
+            pid = einfuegen(con, "plaene", sauber)
+            alt_pfad = None
+            protokollieren(con, b, "hochgeladen", "plaene", pid, sauber.get("titel"))
+        else:
+            alt = con.execute("SELECT * FROM plaene WHERE id=?", (pid,)).fetchone()
+            if not alt:
+                raise Fehler(404, "Plan nicht gefunden.")
+            alt_pfad = alt["pfad"]
+            con.execute("UPDATE plaene SET dateiname=?, breite=?, hoehe=?, geaendert=? WHERE id=?",
+                        (name, breite, hoehe, jetzt(), pid))
+            protokollieren(con, b, "Grundriss ersetzt", "plaene", pid, name)
+        pfad = f"{pid:06d}_{secrets.token_hex(6)}.{endung}"
+        (PLAN_PFAD / pfad).write_bytes(inhalt)
+        con.execute("UPDATE plaene SET pfad=? WHERE id=?", (pfad, pid))
+        if alt_pfad:
+            altp = (PLAN_PFAD / alt_pfad).resolve()
+            if str(altp).startswith(str(PLAN_PFAD.resolve())) and altp.is_file():
+                altp.unlink()
+        return self.json({"id": pid}, 201)
+
+    def plan_bild(self, con, pid: int):
+        r = con.execute("SELECT pfad FROM plaene WHERE id=?", (pid,)).fetchone()
+        if not r or not r["pfad"]:
+            raise Fehler(404, "Grundriss nicht gefunden.")
+        p = (PLAN_PFAD / r["pfad"]).resolve()
+        if not str(p).startswith(str(PLAN_PFAD.resolve())) or not p.is_file():
+            raise Fehler(404, "Grundriss nicht gefunden.")
+        typ = mimetypes.guess_type(p.name)[0] or "application/octet-stream"
+        self.senden(200, p.read_bytes(), typ, {"Cache-Control": "private, max-age=3600",
+                                                "Content-Security-Policy": "sandbox"})
 
     def datei(self, con, did: int):
         r = con.execute("SELECT * FROM dokumente WHERE id=?", (did,)).fetchone()
