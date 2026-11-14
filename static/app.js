@@ -24,7 +24,7 @@ async function api(methode, pfad, daten) {
   });
   let j = null;
   try { j = await r.json(); } catch (e) { /* leer */ }
-  if (r.status === 401 && pfad !== "anmelden" && pfad !== "status") { S.ich = null; zeigeAnmeldung(); throw new Error("Bitte anmelden."); }
+  if (r.status === 401 && pfad !== "anmelden" && pfad !== "status" && !pfad.startsWith("qr/")) { S.ich = null; zeigeAnmeldung(); throw new Error("Bitte anmelden."); }
   if (!r.ok) throw new Error((j && j.fehler) || "Fehler " + r.status);
   return j;
 }
@@ -575,7 +575,7 @@ DETAIL.objekte = async (el, id, q) => {
   const plaene = await api("GET", `plaene?objekt_id=${id}`);
   const ueber = wart.filter((w) => w.aktiv && tageBis(w.naechste) < 0).length;
   el.innerHTML = seitenkopf(o.name, o.kuerzel + (o.ort ? " · " + o.ort : ""),
-    `${darfAendern() ? '<button class="knopf" id="bearb">Stammdaten bearbeiten</button>' : ""}<button class="knopf" onclick="print()">Drucken</button>`, ["#/objekte", "Objekte"]) + `
+    `${darfAendern() ? '<button class="knopf" id="bearb">Stammdaten bearbeiten</button>' : ""}<button class="knopf" id="oqr">QR-Etiketten</button><button class="knopf" onclick="print()">Drucken</button>`, ["#/objekte", "Objekte"]) + `
     <div class="raster k4">
       <div class="karte kennzahl orange"><div class="wert">${tick.length}</div><div class="text">offene Störmeldungen</div></div>
       <div class="karte kennzahl ${ueber ? "rot" : ""}"><div class="wert">${ueber}</div><div class="text">überfällige Termine</div></div>
@@ -585,6 +585,7 @@ DETAIL.objekte = async (el, id, q) => {
     <div class="karte">${stammdaten("objekte", o, ["kuerzel", "name"])}</div><div id="r"></div>`;
   const b = document.getElementById("bearb");
   if (b) b.onclick = async () => { const e = await bearbeiten("objekte", o); if (e === "geloescht") location.hash = "#/objekte"; else if (e) route(); };
+  document.getElementById("oqr").onclick = () => etikettenDrucken(anl, `QR-Etiketten ${o.kuerzel}`);
   const f = { objekt_id: String(id) };
   reiterLeiste(el.querySelector("#r"), [
     { titel: "Anlagen", zahl: anl.length, zeigen: (x) => tabelle(x, "anlagen", { filter: f }) },
@@ -716,6 +717,11 @@ SEITEN.einstellungen = async (el) => {
   </div>
   <div class="abstand"></div><div class="karte"><h3>Eigene Symbole für Pläne</h3><div id="syml"></div>
     ${darfAendern() ? '<div class="abstand"></div><button class="knopf haupt-k" id="symNeuE">' + icon("plus") + ' Eigenes Symbol aus Bild</button>' : ""}</div>
+  ${istAdmin() ? `<div class="abstand"></div><div class="karte"><h3>QR-Codes und Mängelmeldung</h3><form id="qre" class="formular" style="grid-template-columns:1fr" onsubmit="return false">
+    <label>Adresse des Programms für QR-Codes<input name="basis_url" type="url" placeholder="z. B. https://cafm.ccc-frankfurt.com oder http://192.168.1.20:8080"></label>
+    <p class="klein">Diese Adresse steht in jedem QR-Code. Sie muss vom Handy aus erreichbar sein. Leer heißt: die Adresse, unter der du das Programm gerade geöffnet hast. Nach einer Änderung die Etiketten neu drucken.</p>
+    <label class="check"><input type="checkbox" name="oeffentlich_melden"> Mängel über den QR-Code auch ohne Anmeldung melden lassen (z. B. Mieter, Dienstleister)</label>
+    <div><button class="knopf haupt-k" id="qrspeichern">Speichern</button></div></form></div>` : ""}
   ${istAdmin() ? '<div class="abstand"></div><div class="karte"><h3>Letzte Änderungen</h3><div id="vl" class="tabelle-wrap" style="box-shadow:none"></div></div>' : ""}`;
   const ladeSym = async () => {
     const liste = await lade("symbole", true);
@@ -739,6 +745,12 @@ SEITEN.einstellungen = async (el) => {
     catch (err) { melde(err.message, true); }
   };
   if (!istAdmin()) return;
+  const qe = el.querySelector("#qre"), ein = await einstellungenLaden(true);
+  qe.basis_url.value = ein.basis_url || ""; qe.oeffentlich_melden.checked = ein.oeffentlich_melden === "1";
+  el.querySelector("#qrspeichern").onclick = async () => {
+    try { EINST = await api("PUT", "einstellungen", { basis_url: qe.basis_url.value, oeffentlich_melden: qe.oeffentlich_melden.checked ? 1 : 0 }); melde("Gespeichert."); }
+    catch (err) { melde(err.message, true); }
+  };
   const rollen = { admin: "Administrator", benutzer: "Bearbeiten", lesen: "Nur lesen" };
   const ladeB = async () => {
     const bl = await api("GET", "benutzer");
@@ -802,10 +814,17 @@ async function start() {
   S.einheiten = s.medien_einheit;
   rahmen();
   window.onhashchange = route;
+  const qrZiel = new URLSearchParams(location.search).get("qr");
+  if (qrZiel) {
+    history.replaceState(null, "", "/" + location.hash);
+    try { const r = await api("GET", "qr/" + encodeURIComponent(qrZiel)); if (r.anlage_id) { location.hash = `#/anlagen/${r.anlage_id}?mangel=1`; return; } }
+    catch (e) { melde(e.message, true); }
+  }
   await route();
 }
 
-(async () => {
+window.addEventListener("DOMContentLoaded", async () => {
+  if (location.pathname.startsWith("/m/")) return qrSeite(decodeURIComponent(location.pathname.slice(3)));
   try {
     const st = await api("GET", "status");
     if (st.benutzer) { S.ich = st.benutzer; await start(); }
@@ -813,4 +832,4 @@ async function start() {
   } catch (e) {
     $app.innerHTML = `<div class="laden">Das Programm ist gerade nicht erreichbar. ${esc(e.message)}</div>`;
   }
-})();
+});

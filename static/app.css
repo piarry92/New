@@ -431,3 +431,24 @@ table.jplan td.anl .zeichen-svg, table.jplan td.anl .sym { flex: none; }
 .nowrap { white-space: nowrap; }
 table.jplan.gross td.anl { min-width: 190px; }
 table.jplan.gross td:last-child { white-space: nowrap; }
+
+/* QR-Code */
+.qr-karte { display: flex; gap: 16px; align-items: flex-start; }
+.qr-karte .qr-svg { display: block; border: 1px solid var(--hellgrau); border-radius: 6px; flex: none; }
+.qr-karte p { margin: 0 0 8px; }
+.qr-link { display: flex; gap: 6px; margin-bottom: 8px; }
+.qr-link input { flex: 1; min-width: 0; padding: 5px 8px; border: 1px solid var(--hellgrau); border-radius: var(--radius); font-size: 12.5px; color: var(--dunkelgrau); background: var(--zartgrau); }
+.qr-knoepfe { display: flex; gap: 6px; flex-wrap: wrap; }
+.qr-seite { max-width: 560px; margin: 0 auto; padding: 16px 16px 40px; display: flex; flex-direction: column; gap: 14px; }
+.qr-seite header { padding: 8px 0; }
+.qr-seite header img { width: 170px; display: block; }
+.qr-anlage { display: flex; gap: 14px; align-items: center; }
+.qr-anlage h1 { font-size: 22px; margin: 2px 0; }
+.qr-anlage .kicker { font-size: 12px; letter-spacing: .1em; color: var(--orange); font-weight: 700; }
+.qr-seite .formular h2 { margin: 0; }
+.qr-seite textarea { min-height: 120px; }
+.gross-k { justify-content: center; padding: 13px; font-size: 17px; }
+.qr-danke { text-align: center; }
+.qr-danke .haken { width: 64px; height: 64px; border-radius: 50%; background: var(--ok); color: #fff; font-size: 34px; display: flex; align-items: center; justify-content: center; margin: 6px auto 10px; }
+.qr-mitarbeiter { text-align: center; }
+@media (max-width: 900px) { .qr-karte { flex-direction: column; } }

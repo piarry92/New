@@ -216,7 +216,7 @@ DETAIL.plaene = async (el, id, q) => {
   const ansicht = { s: 1, x: 0, y: 0, aus: new Set(), suche: "", modus: null, offen: null };
 
   el.innerHTML = seitenkopf(plan.titel, [refText("objekte", plan.objekt_id), plan.gebaeude, plan.etage].filter(Boolean).join(" · "),
-    `${aendern ? '<button class="knopf" id="pbearb">Angaben</button><button class="knopf" id="pers">Grundriss ersetzen</button>' : ""}<button class="knopf" id="pdruck">Drucken</button>`,
+    `${aendern ? '<button class="knopf" id="pbearb">Angaben</button><button class="knopf" id="pers">Grundriss ersetzen</button>' : ""}<button class="knopf" id="pqr">QR-Etiketten</button><button class="knopf" id="pdruck">Drucken</button>`,
     [`#/objekte/${plan.objekt_id}?reiter=1`, refText("objekte", plan.objekt_id)]) + `
   <div class="plan-layout">
     <aside class="palette" id="palette">
@@ -521,6 +521,7 @@ DETAIL.plaene = async (el, id, q) => {
 
   /* Kopf-Knöpfe */
   el.querySelector("#pdruck").onclick = () => { einpassen(); setTimeout(print, 100); };
+  el.querySelector("#pqr").onclick = () => etikettenDrucken(daten.platziert.filter(sichtbar), `QR-Etiketten ${plan.titel}`);
   const pb = el.querySelector("#pbearb");
   if (pb) pb.onclick = async () => { const e = await bearbeiten("plaene", plan); if (e === "geloescht") location.hash = "#/plaene"; else if (e) route(); };
   const pe = el.querySelector("#pers");

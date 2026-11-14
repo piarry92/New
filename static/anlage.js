@@ -220,7 +220,7 @@ DETAIL.anlagen = async (el, id, q) => {
         <div class="gal-symbol">${symbolVon(a, 40)}</div>
         ${aendern ? `<button class="rund-plus" id="aplus" aria-label="Hinzufügen">${icon("plus")}</button>
           <div class="plus-menue" id="pmenue" hidden>
-            <button data-m="foto">Foto hinzufügen</button><button data-m="meldung">Störung melden</button>
+            <button data-m="mangel">Mangel melden</button><button data-m="foto">Foto hinzufügen</button><button data-m="meldung">Störmeldung (ausführlich)</button>
             <button data-m="aufgabe">Wartungsaufgabe anlegen</button><button data-m="vorschlag">Wartungsplan vorschlagen</button><button data-m="dok">Dokument hochladen</button>
           </div>` : ""}
       </div>
@@ -243,6 +243,8 @@ DETAIL.anlagen = async (el, id, q) => {
           <input type="checkbox" class="schalter" data-schalter="${n}" ${a[n] ? "checked" : ""} ${aendern ? "" : "disabled"}></label>`).join("")}</div>
       </div>
       <div>
+        <div class="karte" id="qrk"></div>
+        <div class="abstand"></div>
         <div class="karte"><h3>${a.plan_id ? "Im Plan: " + esc(refText("plaene", a.plan_id)) : "Plan"}</h3>${a.plan_id ? planAusschnitt(a) : '<div id="aufplan"><p class="klein">Noch nicht auf einem Plan.</p></div>'}</div>
         <div class="abstand"></div>
         <div class="karte"><div class="akt-kopf"><h3>Aktivität</h3><span class="klein">${akt.length} Aktivitäten</span><button class="knopf klein" id="aktsort">↑ Älteste zuerst</button></div>
@@ -251,6 +253,12 @@ DETAIL.anlagen = async (el, id, q) => {
     </div>
     <div id="r"></div>
   </div>`;
+
+  qrKarte(el.querySelector("#qrk"), a);
+  if (q.get("mangel") === "1" && aendern) {
+    history.replaceState(null, "", `#/anlagen/${a.id}`);
+    setTimeout(() => mangelDialog(a), 50);
+  }
 
   /* Aktivität */
   let neuesteZuerst = true;
@@ -285,6 +293,7 @@ DETAIL.anlagen = async (el, id, q) => {
   const plus = el.querySelector("#aplus"), menue = el.querySelector("#pmenue");
   const neueAufgabe = () => bearbeiten("wartungen", null, { objekt_id: a.objekt_id, anlage_id: a.id, dienstleister_id: a.dienstleister_id, naechste: plusMonate(heute(), 1), intervall_monate: 12, art: "Wartung" });
   const aktion = async (m) => {
+    if (m === "mangel") await mangelDialog(a);
     if (m === "foto" && await fotosHochladen(a)) route();
     if (m === "meldung") { const t = await bearbeiten("tickets", null, { objekt_id: a.objekt_id, anlage_id: a.id, gewerk: a.gewerk, dienstleister_id: a.dienstleister_id }); if (t) location.hash = `#/tickets/${t.id}`; }
     if (m === "aufgabe" && await neueAufgabe()) route();

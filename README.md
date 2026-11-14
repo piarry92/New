@@ -42,6 +42,17 @@ Vorhandene Anlagen ohne Platz stehen links unter „Noch nicht im Plan“. Versc
 Finger zoomen. Oben lassen sich einzelne Gewerke aus- und einblenden. Für PDF-Grundrisse lädt der Browser einmalig
 einen Leser aus dem Internet.
 
+## QR-Code je Anlage
+
+Jede Anlage hat einen eigenen QR-Code (Anlagenseite, Karte „QR-Code der Anlage“). Wer ihn scannt, kommt direkt zur
+Anlage. Angemeldete Mitarbeitende landen auf der Anlagenseite mit geöffnetem Fenster „Mangel melden“. Ohne Anmeldung
+erscheint eine einfache Seite zum Melden mit Beschreibung, Fotos, Name und Kontakt. Daraus wird eine Störmeldung mit Status
+„Neu“. Das Melden ohne Anmeldung lässt sich in den Einstellungen abschalten.
+
+Etiketten: einzeln auf der Anlagenseite oder als Bogen für ein ganzes Objekt oder einen Plan („QR-Etiketten“).
+Wichtig: In den Einstellungen die Adresse eintragen, unter der das Programm vom Handy aus erreichbar ist, und erst
+dann drucken. „Neuen Code erzeugen“ macht den alten Code ungültig.
+
 ## Starten
 
 Windows: Doppelklick auf `start.bat`. Mac oder Linux: `./start.sh`.
