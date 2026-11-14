@@ -1,7 +1,7 @@
 /* Casa CAFM – Oberfläche (ohne Fremdbibliotheken) */
 "use strict";
 
-const VERSION = "2026.11.15-4"; // muss zu VERSION in app.py passen
+const VERSION = "2026.11.15-5"; // muss zu VERSION in app.py passen
 /* Hell- und Dunkelmodus: gemerkte Wahl, sonst wie das Gerät */
 const THEMA = (() => {
   let t = null;
@@ -938,6 +938,12 @@ async function start() {
   try { await Promise.all([katLaden(), lade("symbole")]); } catch (e) { /* Katalog später */ }
   rahmen();
   window.onhashchange = route;
+  const cpZiel = new URLSearchParams(location.search).get("c");
+  if (cpZiel) {
+    history.replaceState(null, "", "/" + location.hash);
+    try { const r = await checkpointErfassen(cpZiel); melde(`Checkpoint erfasst: ${r.bereich}`); location.hash = `#/checklisten/${r.checkliste_id}?durchfuehren=1`; return; }
+    catch (e) { melde(e.message, true); }
+  }
   const qrZiel = new URLSearchParams(location.search).get("qr");
   if (qrZiel) {
     history.replaceState(null, "", "/" + location.hash);
@@ -948,6 +954,7 @@ async function start() {
 }
 
 window.addEventListener("DOMContentLoaded", async () => {
+  if (location.pathname.startsWith("/m/c/")) return qrCheckpointSeite(decodeURIComponent(location.pathname.slice(5)));
   if (location.pathname.startsWith("/m/o/")) return qrObjektSeite(decodeURIComponent(location.pathname.slice(5)));
   if (location.pathname.startsWith("/m/")) return qrSeite(decodeURIComponent(location.pathname.slice(3)));
   try {

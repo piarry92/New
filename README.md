@@ -56,6 +56,14 @@ einen Leser aus dem Internet.
 - Rhythmus (täglich bis jährlich oder bei Bedarf) bestimmt die nächste Fälligkeit. Gesamtübersicht unter
   „Checklisten & Rundgänge“ mit Filter „fällig“. Verlauf mit allen Werten je Durchgang.
 - Rechte: Listen anlegen und ändern mit „Wartungsplan ändern“, durchführen mit „Wartungen erledigen“.
+- **Unterschrift:** Am Ende jedes Durchgangs mit Finger oder Maus unterschreiben, dazu der Name. Je Liste
+  einstellbar, ob die Unterschrift Pflicht ist. „Protokoll drucken“ erstellt ein Prüfprotokoll im Casa-Design mit
+  allen Werten, Checkpoints und Unterschrift.
+- **Checkpoints beim Rundgang:** Jede Station bekommt einen eigenen QR-Code (Rundgang öffnen › „QR-Etiketten
+  drucken“). Der Haustechniker scannt den Code vor Ort mit der Handy-Kamera oder im Programm mit „Checkpoint
+  scannen“. Zeit und Person werden festgehalten und im Protokoll gezeigt. Ist „Checkpoints müssen gescannt werden“
+  eingestellt, lassen sich die Punkte einer Station erst nach dem Scan abhaken. Der Zwischenstand bleibt beim
+  Wechsel zur Kamera erhalten.
 
 ## Mieter-QR-Code je Objekt
 

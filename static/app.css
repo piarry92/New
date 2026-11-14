@@ -957,3 +957,27 @@ html[data-theme="dark"] .pk-zeile { background: #16171A; }
 .df-abschluss > label:first-child { font-size: 13px; font-weight: 600; color: var(--text-2); }
 .df-abschluss textarea { min-height: 80px; border: 1px solid var(--rand-stark); border-radius: 10px; padding: 10px 12px; background: var(--weiss); color: var(--anthrazit); resize: vertical; }
 .df-abschluss .check { display: flex; gap: 8px; align-items: center; }
+
+/* Checkpoints und Unterschrift */
+.cp-kopf { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 6px; }
+.cp-kopf h3 { margin: 0; }
+.cp-raster { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin-top: 10px; }
+.cp-eintrag { display: flex; gap: 12px; align-items: center; border: 1px solid var(--rand); border-radius: 12px; padding: 10px; }
+.cp-eintrag .qr-svg { border-radius: 6px; flex: none; }
+.cp-status { margin-left: auto; text-transform: none; letter-spacing: 0; }
+.df-station { flex-wrap: wrap; }
+.df-sperre { display: none; font-size: 13px; color: var(--ueber); font-weight: 700; }
+.df-punkt.gesperrt .df-wahl, .df-punkt.gesperrt .df-wert { opacity: .35; }
+.df-punkt.gesperrt .df-sperre { display: block; }
+.unterschrift-box .us-kopf { display: flex; justify-content: space-between; align-items: center; }
+.us-feld { width: 100%; height: 170px; background: #fff; border: 1px dashed var(--rand-stark); border-radius: 12px; touch-action: none; cursor: crosshair; display: block; }
+.unterschrift-box.unterschrieben .us-feld { border-style: solid; border-color: var(--ok); }
+.us-linie { font-size: 12px; color: var(--text-2); text-align: center; margin-top: -4px; }
+.us-name { display: flex; flex-direction: column; gap: 4px; font-size: 13px; font-weight: 600; color: var(--text-2); max-width: 360px; }
+.us-name input { min-height: 40px; border: 1px solid var(--rand-stark); border-radius: 9px; padding: 8px 10px; background: var(--weiss); color: var(--anthrazit); }
+.us-anzeige { display: inline-flex; flex-direction: column; border-bottom: 1px solid var(--anthrazit); padding: 4px 8px 2px; margin: 6px 0 10px; background: #fff; border-radius: 6px; }
+.us-anzeige img { height: 70px; }
+.us-anzeige span { font-size: 12px; color: #3C3C3B; }
+.scanner { position: relative; border-radius: 12px; overflow: hidden; background: #000; aspect-ratio: 3 / 4; max-height: 60vh; }
+.scanner video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.scan-rahmen { position: absolute; inset: 18%; border: 3px solid var(--orange); border-radius: 16px; box-shadow: 0 0 0 9999px rgba(0,0,0,.35); }

@@ -41,7 +41,7 @@ SYM_PFAD = DATEN / "symbole"
 OBJ_PFAD = DATEN / "objektbilder"
 MAX_SYMBOL = 2 * 1024 * 1024
 MAX_UPLOAD = 25 * 1024 * 1024
-VERSION = "2026.11.15-4"  # muss zu VERSION in static/app.js passen
+VERSION = "2026.11.15-5"  # muss zu VERSION in static/app.js passen
 SITZUNG_TAGE = 7
 
 GEWERKE = [
@@ -203,6 +203,8 @@ RESSOURCEN: dict[str, dict] = {
             {"name": "rhythmus", "label": "Rhythmus", "typ": "select", "optionen": list(RHYTHMUS), "standard": "bei Bedarf", "liste": True},
             {"name": "zustaendig", "label": "Zuständig", "typ": "text"},
             {"name": "punkte", "label": "Prüfpunkte", "typ": "jsonliste", "intern": True},
+            {"name": "unterschrift_pflicht", "label": "Unterschrift erforderlich", "typ": "bool", "standard": 1},
+            {"name": "checkpoints_pflicht", "label": "Checkpoints müssen gescannt werden", "typ": "bool", "standard": 0},
             {"name": "aktiv", "label": "Aktiv", "typ": "bool", "standard": 1},
             {"name": "notiz", "label": "Notiz", "typ": "textarea"},
         ],
@@ -382,6 +384,22 @@ CREATE TABLE IF NOT EXISTS checklisten_durchgaenge (
     lat REAL,
     lon REAL
 );
+CREATE TABLE IF NOT EXISTS checkpoints (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    checkliste_id INTEGER NOT NULL,
+    bereich TEXT NOT NULL,
+    token TEXT NOT NULL UNIQUE,
+    erstellt TEXT
+);
+CREATE TABLE IF NOT EXISTS checkpoint_scans (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    checkpoint_id INTEGER NOT NULL,
+    benutzer_id INTEGER,
+    wer TEXT,
+    zeit TEXT NOT NULL,
+    lat REAL,
+    lon REAL
+);
 CREATE TABLE IF NOT EXISTS verlauf (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     zeit TEXT NOT NULL,
@@ -454,6 +472,10 @@ def db_anlegen() -> None:
         if "rechte" not in {r["name"] for r in con.execute("PRAGMA table_info(benutzer)")}:
             con.execute("ALTER TABLE benutzer ADD COLUMN rechte TEXT")
         con.execute("UPDATE benutzer SET rolle='zuschauer' WHERE rolle='lesen'")
+        vorhanden_dg = {r["name"] for r in con.execute("PRAGMA table_info(checklisten_durchgaenge)")}
+        for spalte in ("unterschrift", "unterschrift_name", "checkpoints", "start"):
+            if spalte not in vorhanden_dg:
+                con.execute(f"ALTER TABLE checklisten_durchgaenge ADD COLUMN {spalte} TEXT")
         vorhanden = {r["name"] for r in con.execute("PRAGMA table_info(wartung_historie)")}
         for spalte, typ in (("lat", "REAL"), ("lon", "REAL"), ("checkliste", "TEXT")):
             if spalte not in vorhanden:
@@ -923,6 +945,44 @@ def qr_bremse(ip: str) -> None:
     _qr_zeiten[ip] = liste
 
 
+def checkpoint_stand(con, cid: int, benutzer_id: int, start: str) -> list[dict]:
+    """Je Checkpoint der erste Scan dieses Zugangs seit Beginn des Durchgangs."""
+    if not re.match(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$", start or ""):
+        start = (dt.datetime.now() - dt.timedelta(hours=12)).isoformat(timespec="seconds")
+    grenze = (dt.datetime.now() - dt.timedelta(hours=24)).isoformat(timespec="seconds")
+    start = max(start, grenze)
+    aus = []
+    for cp in con.execute("SELECT * FROM checkpoints WHERE checkliste_id=? ORDER BY id", (cid,)):
+        r = con.execute("SELECT MIN(zeit) FROM checkpoint_scans WHERE checkpoint_id=? AND benutzer_id=? AND zeit>=?",
+                        (cp["id"], benutzer_id, start)).fetchone()
+        aus.append({"id": cp["id"], "bereich": cp["bereich"], "zeit": r[0]})
+    return aus
+
+
+def checkpoints_abgleichen(con, cid: int) -> list[dict]:
+    """Legt für jede Station eines Rundgangs einen Checkpoint an. Bestehende Codes bleiben erhalten."""
+    c = con.execute("SELECT punkte FROM checklisten WHERE id=?", (cid,)).fetchone()
+    if not c:
+        raise Fehler(404, "Checkliste nicht gefunden.")
+    stationen = []
+    for p in json.loads(c["punkte"] or "[]"):
+        b = (p.get("bereich") or "").strip()
+        if b and b not in stationen:
+            stationen.append(b)
+    vorhanden = {r["bereich"]: r for r in con.execute("SELECT * FROM checkpoints WHERE checkliste_id=?", (cid,))}
+    for b in stationen:
+        if b not in vorhanden:
+            con.execute("INSERT INTO checkpoints (checkliste_id, bereich, token, erstellt) VALUES (?,?,?,?)",
+                        (cid, b, neuer_qr_token(), jetzt()))
+    for b, r in vorhanden.items():
+        if b not in stationen and not con.execute("SELECT 1 FROM checkpoint_scans WHERE checkpoint_id=?", (r["id"],)).fetchone():
+            con.execute("DELETE FROM checkpoints WHERE id=?", (r["id"],))
+    reihenfolge = {b: i for i, b in enumerate(stationen)}
+    liste = [dict(r) for r in con.execute("SELECT * FROM checkpoints WHERE checkliste_id=?", (cid,)) if r["bereich"] in reihenfolge]
+    liste.sort(key=lambda r: reihenfolge[r["bereich"]])
+    return liste
+
+
 def checkliste_durchfuehren(con, benutzer, cid: int, d: dict) -> dict:
     c = zeile(con.execute("SELECT * FROM checklisten WHERE id=?", (cid,)).fetchone())
     if not c:
@@ -966,6 +1026,22 @@ def checkliste_durchfuehren(con, benutzer, cid: int, d: dict) -> dict:
             abw.append(ergebnisse[-1])
     if fehlt:
         raise Fehler(400, "Bitte noch ausfüllen: " + ", ".join(fehlt[:5]) + (" …" if len(fehlt) > 5 else ""))
+    # Unterschrift
+    unterschrift = str(d.get("unterschrift") or "")
+    if unterschrift and not re.match(r"^data:image/png;base64,[A-Za-z0-9+/=]+$", unterschrift):
+        raise Fehler(400, "Die Unterschrift ist ungültig.")
+    if len(unterschrift) > 400_000:
+        raise Fehler(400, "Die Unterschrift ist zu groß.")
+    unterschrift_name = str(d.get("unterschrift_name") or "").strip()[:120]
+    if c.get("unterschrift_pflicht") and not unterschrift:
+        raise Fehler(400, "Bitte unten unterschreiben.")
+    # Checkpoints
+    start = str(d.get("start") or "")[:19]
+    scans = checkpoint_stand(con, cid, benutzer["id"], start)
+    if c.get("checkpoints_pflicht"):
+        fehlend = [s_["bereich"] for s_ in scans if not s_["zeit"]]
+        if fehlend:
+            raise Fehler(400, "Diese Checkpoints wurden noch nicht gescannt: " + ", ".join(fehlend))
     lat = lon = None
     try:
         if d.get("lat") is not None:
@@ -973,10 +1049,12 @@ def checkliste_durchfuehren(con, benutzer, cid: int, d: dict) -> dict:
     except (TypeError, ValueError, KeyError):
         lat = lon = None
     cur = con.execute(
-        "INSERT INTO checklisten_durchgaenge (checkliste_id, objekt_id, anlage_id, zeit, wer, ergebnisse, bemerkung, abweichungen, lat, lon) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO checklisten_durchgaenge (checkliste_id, objekt_id, anlage_id, zeit, wer, ergebnisse, bemerkung, abweichungen, lat, lon, "
+        "unterschrift, unterschrift_name, checkpoints, start) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (cid, c["objekt_id"], c["anlage_id"], jetzt(), benutzer["name"], json.dumps(ergebnisse, ensure_ascii=False),
-         str(d.get("bemerkung") or "").strip()[:3000] or None, len(abw), lat, lon))
+         str(d.get("bemerkung") or "").strip()[:3000] or None, len(abw), lat, lon, unterschrift or None,
+         unterschrift_name or (benutzer["name"] if unterschrift else None),
+         json.dumps(scans, ensure_ascii=False) if scans else None, start or None))
     did = cur.lastrowid
     tickets = []
     if d.get("maengel_anlegen") and abw:
@@ -1353,6 +1431,7 @@ def beispieldaten(con) -> None:
             punkt("Kondensatablauf frei"), punkt("Ungewöhnliche Geräusche", "text", pflicht=False)], ensure_ascii=False)})
     rg = einfuegen(con, "checklisten", {
         "titel": "Wöchentlicher Objektrundgang", "art": "Rundgang", "objekt_id": o1, "rhythmus": "wöchentlich", "aktiv": 1,
+        "checkpoints_pflicht": 1, "unterschrift_pflicht": 1,
         "zustaendig": "Haustechnik", "punkte": json.dumps([
             punkt("Vorlauftemperatur Heizung", "zahl", "°C", 50, 80, "Technikzentrale UG", anl["hz"]),
             punkt("Anlagendruck Heizung", "zahl", "bar", 1.0, 2.5, "Technikzentrale UG", anl["hz"]),
@@ -1363,6 +1442,7 @@ def beispieldaten(con) -> None:
             punkt("Beleuchtung Tiefgarage in Ordnung", bereich="Tiefgarage"),
             punkt("Dachabläufe frei", bereich="Dach"),
             punkt("Zählerstand Allgemeinstrom", "zahl", "kWh", bereich="Technikzentrale UG", pflicht=False)], ensure_ascii=False)})
+    checkpoints_abgleichen(con, rg)
     vorher = (dt.datetime.now() - dt.timedelta(days=8)).isoformat(timespec="seconds")
     erg = [{**p, "status": "ok", "wert": w, "notiz": "", "abweichung": False}
            for p, w in zip(json.loads(con.execute("SELECT punkte FROM checklisten WHERE id=?", (rg,)).fetchone()[0]),
@@ -1657,6 +1737,15 @@ class Handler(BaseHTTPRequestHandler):
                                 ("1" if d["oeffentlich_melden"] in (1, True, "1") else "0",))
                 protokollieren(con, b, "geändert", "einstellungen", None, ", ".join(d))
                 return self.json({k: einstellung(con, k) for k in EINSTELLUNGEN_STANDARD})
+        if erstes == "checklisten" and len(teile) == 3 and teile[2] == "checkpoints":
+            cid = self.id(teile[1])
+            if m == "POST" and not self.rechte.get("wartung_planen"):
+                raise Fehler(403, "Dafür fehlt dir das Recht: Wartungsplan: Aufgaben anlegen und ändern.")
+            liste = checkpoints_abgleichen(con, cid)
+            return self.json(liste)
+        if erstes == "checklisten" and len(teile) == 3 and teile[2] == "scans" and m == "GET":
+            seit = (q.get("seit") or [""])[0][:19] or jetzt()
+            return self.json({"jetzt": jetzt(), "seit": seit, "stand": checkpoint_stand(con, self.id(teile[1]), b["id"], seit)})
         if erstes == "checklisten" and len(teile) == 3 and teile[2] == "durchgaenge" and m == "GET":
             cid = self.id(teile[1])
             return self.json([dict(r) for r in con.execute(
@@ -1670,6 +1759,7 @@ class Handler(BaseHTTPRequestHandler):
                 raise Fehler(404, "Durchgang nicht gefunden.")
             aus = dict(r)
             aus["ergebnisse"] = json.loads(r["ergebnisse"] or "[]")
+            aus["checkpoints"] = json.loads(r["checkpoints"] or "[]")
             aus["tickets"] = [dict(t) for t in con.execute(
                 "SELECT id, nummer, titel FROM tickets WHERE mangel=? ORDER BY id", (f"Durchgang {r['id']}",))]
             return self.json(aus)
@@ -1954,6 +2044,37 @@ class Handler(BaseHTTPRequestHandler):
                 altp.unlink()
         return self.json({"id": pid}, 201)
 
+    def checkpoint_api(self, con, m: str, teile: list[str]):
+        token = teile[2]
+        if not re.match(r"^[A-Za-z0-9_-]{8,40}$", token):
+            raise Fehler(404, "Dieser Checkpoint ist nicht gültig.")
+        cp = con.execute("SELECT cp.*, c.titel, c.objekt_id, o.name AS o_name FROM checkpoints cp JOIN checklisten c ON c.id=cp.checkliste_id "
+                         "LEFT JOIN objekte o ON o.id=c.objekt_id WHERE cp.token=?", (token,)).fetchone()
+        if not cp:
+            raise Fehler(404, "Dieser Checkpoint ist nicht mehr gültig.")
+        b = self.angemeldet(con)
+        info = {"bereich": cp["bereich"], "rundgang": cp["titel"], "objekt": cp["o_name"], "checkliste_id": cp["checkliste_id"],
+                "angemeldet": bool(b)}
+        if len(teile) == 3 and m == "GET":
+            return self.json(info)
+        if len(teile) == 4 and teile[3] == "scan" and m == "POST":
+            if not b:
+                raise Fehler(401, "Bitte anmelden, damit der Checkpoint erfasst wird.")
+            if not effektive_rechte(con, b).get("wartung_erledigen"):
+                raise Fehler(403, "Dafür fehlt dir das Recht: Wartungen und Prüfungen als erledigt melden.")
+            d = self.body()
+            lat = lon = None
+            try:
+                if d.get("lat") is not None:
+                    lat, lon = float(d["lat"]), float(d["lon"])
+            except (TypeError, ValueError, KeyError):
+                lat = lon = None
+            zeit = jetzt()
+            con.execute("INSERT INTO checkpoint_scans (checkpoint_id, benutzer_id, wer, zeit, lat, lon) VALUES (?,?,?,?,?,?)",
+                        (cp["id"], b["id"], b["name"], zeit, lat, lon))
+            return self.json({**info, "zeit": zeit}, 201)
+        raise Fehler(404, "Nicht gefunden.")
+
     def objekt_qr_api(self, con, m: str, teile: list[str]):
         token = teile[2] if len(teile) > 2 else ""
         if not re.match(r"^[A-Za-z0-9_-]{8,40}$", token):
@@ -2024,6 +2145,8 @@ class Handler(BaseHTTPRequestHandler):
         raise Fehler(404, "Nicht gefunden.")
 
     def qr_api(self, con, m: str, teile: list[str]):
+        if len(teile) >= 3 and teile[1] == "c":
+            return self.checkpoint_api(con, m, teile)
         if len(teile) >= 3 and teile[1] == "o":
             return self.objekt_qr_api(con, m, teile)
         token = teile[1]
