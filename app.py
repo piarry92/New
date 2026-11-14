@@ -41,7 +41,7 @@ SYM_PFAD = DATEN / "symbole"
 OBJ_PFAD = DATEN / "objektbilder"
 MAX_SYMBOL = 2 * 1024 * 1024
 MAX_UPLOAD = 25 * 1024 * 1024
-VERSION = "2026.11.15-2"  # muss zu VERSION in static/app.js passen
+VERSION = "2026.11.15-3"  # muss zu VERSION in static/app.js passen
 SITZUNG_TAGE = 7
 
 GEWERKE = [
@@ -92,6 +92,7 @@ RESSOURCEN: dict[str, dict] = {
             {"name": "objektleiter", "label": "Objektleitung", "typ": "text", "liste": True},
             {"name": "notiz", "label": "Notiz", "typ": "textarea"},
             {"name": "bild", "label": "Bild", "typ": "text", "nurlesen": True, "intern": True},
+            {"name": "qr_token", "label": "QR-Kennung", "typ": "text", "nurlesen": True, "intern": True},
         ],
     },
     "anlagen": {
@@ -418,6 +419,9 @@ def db_anlegen() -> None:
         for r in con.execute("SELECT id FROM anlagen WHERE qr_token IS NULL OR qr_token=''").fetchall():
             con.execute("UPDATE anlagen SET qr_token=? WHERE id=?", (neuer_qr_token(), r["id"]))
         con.execute('CREATE UNIQUE INDEX IF NOT EXISTS "ux_anlagen_qr" ON anlagen(qr_token)')
+        for r in con.execute("SELECT id FROM objekte WHERE qr_token IS NULL OR qr_token=''").fetchall():
+            con.execute("UPDATE objekte SET qr_token=? WHERE id=?", (neuer_qr_token(), r["id"]))
+        con.execute('CREATE UNIQUE INDEX IF NOT EXISTS "ux_objekte_qr" ON objekte(qr_token)')
         if "rechte" not in {r["name"] for r in con.execute("PRAGMA table_info(benutzer)")}:
             con.execute("ALTER TABLE benutzer ADD COLUMN rechte TEXT")
         con.execute("UPDATE benutzer SET rolle='zuschauer' WHERE rolle='lesen'")
@@ -648,7 +652,13 @@ def neuer_qr_token() -> str:
     return secrets.token_urlsafe(12)
 
 
-EINSTELLUNGEN_STANDARD = {"basis_url": "", "oeffentlich_melden": "0"}
+EINSTELLUNGEN_STANDARD = {"basis_url": "", "oeffentlich_melden": "0", "oeffentlich_objekt": "1"}
+MIETER_THEMEN = {
+    "Heizung / zu kalt oder zu warm": "Heizung", "Wasser / Sanitär / WC": "Sanitär", "Strom / Licht": "Elektro",
+    "Aufzug": "Aufzug", "Türen / Tore / Schlösser": "Türen/Tore", "Lüftung / Klima": "Lüftung/Klima",
+    "Brandschutz / Fluchtweg": "Brandschutz", "Reinigung / Müll": "Reinigung", "Außenanlagen / Parkplatz": "Außenanlagen",
+    "Sonstiges": "Sonstiges",
+}
 
 
 def einstellung(con, schluessel: str) -> str:
@@ -671,7 +681,7 @@ def naechste_inventarnr(con, kategorie_id) -> str | None:
 
 def einfuegen(con, tabelle: str, sauber: dict) -> int:
     sauber = dict(sauber)
-    if tabelle == "anlagen" and not sauber.get("qr_token"):
+    if tabelle in ("anlagen", "objekte") and not sauber.get("qr_token"):
         sauber["qr_token"] = neuer_qr_token()
     if tabelle == "anlagen" and not sauber.get("nummer") and sauber.get("kategorie_id"):
         nr = naechste_inventarnr(con, sauber["kategorie_id"])
@@ -1474,11 +1484,21 @@ class Handler(BaseHTTPRequestHandler):
                     if url and not re.match(r"^https?://[^\s/]+(/[^\s]*)?$", url):
                         raise Fehler(400, "Die Adresse muss mit http:// oder https:// beginnen.")
                     con.execute("INSERT OR REPLACE INTO einstellungen VALUES ('basis_url', ?)", (url,))
+                if "oeffentlich_objekt" in d:
+                    con.execute("INSERT OR REPLACE INTO einstellungen VALUES ('oeffentlich_objekt', ?)",
+                                ("1" if d["oeffentlich_objekt"] in (1, True, "1") else "0",))
                 if "oeffentlich_melden" in d:
                     con.execute("INSERT OR REPLACE INTO einstellungen VALUES ('oeffentlich_melden', ?)",
                                 ("1" if d["oeffentlich_melden"] in (1, True, "1") else "0",))
                 protokollieren(con, b, "geändert", "einstellungen", None, ", ".join(d))
                 return self.json({k: einstellung(con, k) for k in EINSTELLUNGEN_STANDARD})
+        if erstes == "objekte" and len(teile) == 3 and teile[2] == "qr-neu" and m == "POST":
+            oid = self.id(teile[1])
+            if not con.execute("SELECT 1 FROM objekte WHERE id=?", (oid,)).fetchone():
+                raise Fehler(404, "Objekt nicht gefunden.")
+            con.execute("UPDATE objekte SET qr_token=? WHERE id=?", (neuer_qr_token(), oid))
+            protokollieren(con, b, "neuen Mieter-QR-Code erzeugt", "objekte", oid)
+            return self.json({"qr_token": con.execute("SELECT qr_token FROM objekte WHERE id=?", (oid,)).fetchone()[0]})
         if erstes == "anlagen" and len(teile) == 3 and teile[2] == "qr-neu" and m == "POST":
             aid = self.id(teile[1])
             if not con.execute("SELECT 1 FROM anlagen WHERE id=?", (aid,)).fetchone():
@@ -1737,7 +1757,78 @@ class Handler(BaseHTTPRequestHandler):
                 altp.unlink()
         return self.json({"id": pid}, 201)
 
+    def objekt_qr_api(self, con, m: str, teile: list[str]):
+        token = teile[2] if len(teile) > 2 else ""
+        if not re.match(r"^[A-Za-z0-9_-]{8,40}$", token):
+            raise Fehler(404, "Dieser QR-Code ist nicht gültig.")
+        o = con.execute("SELECT * FROM objekte WHERE qr_token=?", (token,)).fetchone()
+        if not o:
+            raise Fehler(404, "Dieser QR-Code ist nicht mehr gültig. Bitte bei Casa Concept Consulting melden.")
+        b = self.angemeldet(con)
+        offen = einstellung(con, "oeffentlich_objekt") == "1"
+        if len(teile) == 3 and m == "GET":
+            bereiche = []
+            for p in con.execute("SELECT gebaeude, etage, titel FROM plaene WHERE objekt_id=?", (o["id"],)):
+                text = " · ".join(x for x in (p["gebaeude"], p["etage"] or p["titel"]) if x)
+                if text and text not in bereiche:
+                    bereiche.append(text)
+            return self.json({"objekt": {"name": o["name"], "kuerzel": o["kuerzel"],
+                                         "anschrift": ", ".join(x for x in (o["strasse"], " ".join(y for y in (o["plz"], o["ort"]) if y)) if x),
+                                         "bild": bool(o["bild"])},
+                              "bereiche": bereiche, "themen": list(MIETER_THEMEN), "oeffentlich": offen,
+                              "angemeldet": bool(b), "objekt_id": o["id"] if b else None})
+        if len(teile) == 4 and teile[3] == "bild" and m == "GET":
+            return self.objektbild(con, o["id"])
+        if len(teile) == 4 and teile[3] == "meldung" and m == "POST":
+            if not b and not offen:
+                raise Fehler(403, "Meldungen über diesen Code sind gerade abgeschaltet. Bitte wenden Sie sich an die Hausverwaltung.")
+            if b and not effektive_rechte(con, b).get("tickets_anlegen"):
+                raise Fehler(403, "Dafür fehlt dir das Recht: Störmeldungen und Mängel anlegen.")
+            if not b:
+                qr_bremse(self.client_address[0])
+            d = self.body()
+            text = str(d.get("beschreibung") or "").strip()[:4000]
+            if len(text) < 3:
+                raise Fehler(400, "Bitte kurz beschreiben, was nicht stimmt.")
+            name = str(d.get("name") or "").strip()[:120]
+            kontakt = str(d.get("kontakt") or "").strip()[:160]
+            if not b and not name:
+                raise Fehler(400, "Bitte Ihren Namen angeben, damit wir nachfragen können.")
+            thema = d.get("thema") if d.get("thema") in MIETER_THEMEN else "Sonstiges"
+            bereich = str(d.get("bereich") or "").strip()[:150]
+            melder = (b["name"] if b else name + (f" ({kontakt})" if kontakt else ""))[:200]
+            dringend = bool(d.get("dringend"))
+            tid = ticket_anlegen(con, b or {"name": "QR-Code Objekt"}, {
+                "objekt_id": o["id"], "titel": f"{thema.split(' /')[0]}: {text.splitlines()[0][:90]}",
+                "beschreibung": (f"Ort: {bereich}\n\n" if bereich else "") + text, "gewerk": MIETER_THEMEN[thema],
+                "prioritaet": "Hoch" if dringend else "Normal", "gefaehrdung": "hoch" if dringend else "mittel",
+                "status": "Neu", "art": "Mangel", "gemeldet_von": melder, "gemeldet_am": heute().isoformat()})
+            con.execute("INSERT INTO ticket_kommentare (ticket_id, zeit, autor, text) VALUES (?,?,?,?)",
+                        (tid, jetzt(), melder, "Über den Mieter-QR-Code des Objekts gemeldet."
+                         + ("" if b else " Ohne Anmeldung, bitte Angaben prüfen.")))
+            fotos = d.get("fotos") if isinstance(d.get("fotos"), list) else []
+            for nr, f in enumerate(fotos[:4], 1):
+                try:
+                    inhalt = base64.b64decode(str(f), validate=True)
+                except ValueError:
+                    continue
+                endung = bild_endung(inhalt) if inhalt else None
+                if not inhalt or len(inhalt) > 8 * 1024 * 1024 or endung not in ("jpg", "png", "webp"):
+                    continue
+                did = einfuegen(con, "dokumente", {
+                    "titel": f"Foto zur Meldung {nr}", "kategorie": "Foto", "objekt_id": o["id"], "ticket_id": tid,
+                    "dateiname": f"meldung_{tid}_{nr}.{endung}", "groesse": len(inhalt),
+                    "hochgeladen_am": heute().isoformat(), "hochgeladen_von": melder})
+                pfad = f"{did:06d}_{secrets.token_hex(4)}_meldung_{tid}_{nr}.{endung}"
+                (DOK_PFAD / pfad).write_bytes(inhalt)
+                con.execute("UPDATE dokumente SET pfad=? WHERE id=?", (pfad, did))
+            nummer = con.execute("SELECT nummer FROM tickets WHERE id=?", (tid,)).fetchone()[0]
+            return self.json({"ok": True, "nummer": nummer, "ticket_id": tid if b else None}, 201)
+        raise Fehler(404, "Nicht gefunden.")
+
     def qr_api(self, con, m: str, teile: list[str]):
+        if len(teile) >= 3 and teile[1] == "o":
+            return self.objekt_qr_api(con, m, teile)
         token = teile[1]
         if not re.match(r"^[A-Za-z0-9_-]{8,40}$", token):
             raise Fehler(404, "Dieser QR-Code ist nicht gültig.")

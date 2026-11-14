@@ -44,6 +44,18 @@ Vorhandene Anlagen ohne Platz stehen links unter „Noch nicht im Plan“. Versc
 Finger zoomen. Oben lassen sich einzelne Gewerke aus- und einblenden. Für PDF-Grundrisse lädt der Browser einmalig
 einen Leser aus dem Internet.
 
+## Mieter-QR-Code je Objekt
+
+Jedes Objekt hat zusätzlich einen eigenen QR-Code für Mieter (Objektseite, Karte „QR-Code für Mieter“).
+„Aushang drucken (A4)“ erstellt einen Aushang im Casa-Design. Mieter scannen den Code, wählen Thema und Ort,
+beschreiben den Mangel, hängen bis zu 4 Fotos an und senden ohne Anmeldung. Die Meldung erscheint unter
+Mängel & Störungen. Abschaltbar unter Einstellungen („Mieter-QR-Code der Objekte“, ab Werk an).
+
+## Hell und dunkel
+
+Oben rechts schaltet der Knopf mit Mond bzw. Sonne zwischen Hell- und Dunkelmodus um. Die Wahl wird gemerkt.
+Ohne eigene Wahl richtet sich das Programm nach dem Gerät.
+
 ## QR-Code je Anlage
 
 Jede Anlage hat einen eigenen QR-Code (Anlagenseite, Karte „QR-Code der Anlage“). Wer ihn scannt, kommt direkt zur

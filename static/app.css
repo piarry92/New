@@ -757,3 +757,131 @@ table.jplan th.mzelle { border-left-color: var(--rand); }
 .dialog .di { overflow-y: auto; flex: 1; min-height: 0; }
 .dialog .df { flex: none; }
 .anmeldung form label { gap: 6px; }
+
+/* Objekt-Info mit Mieter-QR */
+.objekt-info { grid-template-columns: minmax(0, 1.6fr) minmax(320px, 1fr); }
+@media (max-width: 1100px) { .objekt-info { grid-template-columns: 1fr; } }
+.qr-objekt { padding: 0; overflow: hidden; }
+.qo-bild { width: 100%; height: 170px; object-fit: cover; display: block; }
+.qo-text { padding: 16px 20px; }
+.qo-text h1 { font-size: 22px; margin: 2px 0; }
+.qo-text .kicker { font-size: 12px; letter-spacing: .1em; color: var(--orange); font-weight: 700; }
+.qr-seite select + input { margin-top: 8px; }
+
+/* Knopf Hell/Dunkel */
+.kopf-knopf { width: 38px; height: 38px; border-radius: 10px; border: 1px solid var(--rand); background: transparent; color: var(--text-2); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+.kopf-knopf:hover { background: var(--flaeche); color: var(--orange); }
+.logo-dunkel { display: none !important; }
+html[data-theme="dark"] .logo-hell { display: none !important; }
+html[data-theme="dark"] .logo-dunkel { display: block !important; }
+
+/* ============================ Dunkelmodus ============================ */
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --flaeche: #111214;
+  --weiss: #1A1B1F;
+  --zartgrau: #222428;
+  --hellgrau: #3A3C42;
+  --anthrazit: #E7E8EB;
+  --dunkelgrau: #B4B6BC;
+  --grau: #8C8F96;
+  --rand: #2A2C31;
+  --rand-stark: #3A3D44;
+  --text-2: #A2A5AC;
+  --orange-zart: #3A1E14;
+  --orange-hell: #6A2C18;
+  --schatten: 0 1px 2px rgba(0,0,0,.4), 0 1px 3px rgba(0,0,0,.3);
+  --schatten-hoch: 0 12px 32px rgba(0,0,0,.55), 0 2px 6px rgba(0,0,0,.4);
+  --fokus: 0 0 0 4px rgba(230,55,19,.28);
+}
+html[data-theme="dark"] body { background: var(--flaeche); color: var(--anthrazit); }
+html[data-theme="dark"] .seite { background: #16171A; border-right-color: var(--rand); }
+html[data-theme="dark"] .seite nav a { color: #C9CBD0; }
+html[data-theme="dark"] .seite nav a:hover { background: #222428; color: #fff; }
+html[data-theme="dark"] .seite nav a.aktiv { color: #FF9A73; }
+html[data-theme="dark"] .nav-gruppe { color: #6E7178; }
+html[data-theme="dark"] .seite .ich { background: #1E1F23; }
+html[data-theme="dark"] .seite .ich button:hover { background: #2A2C31; }
+html[data-theme="dark"] .kopf { background: rgba(22,23,26,.85); }
+html[data-theme="dark"] .kopf .suche input { background: #1E1F23; color: var(--anthrazit); }
+html[data-theme="dark"] .kopf .suche input:focus { background: #1A1B1F; }
+html[data-theme="dark"] .karte, html[data-theme="dark"] .tabelle-wrap, html[data-theme="dark"] .palette, html[data-theme="dark"] .feldliste { background: var(--weiss); }
+html[data-theme="dark"] th { background: #1F2024; color: #9EA1A8; border-bottom-color: var(--rand); }
+html[data-theme="dark"] td { border-bottom-color: #24262B; }
+html[data-theme="dark"] tr.klickbar:hover td, html[data-theme="dark"] table.bauteile tr:hover td, html[data-theme="dark"] .fz:hover:not(:disabled) { background: #2A1D18; }
+html[data-theme="dark"] table.bauteile tr.an td { background: #4A2416; }
+html[data-theme="dark"] .knopf { background: #222428; color: var(--anthrazit); border-color: var(--rand-stark); }
+html[data-theme="dark"] .knopf:hover { background: #2A2C31; border-color: #4A4D55; }
+html[data-theme="dark"] .knopf.haupt-k { background: var(--orange); border-color: var(--orange); color: #fff; }
+html[data-theme="dark"] .knopf.haupt-k:hover { background: #F04A26; }
+html[data-theme="dark"] .knopf.gefahr { color: #FF7A8A; }
+html[data-theme="dark"] .umschalter { background: #1E1F23; }
+html[data-theme="dark"] .umschalter button.an { background: #2E3036; color: #fff; }
+html[data-theme="dark"] .werkzeug input[type=search], html[data-theme="dark"] .werkzeug select, html[data-theme="dark"] .formular input,
+html[data-theme="dark"] .formular select, html[data-theme="dark"] .formular textarea, html[data-theme="dark"] .palette input[type=search],
+html[data-theme="dark"] .baum-karte input[type=search], html[data-theme="dark"] .bt-filter input, html[data-theme="dark"] .bt-filter select,
+html[data-theme="dark"] .anmeldung input, html[data-theme="dark"] .qr-link input, html[data-theme="dark"] .vs-felder input {
+  background: #141518; color: var(--anthrazit); border-color: var(--rand-stark);
+}
+html[data-theme="dark"] .formular label { color: #C2C4CA; }
+html[data-theme="dark"] .dialog { background: #1A1B1F; border-color: var(--rand); }
+html[data-theme="dark"] .dialog .df { background: #16171A; }
+html[data-theme="dark"] .dialog .dk .x:hover { background: #2A2C31; }
+html[data-theme="dark"] .dialog-hg { background: rgba(0,0,0,.55); }
+html[data-theme="dark"] #meldung div { background: #2B2D33; color: #fff; }
+html[data-theme="dark"] #meldung div.f { background: var(--ueber); }
+html[data-theme="dark"] .m-ok { background: #18331F; color: #6FD08A; }
+html[data-theme="dark"] .m-arbeit { background: #2A2C31; color: #B9BCC3; }
+html[data-theme="dark"] .m-bald { background: #3A2F0C; color: #F2C94C; }
+html[data-theme="dark"] .m-ueber { background: #3E1520; color: #FF8A9D; }
+html[data-theme="dark"] .m-geplant { background: transparent; color: #B4B6BC; border-color: var(--rand-stark); }
+html[data-theme="dark"] .m-neu { background: #3A1E14; color: #FF9A73; }
+html[data-theme="dark"] .frist-ueber { background: #3E1520; color: #FF8A9D; }
+html[data-theme="dark"] .frist-bald { background: #3A2F0C; color: #F2C94C; }
+html[data-theme="dark"] .warnung { background: #2E2710; color: #F2D27A; border-color: #4A3E14; }
+html[data-theme="dark"] .fehler { background: #3E1520; color: #FFB3C0; }
+html[data-theme="dark"] .reiter .zahl { background: #26282D; }
+html[data-theme="dark"] .kat-reiter a { background: #1E1F23; }
+html[data-theme="dark"] .kat-reiter a.an { background: var(--weiss); }
+html[data-theme="dark"] .kachel:hover { background: var(--weiss); }
+html[data-theme="dark"] .kal { background: var(--rand); }
+html[data-theme="dark"] .kal .wt { background: #1F2024; }
+html[data-theme="dark"] .kal .tag { background: var(--weiss); border-color: #24262B; }
+html[data-theme="dark"] .kal .tag.fremd { background: #151619; }
+html[data-theme="dark"] .kal .ein { background: #26282D; color: var(--anthrazit); }
+html[data-theme="dark"] .kal .ein.ueber { background: #3E1520; }
+html[data-theme="dark"] .rechte-matrix tr.gruppe td, html[data-theme="dark"] table.jplan tr.gruppe td { background: #2A1D18; color: #FF9A73; }
+html[data-theme="dark"] .buehne { background: repeating-conic-gradient(#1C1D21 0% 25%, #222428 0% 50%) 0 0 / 24px 24px; }
+html[data-theme="dark"] .popup, html[data-theme="dark"] .plus-menue { background: #1F2024; border-color: var(--rand); }
+html[data-theme="dark"] .plus-menue button { color: var(--anthrazit); }
+html[data-theme="dark"] .plus-menue button:hover { background: #2A1D18; }
+html[data-theme="dark"] .modus { background: #2B2D33; color: #fff; }
+html[data-theme="dark"] .chip { background: #1F2024; border-color: var(--rand-stark); color: var(--anthrazit); }
+html[data-theme="dark"] .p-item:hover { background: #2A1D18; }
+html[data-theme="dark"] .p-item.gewaehlt { background: #4A2416; }
+html[data-theme="dark"] .geist { background: #1F2024; color: var(--anthrazit); }
+html[data-theme="dark"] .ok-platz { background: linear-gradient(135deg, #1E1F23, #2A2C31); }
+html[data-theme="dark"] .ok-foto { background: rgba(40,42,48,.92); }
+html[data-theme="dark"] .galerie-leer, html[data-theme="dark"] .galerie-rahmen { background: #1E1F23; }
+html[data-theme="dark"] .gal-symbol { background: #1A1B1F; }
+html[data-theme="dark"] .tl-t, html[data-theme="dark"] .kommentar, html[data-theme="dark"] .checkliste, html[data-theme="dark"] .mf-links { background: #222428; }
+html[data-theme="dark"] .timeline::before { background: #2A2C31; }
+html[data-theme="dark"] .tl-p { background: #1A1B1F; }
+html[data-theme="dark"] .schalter { background: #3A3C42; }
+html[data-theme="dark"] .schalter::after { background: #E7E8EB; }
+html[data-theme="dark"] .schalter:checked { background: var(--orange); }
+html[data-theme="dark"] .hinweis { background: #2A1D18; color: #E8C7B8; }
+html[data-theme="dark"] .sv-bild { background: repeating-conic-gradient(#26282D 0% 25%, #1E1F23 0% 50%) 0 0 / 16px 16px; }
+html[data-theme="dark"] .anmeldung, html[data-theme="dark"] .anmeldung .form { background: #16171A; }
+html[data-theme="dark"] .anmeldung label { color: #C2C4CA; }
+html[data-theme="dark"] .klickbar-li:hover, html[data-theme="dark"] .b-knoten:hover { background: #2A1D18; }
+html[data-theme="dark"] .b-knoten.an { background: #3A1E14; color: #FF9A73; }
+html[data-theme="dark"] .vs { border-color: var(--rand-stark); }
+html[data-theme="dark"] .qr-svg { border-color: var(--rand-stark); }
+html[data-theme="dark"] .mini-plan { background: #1E1F23; }
+html[data-theme="dark"] .zeichen-svg, html[data-theme="dark"] .kat-svg { filter: none; }
+html[data-theme="dark"] .marke.gef-gering { background: #E2C93A; color: #2A2400; }
+html[data-theme="dark"] .marke.gef-mittel { background: #E09028; color: #241500; }
+html[data-theme="dark"] .rechte-kurz li.an { color: var(--anthrazit); }
+html[data-theme="dark"] .versions-hinweis { background: #7A1226; }
+html[data-theme="dark"] .welt img { box-shadow: 0 2px 16px rgba(0,0,0,.6); }

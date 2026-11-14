@@ -1,7 +1,25 @@
 /* Casa CAFM – Oberfläche (ohne Fremdbibliotheken) */
 "use strict";
 
-const VERSION = "2026.11.15-2"; // muss zu VERSION in app.py passen
+const VERSION = "2026.11.15-3"; // muss zu VERSION in app.py passen
+/* Hell- und Dunkelmodus: gemerkte Wahl, sonst wie das Gerät */
+const THEMA = (() => {
+  let t = null;
+  try { t = localStorage.getItem("cafm-thema"); } catch (e) { /* egal */ }
+  if (t !== "dark" && t !== "light") t = window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  document.documentElement.dataset.theme = t;
+  return t;
+})();
+function themaUmschalten() {
+  const neu = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+  document.documentElement.dataset.theme = neu;
+  try { localStorage.setItem("cafm-thema", neu); } catch (e) { /* egal */ }
+  const k = document.getElementById("thema");
+  if (k) { k.innerHTML = themaIcon(); k.title = neu === "dark" ? "Hellmodus" : "Dunkelmodus"; }
+}
+const themaIcon = () => document.documentElement.dataset.theme === "dark"
+  ? '<svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>'
+  : '<svg class="icon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>';
 const S = { ich: null, schema: null, cache: {}, einheiten: {} };
 const $app = document.getElementById("app");
 
@@ -175,7 +193,7 @@ function rahmen() {
   $app.innerHTML = `
   <div class="rahmen">
     <aside class="seite" id="seite">
-      <div class="logo"><img src="/logo.png" alt="Casa Concept Consulting"><span>CAFM</span></div>
+      <div class="logo"><img class="logo-hell" src="/logo.png" alt="Casa Concept Consulting"><img class="logo-dunkel" src="/logo-negativ.png" alt="Casa Concept Consulting"><span>CAFM</span></div>
       <nav id="nav">${NAV.filter((n) => typeof n === "string" || !n[3] || darf(n[3])).map((n) => typeof n === "string" ? `<div class="nav-gruppe">${esc(n)}</div>` :
         `<a href="${n[2]}" data-nav="${n[0]}">${icon(n[0])}<span>${n[1]}</span><span class="zahl" data-zahl="${n[0]}" hidden></span></a>`).join("")}</nav>
       <div class="ich"><span class="avatar">${esc(initialen(S.ich.name))}</span><div class="ich-text"><b>${esc(S.ich.name)}</b><span>${esc(ROLLENNAMEN[S.ich.rolle] || S.ich.rolle)}</span></div>
@@ -185,7 +203,7 @@ function rahmen() {
       <header class="kopf">
         <button class="menue" id="menue" aria-label="Menü">${icon("menue")}</button>
         <form class="suche" id="suchform">${icon("suche")}<input type="search" id="suchfeld" placeholder="Suchen: Objekt, Anlage, Störmeldung, Firma …" autocomplete="off"></form>
-        <div class="kopf-rechts">${darf("tickets_anlegen") ? `<a class="knopf haupt-k klein kopf-neu" href="#/tickets" id="kopfNeu">${icon("plus")} Mangel melden</a>` : ""}
+        <div class="kopf-rechts"><button class="kopf-knopf" id="thema" title="${document.documentElement.dataset.theme === "dark" ? "Hellmodus" : "Dunkelmodus"}" aria-label="Hell- oder Dunkelmodus">${themaIcon()}</button>${darf("tickets_anlegen") ? `<a class="knopf haupt-k klein kopf-neu" href="#/tickets" id="kopfNeu">${icon("plus")} Mangel melden</a>` : ""}
           <a class="avatar avatar-kopf" href="#/einstellungen" title="${esc(S.ich.name)}">${esc(initialen(S.ich.name))}</a></div>
       </header>
       <main class="inhalt" id="inhalt"></main>
@@ -193,6 +211,7 @@ function rahmen() {
   </div>`;
   document.getElementById("abmelden").onclick = async () => { await api("POST", "abmelden"); S.ich = null; zeigeAnmeldung(); };
   document.getElementById("menue").onclick = () => document.getElementById("seite").classList.toggle("offen");
+  document.getElementById("thema").onclick = themaUmschalten;
   const kn = document.getElementById("kopfNeu");
   if (kn) kn.onclick = async (e) => { e.preventDefault(); const t = await bearbeiten("tickets", null, { art: "Mangel" }); if (t && t.id) location.hash = `#/tickets/${t.id}`; };
   document.getElementById("suchform").onsubmit = (e) => { e.preventDefault(); location.hash = "#/suche/" + encodeURIComponent(document.getElementById("suchfeld").value); };
@@ -698,7 +717,12 @@ DETAIL.objekte = async (el, id, q) => {
       <div class="karte kennzahl"><div class="wert">${anl.length}</div><div class="text">Anlagen</div></div>
       <div class="karte kennzahl"><div class="wert">${o.flaeche_m2 ? zahl(o.flaeche_m2) : "–"}</div><div class="text">m² Fläche</div></div>
     </div><div class="abstand"></div>
-    <div class="karte">${stammdaten("objekte", o, ["kuerzel", "name"])}</div><div id="r"></div>`;
+    <div class="raster objekt-info"><div class="karte">${stammdaten("objekte", o, ["kuerzel", "name"])}</div><div class="karte" id="oqrk"></div></div><div id="r"></div>`;
+  objektQrKarte(el.querySelector("#oqrk"), o);
+  if (q.get("melden") === "1" && darf("tickets_anlegen")) {
+    history.replaceState(null, "", `#/objekte/${o.id}`);
+    setTimeout(async () => { const t = await bearbeiten("tickets", null, { objekt_id: o.id, art: "Mangel" }); if (t && t.id) location.hash = `#/tickets/${t.id}`; }, 50);
+  }
   const b = document.getElementById("bearb");
   if (b) b.onclick = async () => { const e = await bearbeiten("objekte", o); if (e === "geloescht") location.hash = "#/objekte"; else if (e) route(); };
   const ob = document.getElementById("obild");
@@ -841,7 +865,8 @@ SEITEN.einstellungen = async (el) => {
   ${darf("einstellungen") ? `<div class="abstand"></div><div class="karte"><h3>QR-Codes und Mängelmeldung</h3><form id="qre" class="formular" style="grid-template-columns:1fr" onsubmit="return false">
     <label>Adresse des Programms für QR-Codes<input name="basis_url" type="url" placeholder="z. B. https://cafm.ccc-frankfurt.com oder http://192.168.1.20:8080"></label>
     <p class="klein">Diese Adresse steht in jedem QR-Code. Sie muss vom Handy aus erreichbar sein. Leer heißt: die Adresse, unter der du das Programm gerade geöffnet hast. Nach einer Änderung die Etiketten neu drucken.</p>
-    <label class="check"><input type="checkbox" name="oeffentlich_melden"> Mängel über den QR-Code auch ohne Anmeldung melden lassen (z. B. Mieter, Dienstleister)</label>
+    <label class="check"><input type="checkbox" name="oeffentlich_objekt"> Mieter-QR-Code der Objekte: Meldungen ohne Anmeldung erlauben (Aushang im Haus)</label>
+    <label class="check"><input type="checkbox" name="oeffentlich_melden"> Anlagen-QR-Code: Mängel auch ohne Anmeldung melden lassen (z. B. Dienstleister)</label>
     <div><button class="knopf haupt-k" id="qrspeichern">Speichern</button></div></form></div>` : ""}
 `;
   const ladeSym = async () => {
@@ -867,9 +892,9 @@ SEITEN.einstellungen = async (el) => {
   };
   if (!darf("einstellungen")) return;
   const qe = el.querySelector("#qre"), ein = await einstellungenLaden(true);
-  qe.basis_url.value = ein.basis_url || ""; qe.oeffentlich_melden.checked = ein.oeffentlich_melden === "1";
+  qe.basis_url.value = ein.basis_url || ""; qe.oeffentlich_melden.checked = ein.oeffentlich_melden === "1"; qe.oeffentlich_objekt.checked = ein.oeffentlich_objekt !== "0";
   el.querySelector("#qrspeichern").onclick = async () => {
-    try { EINST = await api("PUT", "einstellungen", { basis_url: qe.basis_url.value, oeffentlich_melden: qe.oeffentlich_melden.checked ? 1 : 0 }); melde("Gespeichert."); }
+    try { EINST = await api("PUT", "einstellungen", { basis_url: qe.basis_url.value, oeffentlich_melden: qe.oeffentlich_melden.checked ? 1 : 0, oeffentlich_objekt: qe.oeffentlich_objekt.checked ? 1 : 0 }); melde("Gespeichert."); }
     catch (err) { melde(err.message, true); }
   };
 };
@@ -920,6 +945,7 @@ async function start() {
 }
 
 window.addEventListener("DOMContentLoaded", async () => {
+  if (location.pathname.startsWith("/m/o/")) return qrObjektSeite(decodeURIComponent(location.pathname.slice(5)));
   if (location.pathname.startsWith("/m/")) return qrSeite(decodeURIComponent(location.pathname.slice(3)));
   try {
     const st = await api("GET", "status");
