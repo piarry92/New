@@ -547,3 +547,26 @@ table.bauteile tr.an td { background: var(--orange-hell); }
 @media (max-width: 1200px) { .standort-rechts .plan-layout { grid-template-columns: 1fr; } .standort-rechts .palette { order: 2; position: static; max-height: 260px; } }
 @media (max-width: 900px) { .standort-ansicht { grid-template-columns: 1fr; } .baum-spalte { position: static; max-height: none; } .baum-karte { max-height: 260px; } .bauteile-karte { max-height: 300px; } }
 @media print { .baum-spalte { display: none !important; } .standort-ansicht { display: block; } }
+
+/* Objekt-Kacheln */
+.objekt-kacheln { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 18px; }
+.objekt-karte { padding: 0; overflow: hidden; text-decoration: none; color: inherit; display: flex; flex-direction: column; transition: box-shadow .15s, transform .15s; }
+.objekt-karte:hover { box-shadow: 0 6px 22px rgba(0,0,0,.14); transform: translateY(-2px); }
+.ok-bild { position: relative; aspect-ratio: 4 / 3; background: var(--zartgrau); overflow: hidden; }
+.ok-bild img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ok-platz { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; background: linear-gradient(135deg, var(--anthrazit), #55555a); color: #fff; }
+.ok-platz .icon { width: 54px; height: 54px; stroke: var(--orange); stroke-width: 1.4; }
+.ok-platz span { font-size: 26px; font-weight: 700; letter-spacing: .06em; }
+.ok-marken { position: absolute; left: 10px; top: 10px; display: flex; gap: 6px; flex-wrap: wrap; }
+.ok-foto { position: absolute; right: 10px; bottom: 10px; width: 38px; height: 38px; border-radius: 50%; border: 0; background: rgba(255,255,255,.92); cursor: pointer; font-size: 18px; box-shadow: 0 2px 8px rgba(0,0,0,.25); opacity: 0; transition: opacity .15s; }
+.objekt-karte:hover .ok-foto, .ok-foto:focus { opacity: 1; }
+@media (hover: none) { .ok-foto { opacity: 1; } }
+.ok-text { padding: 12px 16px 14px; border-top: 4px solid var(--orange); }
+.ok-kuerzel { font-size: 12px; letter-spacing: .1em; color: var(--orange); font-weight: 700; text-transform: uppercase; }
+.ok-name { font-size: 18px; font-weight: 700; margin: 2px 0; line-height: 1.2; }
+.ok-zahlen { font-size: 13px; color: var(--dunkelgrau); margin-top: 6px; }
+.objekt-banner { position: relative; border-radius: var(--radius); overflow: hidden; height: 280px; box-shadow: var(--schatten); }
+.objekt-banner img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ob-text { position: absolute; left: 0; right: 0; bottom: 0; padding: 40px 22px 16px; background: linear-gradient(transparent, rgba(0,0,0,.65)); color: #fff; display: flex; flex-direction: column; }
+.ob-text b { font-size: 22px; }
+@media (max-width: 900px) { .objekt-banner { height: 190px; } }

@@ -489,9 +489,59 @@ SEITEN.start = async (el) => {
   if (nt) nt.onclick = async () => { const t = await bearbeiten("tickets"); if (t) location.hash = `#/tickets/${t.id}`; };
 };
 
+/* Objekte als Kacheln mit Bild */
+const objektBildUrl = (o) => (o && o.bild ? `/api/objekte/${o.id}/bild?v=${encodeURIComponent(o.bild)}` : "");
+function objektKachel(o) {
+  const adresse = [o.strasse, [o.plz, o.ort].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+  return `<a class="karte objekt-karte" href="#/objekte/${o.id}">
+    <div class="ok-bild">${o.bild ? `<img src="${objektBildUrl(o)}" alt="${esc(o.name)}" loading="lazy">` : `<div class="ok-platz">${icon("objekte")}<span>${esc(o.kuerzel)}</span></div>`}
+      <div class="ok-marken">${o.tickets_offen ? `<span class="marke m-ueber">${o.tickets_offen} offen</span>` : ""}${o.wartung_ueberfaellig ? `<span class="marke m-bald">${o.wartung_ueberfaellig} überfällig</span>` : ""}</div>
+      ${darf("anlagen_bearbeiten") ? `<button class="ok-foto" data-bild="${o.id}" title="${o.bild ? "Bild ändern" : "Bild hinzufügen"}" aria-label="Bild">📷</button>` : ""}</div>
+    <div class="ok-text"><div class="ok-kuerzel">${esc(o.kuerzel)}${o.nutzung ? ` · ${esc(o.nutzung)}` : ""}</div><div class="ok-name">${esc(o.name)}</div>
+      <div class="klein">${esc(adresse || "Keine Adresse")}</div>
+      <div class="ok-zahlen">${o.anlagen_anzahl || 0} Anlagen${o.objektleiter ? ` · ${esc(o.objektleiter)}` : ""}</div></div></a>`;
+}
+async function objektBildWaehlen(o) {
+  const input = document.createElement("input");
+  input.type = "file"; input.accept = "image/*";
+  const d = await new Promise((ok) => { input.onchange = () => ok(input.files[0]); input.click(); });
+  if (!d) return false;
+  try {
+    await api("PUT", `objekte/${o.id}/bild`, { inhalt: await bildVerkleinern(d, 1800) });
+    cacheLeeren(); melde("Bild gespeichert."); return true;
+  } catch (e) { melde(e.message, true); return false; }
+}
 SEITEN.objekte = async (el) => {
-  el.innerHTML = seitenkopf("Objekte", "Liegenschaften") + '<div id="t"></div>';
-  await tabelle(el.querySelector("#t"), "objekte", { leer: "Noch keine Objekte. Leg oben das erste an." });
+  let ansicht = "kacheln";
+  try { ansicht = localStorage.getItem("cafm-objekte") || "kacheln"; } catch (e) { /* egal */ }
+  el.innerHTML = seitenkopf("Objekte", "Liegenschaften", '<div class="umschalter"><button data-ans="kacheln">Kacheln</button><button data-ans="liste">Liste</button></div>') + '<div id="t"></div>';
+  const ziel = el.querySelector("#t");
+  const zeichnen = async () => {
+    el.querySelectorAll("[data-ans]").forEach((b) => b.classList.toggle("an", b.dataset.ans === ansicht));
+    if (ansicht === "liste") { await tabelle(ziel, "objekte", { leer: "Noch keine Objekte. Leg oben das erste an." }); return; }
+    const objekte = await api("GET", "objekte");
+    ziel.innerHTML = `<div class="werkzeug"><input type="search" id="osuche" placeholder="Objekt, Adresse oder Kürzel suchen">
+      ${darf("anlagen_bearbeiten") ? `<button class="knopf haupt-k" id="oneu">${icon("plus")} Objekt</button>` : ""}<span class="anzahl">${objekte.length} Objekte</span></div>
+      <div class="objekt-kacheln" id="ok"></div>`;
+    const raster = ziel.querySelector("#ok");
+    const filtern = () => {
+      const w = ziel.querySelector("#osuche").value.trim().toLowerCase();
+      const liste = objekte.filter((o) => !w || [o.kuerzel, o.name, o.strasse, o.plz, o.ort, o.objektleiter, o.eigentuemer].join(" ").toLowerCase().includes(w));
+      raster.innerHTML = liste.map(objektKachel).join("") || '<div class="karte leer">Noch keine Objekte. Leg oben das erste an.</div>';
+    };
+    filtern();
+    ziel.querySelector("#osuche").addEventListener("input", filtern);
+    const n = ziel.querySelector("#oneu");
+    if (n) n.onclick = async () => { const o = await bearbeiten("objekte"); if (o && o.id) location.hash = `#/objekte/${o.id}`; };
+    raster.addEventListener("click", async (e) => {
+      const b = e.target.closest("[data-bild]");
+      if (!b) return;
+      e.preventDefault(); e.stopPropagation();
+      if (await objektBildWaehlen(objekte.find((o) => o.id === Number(b.dataset.bild)))) zeichnen();
+    });
+  };
+  el.querySelectorAll("[data-ans]").forEach((b) => b.onclick = () => { ansicht = b.dataset.ans; try { localStorage.setItem("cafm-objekte", ansicht); } catch (e) { /* egal */ } zeichnen(); });
+  await zeichnen();
 };
 
 SEITEN.anlagen = async (el) => {
@@ -602,7 +652,8 @@ DETAIL.objekte = async (el, id, q) => {
   const plaene = await api("GET", `plaene?objekt_id=${id}`);
   const ueber = wart.filter((w) => w.aktiv && tageBis(w.naechste) < 0).length;
   el.innerHTML = seitenkopf(o.name, o.kuerzel + (o.ort ? " · " + o.ort : ""),
-    `${darf("anlagen_bearbeiten") ? '<button class="knopf" id="bearb">Stammdaten bearbeiten</button>' : ""}<button class="knopf" id="oqr">QR-Etiketten</button><button class="knopf" onclick="print()">Drucken</button>`, ["#/objekte", "Objekte"]) + `
+    `${darf("anlagen_bearbeiten") ? `<button class="knopf" id="obild">${o.bild ? "Bild ändern" : "Bild hinzufügen"}</button><button class="knopf" id="bearb">Stammdaten bearbeiten</button>` : ""}<button class="knopf" id="oqr">QR-Etiketten</button><button class="knopf" onclick="print()">Drucken</button>`, ["#/objekte", "Objekte"]) + `
+    ${o.bild ? `<div class="objekt-banner"><img src="${objektBildUrl(o)}" alt="${esc(o.name)}"><div class="ob-text"><b>${esc(o.name)}</b><span>${esc([o.strasse, [o.plz, o.ort].filter(Boolean).join(" ")].filter(Boolean).join(", "))}</span></div></div><div class="abstand"></div>` : ""}
     <div class="raster k4">
       <div class="karte kennzahl orange"><div class="wert">${tick.length}</div><div class="text">offene Störmeldungen</div></div>
       <div class="karte kennzahl ${ueber ? "rot" : ""}"><div class="wert">${ueber}</div><div class="text">überfällige Termine</div></div>
@@ -612,6 +663,8 @@ DETAIL.objekte = async (el, id, q) => {
     <div class="karte">${stammdaten("objekte", o, ["kuerzel", "name"])}</div><div id="r"></div>`;
   const b = document.getElementById("bearb");
   if (b) b.onclick = async () => { const e = await bearbeiten("objekte", o); if (e === "geloescht") location.hash = "#/objekte"; else if (e) route(); };
+  const ob = document.getElementById("obild");
+  if (ob) ob.onclick = async () => { if (await objektBildWaehlen(o)) route(); };
   document.getElementById("oqr").onclick = () => etikettenDrucken(anl, `QR-Etiketten ${o.kuerzel}`);
   const f = { objekt_id: String(id) };
   reiterLeiste(el.querySelector("#r"), [

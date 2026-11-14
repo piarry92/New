@@ -38,6 +38,7 @@ DB_PFAD = DATEN / "cafm.sqlite"
 DOK_PFAD = DATEN / "dokumente"
 PLAN_PFAD = DATEN / "plaene"
 SYM_PFAD = DATEN / "symbole"
+OBJ_PFAD = DATEN / "objektbilder"
 MAX_SYMBOL = 2 * 1024 * 1024
 MAX_UPLOAD = 25 * 1024 * 1024
 SITZUNG_TAGE = 7
@@ -89,6 +90,7 @@ RESSOURCEN: dict[str, dict] = {
             {"name": "eigentuemer", "label": "Eigentümer / Auftraggeber", "typ": "text"},
             {"name": "objektleiter", "label": "Objektleitung", "typ": "text", "liste": True},
             {"name": "notiz", "label": "Notiz", "typ": "textarea"},
+            {"name": "bild", "label": "Bild", "typ": "text", "nurlesen": True, "intern": True},
         ],
     },
     "anlagen": {
@@ -392,6 +394,7 @@ def db_anlegen() -> None:
     DOK_PFAD.mkdir(parents=True, exist_ok=True)
     PLAN_PFAD.mkdir(parents=True, exist_ok=True)
     SYM_PFAD.mkdir(parents=True, exist_ok=True)
+    OBJ_PFAD.mkdir(parents=True, exist_ok=True)
     with db() as con:
         for name, res in RESSOURCEN.items():
             spalten = ["id INTEGER PRIMARY KEY AUTOINCREMENT"]
@@ -1436,6 +1439,12 @@ class Handler(BaseHTTPRequestHandler):
             return self.datei(con, self.id(teile[1]))
         if erstes == "dokumente" and len(teile) == 1 and m == "POST":
             return self.hochladen(con, b)
+        if erstes == "objekte" and len(teile) == 3 and teile[2] == "bild":
+            oid = self.id(teile[1])
+            if m == "GET":
+                return self.objektbild(con, oid)
+            if m == "PUT":
+                return self.objektbild_hochladen(con, b, oid)
         if erstes == "symbole" and len(teile) == 1 and m == "POST":
             return self.symbol_hochladen(con, b, None)
         if erstes == "symbole" and len(teile) == 3 and teile[2] == "bild":
@@ -1549,6 +1558,10 @@ class Handler(BaseHTTPRequestHandler):
                 p = (ordner / alt["pfad"]).resolve()
                 if str(p).startswith(str(ordner.resolve())) and p.is_file():
                     p.unlink()
+            if name == "objekte" and alt.get("bild"):
+                bp = (OBJ_PFAD / alt["bild"]).resolve()
+                if str(bp).startswith(str(OBJ_PFAD.resolve())) and bp.is_file():
+                    bp.unlink()
             if name == "plaene":
                 con.execute("UPDATE anlagen SET plan_id=NULL, plan_x=NULL, plan_y=NULL WHERE plan_id=?", (rid,))
             con.execute(f'DELETE FROM "{name}" WHERE id=?', (rid,))
@@ -1602,6 +1615,15 @@ class Handler(BaseHTTPRequestHandler):
         zeilen = [dict(r) for r in con.execute(sql, werte)]
         for z in zeilen:
             z.pop("pfad", None)
+        if name == "objekte" and zeilen:
+            anl = {r[0]: r[1] for r in con.execute("SELECT objekt_id, COUNT(*) FROM anlagen GROUP BY objekt_id")}
+            tik = {r[0]: r[1] for r in con.execute(
+                "SELECT objekt_id, COUNT(*) FROM tickets WHERE status NOT IN ('Erledigt','Abgeschlossen') GROUP BY objekt_id")}
+            ueb = {r[0]: r[1] for r in con.execute(
+                "SELECT objekt_id, COUNT(*) FROM wartungen WHERE aktiv=1 AND naechste < ? GROUP BY objekt_id", (heute().isoformat(),))}
+            for z in zeilen:
+                z.update({"anlagen_anzahl": anl.get(z["id"], 0), "tickets_offen": tik.get(z["id"], 0),
+                          "wartung_ueberfaellig": ueb.get(z["id"], 0)})
         if name == "tickets" and zeilen:
             info = {r["id"]: r for r in con.execute(
                 "SELECT a.id, a.nummer, a.standort, k.name AS kat, g.name AS grp, t.name AS typ FROM anlagen a "
@@ -1808,6 +1830,45 @@ class Handler(BaseHTTPRequestHandler):
             nummer = con.execute("SELECT nummer FROM tickets WHERE id=?", (tid,)).fetchone()[0]
             return self.json({"ok": True, "nummer": nummer, "ticket_id": tid if b else None}, 201)
         raise Fehler(404, "Nicht gefunden.")
+
+    def objektbild_hochladen(self, con, b, oid: int):
+        r = con.execute("SELECT bild FROM objekte WHERE id=?", (oid,)).fetchone()
+        if not r:
+            raise Fehler(404, "Objekt nicht gefunden.")
+        d = self.body()
+        if d.get("entfernen"):
+            neu = None
+        else:
+            try:
+                inhalt = base64.b64decode(d.get("inhalt") or "", validate=True)
+            except ValueError:
+                raise Fehler(400, "Das Bild konnte nicht gelesen werden.")
+            if not inhalt:
+                raise Fehler(400, "Bitte ein Bild auswählen.")
+            if len(inhalt) > 10 * 1024 * 1024:
+                raise Fehler(413, "Das Bild ist zu groß (höchstens 10 MB).")
+            endung = bild_endung(inhalt)
+            if endung not in ("jpg", "png", "webp"):
+                raise Fehler(400, "Bitte ein Foto als JPG, PNG oder WEBP wählen.")
+            neu = f"{oid:05d}_{secrets.token_hex(6)}.{endung}"
+            (OBJ_PFAD / neu).write_bytes(inhalt)
+        if r["bild"]:
+            alt = (OBJ_PFAD / r["bild"]).resolve()
+            if str(alt).startswith(str(OBJ_PFAD.resolve())) and alt.is_file():
+                alt.unlink()
+        con.execute("UPDATE objekte SET bild=?, geaendert=? WHERE id=?", (neu, jetzt(), oid))
+        protokollieren(con, b, "Bild entfernt" if neu is None else "Bild geändert", "objekte", oid)
+        return self.json({"ok": True, "bild": neu})
+
+    def objektbild(self, con, oid: int):
+        r = con.execute("SELECT bild FROM objekte WHERE id=?", (oid,)).fetchone()
+        if not r or not r["bild"]:
+            raise Fehler(404, "Kein Bild vorhanden.")
+        p = (OBJ_PFAD / r["bild"]).resolve()
+        if not str(p).startswith(str(OBJ_PFAD.resolve())) or not p.is_file():
+            raise Fehler(404, "Kein Bild vorhanden.")
+        self.senden(200, p.read_bytes(), mimetypes.guess_type(p.name)[0] or "image/jpeg",
+                    {"Cache-Control": "private, max-age=86400", "Content-Security-Policy": "sandbox"})
 
     def symbol_hochladen(self, con, b, sid: int | None):
         d = self.body()

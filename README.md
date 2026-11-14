@@ -9,7 +9,7 @@ Es läuft im Browser und braucht nur Python, sonst nichts.
 | --- | --- |
 | Übersicht | Offene Störmeldungen, überfällige und bald fällige Wartungen und Prüfungen, Kündigungsfristen auf einen Blick |
 | Standorte & Pläne | Links der Standortbaum wie bei Kevox: Objekt › Gebäude › Etage, darunter die Bauteil-Liste der gewählten Etage mit Suche und Kategoriefilter. Klick auf ein Bauteil zeigt es im Plan. Etagen werden von UG über EG bis DG sortiert. Grundriss hochladen (PNG, JPG oder PDF). Geräte und Anlagen aus der Seitenleiste auf den Plan ziehen, verschieben, anklicken. Farbiger Ring zeigt den Zustand: grün in Ordnung, gelb bald fällig, rot Störung oder überfällig |
-| Objekte | Liegenschaften mit Stammdaten. Je Objekt alle Anlagen, Termine, Meldungen, Verträge, Zähler und Dokumente |
+| Objekte | Kacheln mit großem Bild, darunter Kürzel, Name, Adresse, Anzahl Anlagen, offene Meldungen. Umschaltbar auf Liste. Bild per Kamera-Knopf auf der Kachel oder auf der Objektseite. Liegenschaften mit Stammdaten. Je Objekt alle Anlagen, Termine, Meldungen, Verträge, Zähler und Dokumente |
 | Anlagen | Eigene Akte je Anlage, auch hinter jedem Symbol im Plan: Fotos, Anlagennummer, Beschreibung, Gruppe, Gewerk, Hersteller, Modell, Daten, Manager, Beauftragter, Schalter für GPS-Pflicht und gesetzliche Prüf- und Wartungspflicht, Meldungen, Wartungsplan, Dokumente und Aktivität |
 | Wartungsplan | Je Anlage Aufgaben mit Intervall, Grundlage und Checkliste. Vorschläge je Anlagentyp zum Übernehmen. Gesamtübersicht als Jahresplan (Monate als Spalten) oder Liste, Filter nach Objekt, Gewerk, Art und gesetzlicher Pflicht, Export nach Excel, Drucken quer. „Als erledigt melden“ mit Checkliste und Standort rechnet den nächsten Termin selbst aus |
 | Katalog | Kategorie › Hersteller/Gruppe › Bezeichnung › Detailinfo, mit Symbol je Kategorie, Nummernkreis für die Inventar-Nr., Prüf-, Wartungs- und Kontrollintervall, Zusatzfeldern (z. B. Brandschutztür, Feuerwiderstand, Breite) und Mängelkatalog je Kategorie. Grundbestand: 30 Kategorien, 135 Hersteller, über 600 Bezeichnungen, über 100 Mängel. Erweiterbar |
@@ -96,6 +96,12 @@ python3 app.py --demo
 Für mehrere Arbeitsplätze im Büronetz: `python3 app.py --host 0.0.0.0`. Dann ist es unter der Adresse
 des Rechners erreichbar, etwa `http://192.168.1.20:8080`. Für den Zugriff von außen gehört ein Server
 mit HTTPS davor.
+
+## Neue Version einspielen
+
+Die neue ZIP-Datei am besten **über den alten Ordner entpacken** (Dateien ersetzen). Der Ordner `daten` mit euren
+Einträgen bleibt dabei erhalten. Wer in einen neuen Ordner entpackt, kopiert den Ordner `daten` aus dem alten
+Ordner hinein. Die Datenbank wird beim Start automatisch auf den neuen Stand gebracht.
 
 ## Wo die Daten liegen
 
