@@ -76,7 +76,8 @@ mindestens ein Administrator.
 
 ## Starten
 
-Windows: Doppelklick auf `start.bat`. Mac oder Linux: `./start.sh`.
+Windows: Doppelklick auf `start.bat`. Zum Ausprobieren mit Beispieldaten: Doppelklick auf `testen.bat`
+(eigener Datenordner `daten-test`, die echten Daten bleiben unberührt). Mac oder Linux: `./start.sh`.
 
 Oder von Hand:
 

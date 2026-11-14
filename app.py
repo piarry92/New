@@ -1980,6 +1980,7 @@ def main():
                    help="0.0.0.0 macht das Programm im ganzen Netzwerk erreichbar")
     p.add_argument("--demo", action="store_true", help="Beispieldaten anlegen, wenn die Datenbank leer ist")
     p.add_argument("--leise", action="store_true")
+    p.add_argument("--browser", action="store_true", help="Browser nach dem Start öffnen")
     a = p.parse_args()
     db_anlegen()
     with db() as con:
@@ -1990,6 +1991,9 @@ def main():
     srv = ThreadingHTTPServer((a.host, a.port), Handler)
     print(f"Casa CAFM läuft: http://{'localhost' if a.host in ('127.0.0.1', '0.0.0.0') else a.host}:{a.port}")
     print("Beenden mit Strg+C.")
+    if a.browser:
+        import webbrowser
+        threading.Timer(1.0, webbrowser.open, [f"http://localhost:{a.port}"]).start()
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

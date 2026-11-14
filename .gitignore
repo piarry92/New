@@ -1,3 +1,4 @@
 daten/
+daten-test/
 __pycache__/
 *.pyc
