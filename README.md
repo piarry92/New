@@ -76,6 +76,21 @@ einen Leser aus dem Internet.
   eingestellt, lassen sich die Punkte einer Station erst nach dem Scan abhaken. Der Zwischenstand bleibt beim
   Wechsel zur Kamera erhalten.
 
+## E-Mail, Push und App
+
+- **E-Mail:** Ein Administrator trägt unter Einstellungen › „E-Mail-Versand (Mailserver)“ den Mailserver ein
+  (Server, Port, Verschlüsselung, Absender, Benutzer, Passwort) und schickt sich eine Testnachricht. Danach geht jede
+  Benachrichtigung zusätzlich per Mail raus: Zuweisung, „steht an“, „fällig“, „zur Prüfung“, „bestätigt“, „Rückfrage“.
+  Jeder Zugang kann E-Mails für sich unter Einstellungen abschalten. Das Passwort wird nie angezeigt.
+- **Hintergrunddienst:** Prüft alle paar Minuten fällige Erinnerungen, auch wenn niemand das Programm geöffnet hat,
+  und verschickt neue Benachrichtigungen. Fehlgeschlagene Mails werden bis zu fünfmal erneut versucht.
+- **App:** Das Programm lässt sich auf Handy und Rechner als App installieren (eigenes Symbol, ohne Browserleiste).
+  Android/Chrome/Edge: „Installieren“ unter Einstellungen oder im Browsermenü. iPhone/iPad: in Safari Teilen ›
+  „Zum Home-Bildschirm“.
+- **Push:** Unter Einstellungen › „Push auf diesem Gerät“ einschalten. Hinweise kommen dann auch bei geschlossener App.
+  Voraussetzung: Das Programm ist über **https** erreichbar (am eigenen Rechner reicht localhost). Auf dem iPhone geht
+  Push nur in der installierten App (ab iOS 16.4).
+
 ## Mieter-QR-Code je Objekt
 
 Jedes Objekt hat zusätzlich einen eigenen QR-Code für Mieter (Objektseite, Karte „QR-Code für Mieter“).

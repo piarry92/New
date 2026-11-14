@@ -1,0 +1,20 @@
+{
+  "name": "Casa CAFM",
+  "short_name": "Casa CAFM",
+  "description": "Facility Management von Casa Concept Consulting: Objekte, Anlagen, Rundgänge, Mängel.",
+  "lang": "de",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#F5F6F8",
+  "theme_color": "#E63713",
+  "icons": [
+    { "src": "/app-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/app-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/app-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Mangel melden", "url": "/#/tickets" },
+    { "name": "Meine Rundgänge", "url": "/#/checklisten?meine=1" }
+  ]
+}

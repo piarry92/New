@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import katalog_daten
+import versand
 import base64
 import calendar
 import csv
@@ -41,7 +42,7 @@ SYM_PFAD = DATEN / "symbole"
 OBJ_PFAD = DATEN / "objektbilder"
 MAX_SYMBOL = 2 * 1024 * 1024
 MAX_UPLOAD = 25 * 1024 * 1024
-VERSION = "2026.11.15-7"  # muss zu VERSION in static/app.js passen
+VERSION = "2026.11.15-8"  # muss zu VERSION in static/app.js passen
 SITZUNG_TAGE = 7
 
 GEWERKE = [
@@ -418,6 +419,13 @@ CREATE TABLE IF NOT EXISTS benachrichtigungen (
     gelesen INTEGER DEFAULT 0,
     UNIQUE (benutzer_id, schluessel)
 );
+CREATE TABLE IF NOT EXISTS push_abos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    benutzer_id INTEGER NOT NULL,
+    endpoint TEXT NOT NULL UNIQUE,
+    geraet TEXT,
+    erstellt TEXT
+);
 CREATE TABLE IF NOT EXISTS verlauf (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     zeit TEXT NOT NULL,
@@ -487,6 +495,14 @@ def db_anlegen() -> None:
         for r in con.execute("SELECT id FROM objekte WHERE qr_token IS NULL OR qr_token=''").fetchall():
             con.execute("UPDATE objekte SET qr_token=? WHERE id=?", (neuer_qr_token(), r["id"]))
         con.execute('CREATE UNIQUE INDEX IF NOT EXISTS "ux_objekte_qr" ON objekte(qr_token)')
+        if "mail_an" not in {r["name"] for r in con.execute("PRAGMA table_info(benutzer)")}:
+            con.execute("ALTER TABLE benutzer ADD COLUMN mail_an INTEGER DEFAULT 1")
+        vorhanden_bn = {r["name"] for r in con.execute("PRAGMA table_info(benachrichtigungen)")}
+        for spalte in ("gemailt", "gepusht", "mailfehler"):
+            if spalte not in vorhanden_bn:
+                con.execute(f"ALTER TABLE benachrichtigungen ADD COLUMN {spalte} INTEGER DEFAULT 0")
+                if spalte != "mailfehler":
+                    con.execute(f"UPDATE benachrichtigungen SET {spalte}=2")
         if "rechte" not in {r["name"] for r in con.execute("PRAGMA table_info(benutzer)")}:
             con.execute("ALTER TABLE benutzer ADD COLUMN rechte TEXT")
         con.execute("UPDATE benutzer SET rolle='zuschauer' WHERE rolle='lesen'")
@@ -753,7 +769,12 @@ def neuer_qr_token() -> str:
     return secrets.token_urlsafe(12)
 
 
-EINSTELLUNGEN_STANDARD = {"basis_url": "", "oeffentlich_melden": "0", "oeffentlich_objekt": "1"}
+EINSTELLUNGEN_STANDARD = {"basis_url": "", "oeffentlich_melden": "0", "oeffentlich_objekt": "1", "mail_aktiv": "0",
+                          "smtp_host": "", "smtp_port": "587", "smtp_tls": "starttls", "smtp_user": "", "smtp_pass": "",
+                          "smtp_absender": "", "vapid_privat": "", "vapid_public": ""}
+EINSTELLUNGEN_OEFFENTLICH = ("basis_url", "oeffentlich_melden", "oeffentlich_objekt", "mail_aktiv")
+EINSTELLUNGEN_SMTP = ("smtp_host", "smtp_port", "smtp_tls", "smtp_user", "smtp_absender")
+VERSAND: "versand.Versand | None" = None
 MIETER_THEMEN = {
     "Heizung / zu kalt oder zu warm": "Heizung", "Wasser / Sanitär / WC": "Sanitär", "Strom / Licht": "Elektro",
     "Aufzug": "Aufzug", "Türen / Tore / Schlösser": "Türen/Tore", "Lüftung / Klima": "Lüftung/Klima",
@@ -1661,9 +1682,16 @@ class Handler(BaseHTTPRequestHandler):
         if not str(ziel).startswith(str(STATIC)) or not ziel.is_file():
             ziel = STATIC / "index.html"
         typ = mimetypes.guess_type(ziel.name)[0] or "application/octet-stream"
-        if typ.startswith("text/") or typ in ("application/javascript",):
+        if ziel.suffix == ".webmanifest":
+            typ = "application/manifest+json"
+        if ziel.suffix == ".js":
+            typ = "text/javascript"
+        if typ.startswith("text/") or typ in ("application/javascript", "application/manifest+json"):
             typ += "; charset=utf-8"
-        self.senden(200, ziel.read_bytes(), typ, {"Cache-Control": "no-cache"})
+        extra = {"Cache-Control": "no-cache"}
+        if ziel.name == "sw.js":
+            extra["Service-Worker-Allowed"] = "/"
+        self.senden(200, ziel.read_bytes(), typ, extra)
 
     # --- Schnittstelle ---------------------------------------------------
     def api(self, con, m: str, teile: list[str], q: dict):
@@ -1715,6 +1743,33 @@ class Handler(BaseHTTPRequestHandler):
         if erstes == "personen" and m == "GET":
             return self.json([{"id": r["id"], "name": r["name"], "rolle": r["rolle"]}
                               for r in con.execute("SELECT id, name, rolle FROM benutzer WHERE aktiv=1 ORDER BY name COLLATE NOCASE")])
+        if erstes == "ich" and m == "PUT":
+            d = self.body()
+            if "mail_an" in d:
+                con.execute("UPDATE benutzer SET mail_an=? WHERE id=?", (1 if d["mail_an"] in (1, True, "1") else 0, b["id"]))
+            return self.json({"ok": True})
+        if erstes == "push":
+            if len(teile) == 2 and teile[1] == "schluessel" and m == "GET":
+                return self.json({"schluessel": VERSAND.vapid(con)[1]})
+            if len(teile) == 2 and teile[1] == "abo":
+                d = self.body()
+                endpunkt = str(d.get("endpoint") or "")
+                if not re.match(r"^https://[^\s]+$", endpunkt) or len(endpunkt) > 1000:
+                    raise Fehler(400, "Das Gerät hat keine gültige Push-Adresse geliefert.")
+                if m == "POST":
+                    con.execute("INSERT OR REPLACE INTO push_abos (benutzer_id, endpoint, geraet, erstellt) VALUES (?,?,?,?)",
+                                (b["id"], endpunkt, str(d.get("geraet") or "")[:120], jetzt()))
+                    return self.json({"ok": True})
+                if m == "DELETE":
+                    con.execute("DELETE FROM push_abos WHERE endpoint=? AND benutzer_id=?", (endpunkt, b["id"]))
+                    return self.json({"ok": True})
+            if len(teile) == 2 and teile[1] == "test" and m == "POST":
+                benachrichtigen(con, b["id"], f"test:{jetzt()}", "Testbenachrichtigung", "So sehen Hinweise aus Casa CAFM aus.", "#/", "info")
+                return self.json({"ok": True})
+        if erstes == "benachrichtigungen" and len(teile) == 2 and teile[1] == "neueste" and m == "GET":
+            r = con.execute("SELECT * FROM benachrichtigungen WHERE benutzer_id=? AND gelesen=0 ORDER BY id DESC LIMIT 1", (b["id"],)).fetchone()
+            n = con.execute("SELECT COUNT(*) FROM benachrichtigungen WHERE benutzer_id=? AND gelesen=0", (b["id"],)).fetchone()[0]
+            return self.json({"neueste": zeile(r), "ungelesen": n})
         if erstes == "benachrichtigungen":
             if m == "GET":
                 faellige_erinnerungen(con, b["id"])
@@ -1817,11 +1872,40 @@ class Handler(BaseHTTPRequestHandler):
                 return self.plan_hochladen(con, b, pid)
             if teile[2] == "anlagen" and m == "GET":
                 return self.json(plan_anlagen(con, pid))
+        if erstes == "einstellungen" and len(teile) == 2 and teile[1] == "testmail" and m == "POST":
+            an = str(self.body().get("an") or b["email"]).strip()
+            if "@" not in an:
+                raise Fehler(400, "Bitte eine gültige E-Mail-Adresse angeben.")
+            try:
+                VERSAND.mail_senden(VERSAND.smtp(con), an, "Testnachricht", "Wenn du diese Nachricht liest, klappt der Versand aus Casa CAFM.", "#/einstellungen")
+            except Exception as e:  # noqa: BLE001
+                raise Fehler(400, f"Die Testnachricht ging nicht raus: {e}")
+            return self.json({"ok": True, "an": an})
         if erstes == "einstellungen":
             if m == "GET":
-                return self.json({k: einstellung(con, k) for k in EINSTELLUNGEN_STANDARD})
+                aus = {k: einstellung(con, k) for k in EINSTELLUNGEN_OEFFENTLICH}
+                if self.rechte.get("einstellungen"):
+                    aus.update({k: einstellung(con, k) for k in EINSTELLUNGEN_SMTP})
+                    aus["smtp_pass_gesetzt"] = bool(einstellung(con, "smtp_pass"))
+                    aus["versand_fehler"] = VERSAND.letzter_fehler if VERSAND else ""
+                return self.json(aus)
             if m == "PUT":
                 d = self.body()
+                for k in EINSTELLUNGEN_SMTP:
+                    if k in d:
+                        wert = str(d[k] or "").strip()[:200]
+                        if k == "smtp_port" and wert and not wert.isdigit():
+                            raise Fehler(400, "Der Port muss eine Zahl sein, meist 587 oder 465.")
+                        if k == "smtp_tls" and wert not in ("starttls", "ssl", "keine"):
+                            raise Fehler(400, "Verschlüsselung ist ungültig.")
+                        con.execute("INSERT OR REPLACE INTO einstellungen VALUES (?, ?)", (k, wert))
+                if d.get("smtp_pass"):
+                    con.execute("INSERT OR REPLACE INTO einstellungen VALUES ('smtp_pass', ?)", (str(d["smtp_pass"])[:300],))
+                if "mail_aktiv" in d:
+                    con.execute("INSERT OR REPLACE INTO einstellungen VALUES ('mail_aktiv', ?)",
+                                ("1" if d["mail_aktiv"] in (1, True, "1") else "0",))
+                    if d["mail_aktiv"] in (1, True, "1"):
+                        con.execute("UPDATE benachrichtigungen SET gemailt=2 WHERE gemailt=0")
                 if "basis_url" in d:
                     url = str(d["basis_url"] or "").strip().rstrip("/")
                     if url and not re.match(r"^https?://[^\s/]+(/[^\s]*)?$", url):
@@ -1833,8 +1917,10 @@ class Handler(BaseHTTPRequestHandler):
                 if "oeffentlich_melden" in d:
                     con.execute("INSERT OR REPLACE INTO einstellungen VALUES ('oeffentlich_melden', ?)",
                                 ("1" if d["oeffentlich_melden"] in (1, True, "1") else "0",))
-                protokollieren(con, b, "geändert", "einstellungen", None, ", ".join(d))
-                return self.json({k: einstellung(con, k) for k in EINSTELLUNGEN_STANDARD})
+                protokollieren(con, b, "geändert", "einstellungen", None, ", ".join(k for k in d if k != "smtp_pass"))
+                aus = {k: einstellung(con, k) for k in EINSTELLUNGEN_OEFFENTLICH + EINSTELLUNGEN_SMTP}
+                aus["smtp_pass_gesetzt"] = bool(einstellung(con, "smtp_pass"))
+                return self.json(aus)
         if erstes == "checklisten" and len(teile) == 3 and teile[2] == "checkpoints":
             cid = self.id(teile[1])
             if m == "POST" and not self.rechte.get("wartung_planen"):
@@ -2532,7 +2618,8 @@ class Handler(BaseHTTPRequestHandler):
     def oeffentlich(self, b, con=None):
         if not b:
             return None
-        aus = {"id": b["id"], "name": b["name"], "email": b["email"], "rolle": b["rolle"]}
+        aus = {"id": b["id"], "name": b["name"], "email": b["email"], "rolle": b["rolle"],
+               "mail_an": 0 if "mail_an" in b.keys() and b["mail_an"] == 0 else 1}
         if con is not None:
             aus["rechte"] = effektive_rechte(con, b)
         return aus
@@ -2643,6 +2730,9 @@ def main():
     if a.demo:
         with db() as con:
             beispieldaten(con)
+    global VERSAND
+    VERSAND = versand.Versand(db, _db_lock, einstellung, faellige_erinnerungen, jetzt)
+    VERSAND.starten()
     srv = ThreadingHTTPServer((a.host, a.port), Handler)
     print(f"Casa CAFM läuft: http://{'localhost' if a.host in ('127.0.0.1', '0.0.0.0') else a.host}:{a.port}")
     print("Beenden mit Strg+C.")

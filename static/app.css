@@ -1026,3 +1026,7 @@ html[data-theme="dark"] .pk-zeile { background: #16171A; }
 html[data-theme="dark"] .pruef-block.offen { background: #2E2710; border-color: #4A3E14; }
 html[data-theme="dark"] .pruef-block.bestaetigt { background: #18331F; border-color: #2A5A36; }
 html[data-theme="dark"] .pruef-block.rueckfrage { background: #3E1520; border-color: #6A2433; }
+.bn-zeile { display: flex; gap: 12px; align-items: center; justify-content: space-between; padding: 12px 0; border-top: 1px solid var(--rand); }
+.bn-zeile > span { flex: 1; }
+.bn-zeile .knopf { margin-left: 4px; }
+.schalter-zeile.ohne-rand { padding: 4px 0 12px; border-bottom: 0; }
