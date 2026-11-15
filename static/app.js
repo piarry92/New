@@ -1,7 +1,7 @@
 /* Casa CAFM – Oberfläche (ohne Fremdbibliotheken) */
 "use strict";
 
-const VERSION = "2026.11.15-21"; // muss zu VERSION in app.py passen
+const VERSION = "2026.11.15-22"; // muss zu VERSION in app.py passen
 /* Hell- und Dunkelmodus: gemerkte Wahl, sonst wie das Gerät */
 const THEMA = (() => {
   let t = null;
@@ -667,8 +667,23 @@ SEITEN.vertraege = async (el) => {
   await tabelle(el.querySelector("#t"), "vertraege");
 };
 SEITEN.dienstleister = async (el) => {
-  el.innerHTML = seitenkopf("Dienstleister", "Firmen und Kontakte") + '<div id="t"></div>';
+  el.innerHTML = seitenkopf("Dienstleister", "Firmen, Ansprechpartner, Notdienst", darf("vertraege_bearbeiten") ? '<button class="knopf" id="dlimp">Liste übernehmen (Excel/CSV)</button>' : "") + '<div id="t"></div>';
   await tabelle(el.querySelector("#t"), "dienstleister");
+  const im = el.querySelector("#dlimp");
+  if (im) im.onclick = async () => {
+    const html = `<div class="dfehler"></div><form class="formular" onsubmit="return false">
+      <label class="breit"><span class="pflicht">Datei (.xlsx oder .csv)</span><input type="file" name="datei" accept=".xlsx,.csv,text/csv"></label>
+      <p class="klein breit">Erste Zeile mit Spaltennamen, zum Beispiel Firma, Gewerk, Ansprechpartner, Telefon, Notdienst, E-Mail, Straße, PLZ, Ort, Bemerkung. Gibt es eine Firma schon (gleicher Name oder gleiche E-Mail), werden nur leere Felder ergänzt, nichts überschrieben.</p></form>`;
+    const r = await dialog("Dienstleister übernehmen", html, [{ text: "Abbrechen" }, {
+      text: "Übernehmen", klasse: "haupt-k", aktion: async (hg) => {
+        const datei = hg.querySelector("[name=datei]").files[0];
+        if (!datei) throw new Error("Bitte eine Datei auswählen.");
+        const inhalt = await new Promise((ok, nein) => { const f = new FileReader(); f.onload = () => ok(String(f.result).split(",")[1] || ""); f.onerror = nein; f.readAsDataURL(datei); });
+        return api("POST", "dienstleister/import", { inhalt, dateiname: datei.name });
+      },
+    }]);
+    if (r) { melde(`${r.neu} Dienstleister neu, ${r.ergaenzt} ergänzt${r.uebersprungen ? `, ${r.uebersprungen} schon vollständig` : ""}.`); cacheLeeren(); route(); }
+  };
 };
 SEITEN.zaehler = async (el) => {
   el.innerHTML = seitenkopf("Zähler", "Verbrauch und Ablesung") + '<div id="t"></div>';

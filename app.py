@@ -46,7 +46,7 @@ SCHL_PFAD = DATEN / "schluesselfotos"
 PROFIL_PFAD = DATEN / "profilbilder"
 MAX_SYMBOL = 2 * 1024 * 1024
 MAX_UPLOAD = 25 * 1024 * 1024
-VERSION = "2026.11.15-21"  # muss zu VERSION in static/app.js passen
+VERSION = "2026.11.15-22"  # muss zu VERSION in static/app.js passen
 SITZUNG_TAGE = 7
 
 GEWERKE = [
@@ -2198,6 +2198,80 @@ def sv_pruefplan_importieren(con, benutzer, d: dict) -> dict:
             "ohne_termin": sum(1 for e in eintraege if not e["letzte"])}
 
 
+def dienstleister_importieren(con, benutzer, d: dict) -> dict:
+    """Dienstleister aus Excel (.xlsx) oder CSV übernehmen. Spalten werden an der Kopfzeile erkannt.
+    Vorhandene Firmen (gleicher Name oder gleiche E-Mail) werden nur ergänzt, nie überschrieben."""
+    try:
+        inhalt = base64.b64decode(d.get("inhalt") or "", validate=True)
+    except (ValueError, binascii.Error):
+        raise Fehler(400, "Die Datei konnte nicht gelesen werden.")
+    name = str(d.get("dateiname") or "").lower()
+    if name.endswith(".xlsx") or inhalt[:2] == b"PK":
+        zeilen = xlsx_zeilen(inhalt)
+    else:
+        try:
+            text = inhalt.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            text = inhalt.decode("cp1252", errors="replace")
+        trenner = ";" if text.count(";") >= text.count(",") else ","
+        zeilen = [[c.strip() for c in z] for z in csv.reader(io.StringIO(text), delimiter=trenner)]
+    erkennen = {
+        "firma": ("firma", "unternehmen", "dienstleister", "company", "name"), "gewerk": ("gewerk", "branche", "kategorie", "leistung"),
+        "ansprechpartner": ("ansprech", "kontakt", "person"), "notdienst": ("notdienst", "störung", "24"),
+        "telefon": ("telefon", "tel", "phone", "mobil"), "email": ("e-mail", "email", "mail"),
+        "strasse": ("straße", "strasse", "anschrift", "adresse"), "plz": ("plz", "postleitzahl"), "ort": ("ort", "stadt"),
+        "notiz": ("notiz", "bemerkung", "kommentar", "objekte"),
+    }
+    kopf_i, spalten = None, {}
+    for i, z in enumerate(zeilen[:15]):
+        treffer = {}
+        for j, c in enumerate(z):
+            c = c.lower()
+            for feld, worte in erkennen.items():
+                if feld not in treffer and any(w in c for w in worte):
+                    if feld == "firma" and "ansprech" in c:
+                        continue
+                    treffer[feld] = j
+                    break
+        if "firma" in treffer and len(treffer) >= 2:
+            kopf_i, spalten = i, treffer
+            break
+    if kopf_i is None:
+        raise Fehler(400, "Keine Kopfzeile gefunden. Es braucht mindestens eine Spalte „Firma“ und eine weitere (z. B. E-Mail, Telefon).")
+    wert = lambda z, f: (z[spalten[f]].strip() if f in spalten and spalten[f] < len(z) else "")  # noqa: E731
+    gewerke = {g.lower(): g for g in GEWERKE}
+    neu = ergaenzt = uebersprungen = 0
+    for z in zeilen[kopf_i + 1:]:
+        firma = wert(z, "firma")[:200]
+        if not firma:
+            continue
+        email = wert(z, "email")[:200]
+        if email and not EMAIL_MUSTER.match(email):
+            email = ""
+        anschrift = ", ".join(x for x in (wert(z, "strasse"), " ".join(x for x in (wert(z, "plz"), wert(z, "ort")) if x)) if x)[:300]
+        g_roh = wert(z, "gewerk")
+        gewerk = gewerke.get(g_roh.lower())
+        notiz = "; ".join(x for x in (wert(z, "notiz"), (f"Gewerk laut Liste: {g_roh}" if g_roh and not gewerk else "")) if x)[:2000]
+        daten = {"firma": firma, "gewerk": gewerk, "ansprechpartner": wert(z, "ansprechpartner")[:200] or None,
+                 "telefon": wert(z, "telefon")[:60] or None, "notdienst": wert(z, "notdienst")[:60] or None,
+                 "email": email or None, "anschrift": anschrift or None, "notiz": notiz or None}
+        alt = con.execute("SELECT * FROM dienstleister WHERE lower(firma)=lower(?) OR (? <> '' AND lower(COALESCE(email,''))=lower(?))",
+                          (firma, email, email)).fetchone()
+        if alt:
+            fehlt = {k: v for k, v in daten.items() if v and not alt[k]}
+            if fehlt:
+                setz = ", ".join(f'"{k}"=?' for k in fehlt)
+                con.execute(f"UPDATE dienstleister SET {setz}, geaendert=? WHERE id=?", [*fehlt.values(), jetzt(), alt["id"]])
+                ergaenzt += 1
+            else:
+                uebersprungen += 1
+            continue
+        einfuegen(con, "dienstleister", daten_pruefen(RESSOURCEN["dienstleister"], daten, neu=True))
+        neu += 1
+    protokollieren(con, benutzer, "Dienstleister importiert", "dienstleister", None, f"{neu} neu, {ergaenzt} ergänzt")
+    return {"neu": neu, "ergaenzt": ergaenzt, "uebersprungen": uebersprungen}
+
+
 def sv_pruefplan(con, q: dict) -> dict:
     """Alle sicherheitsrelevanten Anlagen mit ihren SV-Prüfungen."""
     bed, werte = ["a.sv_relevant=1"], []
@@ -3142,6 +3216,10 @@ class Handler(BaseHTTPRequestHandler):
             return self.json({"text": ki.vorlage()})
         if erstes == "svberichte" and len(teile) == 3 and teile[2] == "uebernehmen" and m == "POST":
             return self.json(sv_uebernehmen(con, self.benutzer, self.rechte, self.id(teile[1]), self.body()))
+        if erstes == "dienstleister" and len(teile) == 2 and teile[1] == "import" and m == "POST":
+            if not self.rechte.get("vertraege_bearbeiten"):
+                raise Fehler(403, "Dafür fehlt dir das Recht: Verträge und Dienstleister bearbeiten.")
+            return self.json(dienstleister_importieren(con, b, self.body()))
         if erstes == "svpruefplan" and len(teile) == 2 and teile[1] == "import" and m == "POST":
             if not (self.rechte.get("anlagen_bearbeiten") and self.rechte.get("wartung_planen")):
                 raise Fehler(403, "Dafür braucht es die Rechte für Anlagen und Wartungsplan.")

@@ -161,6 +161,12 @@ einen Leser aus dem Internet.
 - **„Liste“** blendet die Symbolliste aus, damit der Grundriss noch größer wird. Am Handy ist sie im Vollbild aus.
 - Beenden mit „Vollbild beenden“, Esc oder F. Beim Drehen des Handys passt sich der Plan an.
 
+## Dienstleister übernehmen (Excel/CSV)
+
+- Dienstleister › **„Liste übernehmen (Excel/CSV)“**: Spalten werden an der Kopfzeile erkannt (Firma, Gewerk,
+  Ansprechpartner, Telefon, Notdienst, E-Mail, Straße, PLZ, Ort, Bemerkung). Vorhandene Firmen (gleicher Name oder
+  gleiche E-Mail) werden nur ergänzt, nie überschrieben. Unbekannte Gewerke landen als Hinweis in der Notiz.
+
 ## Profilbild
 
 - Freiwillig: Unter Einstellungen › „Dein Zugang“ kann jeder ein Profilbild hinzufügen, ändern oder entfernen.
