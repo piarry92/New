@@ -282,9 +282,13 @@ async function planEditor(el, id, q) {
   const markerEbene = el.querySelector("#marker"), popup = el.querySelector("#popup"), modusEl = el.querySelector("#modus");
 
   /* Ansicht */
+  /* Bei einem Plan der ganzen Etage (sehr breit) sind die Zeichen in der Übersicht kleiner, damit sie sich nicht
+     verdecken. Ab vierfacher Vergrößerung haben sie die volle Größe. */
+  let ganzeEtage = false, sEinpassen = 1;
+  const zeichenMass = () => ganzeEtage ? Math.min(1, Math.max(0.42, Math.sqrt(ansicht.s / (4 * sEinpassen)))) : 1;
   const anwenden = () => {
     welt.style.transform = `translate(${ansicht.x}px, ${ansicht.y}px) scale(${ansicht.s})`;
-    welt.style.setProperty("--inv", 1 / ansicht.s);
+    welt.style.setProperty("--inv", zeichenMass() / ansicht.s);
     if (ansicht.offen) popupPosition();
   };
   const einpassen = () => {
@@ -292,6 +296,7 @@ async function planEditor(el, id, q) {
     const bw = bild.naturalWidth || plan.breite || 1000, bh = bild.naturalHeight || plan.hoehe || 700;
     welt.style.width = bw + "px"; welt.style.height = bh + "px";
     ansicht.s = Math.min(b / bw, h / bh) * 0.96;
+    ganzeEtage = bw / bh > 2.4; sEinpassen = ansicht.s;
     ansicht.x = (b - bw * ansicht.s) / 2; ansicht.y = (h - bh * ansicht.s) / 2;
     anwenden();
   };

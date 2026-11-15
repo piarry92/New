@@ -173,6 +173,9 @@ einen Leser aus dem Internet.
   - werden die alten Pläne gelöscht,
   - legt das Programm vorher eine Sicherung der Datenbank an (`daten/sicherung/`).
 - Danach zeigt ein Fenster, wie viele Pläne gelöscht und wie viele Anlagen umgezogen sind.
+- Bei einem Plan der ganzen Etage (sehr breit) sind die Zeichen in der Übersicht kleiner, damit sie sich nicht
+  verdecken. Beim Vergrößern wachsen sie auf die gewohnte Größe. Auf der Anlagenseite zeigt der kleine Plan dann
+  den Bereich um die Anlage.
 - Format: `"ersetzt": [{"gebaeude": "Finger 1", "etage": "2. OG", "titel": "Finger 1 2. OG", "matrix": [a, b, c, d, e, f]}]`.
   Die sechs Zahlen rechnen die Lage um: `x' = a·x + c·y + e`, `y' = b·x + d·y + f`, jeweils als Anteil 0 bis 1
   von Breite und Höhe. Fehlt die Matrix, stehen die Anlagen danach unter „Noch nicht im Plan“.
