@@ -8,7 +8,7 @@ Es läuft im Browser und braucht nur Python, sonst nichts.
 | Bereich | Was du damit machst |
 | --- | --- |
 | Übersicht | Offene Störmeldungen, überfällige und bald fällige Wartungen und Prüfungen, Kündigungsfristen auf einen Blick |
-| Standorte & Pläne | Links der Standortbaum wie bei Kevox: Objekt › Gebäude › Etage, darunter die Bauteil-Liste der gewählten Etage mit Suche und Kategoriefilter. Klick auf ein Bauteil zeigt es im Plan. Etagen werden von UG über EG bis DG sortiert. Grundriss hochladen (PNG, JPG oder PDF). Geräte und Anlagen aus der Seitenleiste auf den Plan ziehen, verschieben, anklicken. Farbiger Ring zeigt den Zustand: grün in Ordnung, gelb bald fällig, rot Störung oder überfällig |
+| Standorte & Pläne | Einstieg ist die Gebäude-Übersicht: alle Gebäude nebeneinander, die Etagen gestapelt wie im Haus, Farbe und Zahl zeigen Zustand und Anlagen je Etage (siehe unten). Im Plan: Links der Standortbaum wie bei Kevox: Objekt › Gebäude › Etage, darunter die Bauteil-Liste der gewählten Etage mit Suche und Kategoriefilter. Klick auf ein Bauteil zeigt es im Plan. Etagen werden von UG über EG bis DG sortiert. Grundriss hochladen (PNG, JPG oder PDF). Geräte und Anlagen aus der Seitenleiste auf den Plan ziehen, verschieben, anklicken. Farbiger Ring zeigt den Zustand: grün in Ordnung, gelb bald fällig, rot Störung oder überfällig |
 | Objekte | Kacheln mit großem Bild, darunter Kürzel, Name, Adresse, Anzahl Anlagen, offene Meldungen. Umschaltbar auf Liste. Bild per Kamera-Knopf auf der Kachel oder auf der Objektseite. Liegenschaften mit Stammdaten. Je Objekt alle Anlagen, Termine, Meldungen, Verträge, Zähler und Dokumente |
 | Anlagen | Eigene Akte je Anlage, auch hinter jedem Symbol im Plan: Fotos, Anlagennummer, Beschreibung, Gruppe, Gewerk, Hersteller, Modell, Daten, Manager, Beauftragter, Schalter für GPS-Pflicht und gesetzliche Prüf- und Wartungspflicht, Meldungen, Wartungsplan, Dokumente und Aktivität |
 | Wartungsplan | Je Anlage Aufgaben mit Intervall, Grundlage und Checkliste. Vorschläge je Anlagentyp zum Übernehmen. Gesamtübersicht als Jahresplan (Monate als Spalten) oder Liste, Filter nach Objekt, Gewerk, Art und gesetzlicher Pflicht, Export nach Excel, Drucken quer. „Als erledigt melden“ mit Checkliste und Standort rechnet den nächsten Termin selbst aus |
@@ -153,7 +153,8 @@ einen Leser aus dem Internet.
 
 ## Mehrere Grundrisse auf einmal (ZIP-Import)
 
-- Standorte & Pläne › Objekt wählen › **„Mehrere importieren (ZIP)“**. In der ZIP-Datei liegen die Grundrisse als
+- Standorte & Pläne › oben rechts **„Grundrisse importieren“** (auf der Objektseite im Reiter Pläne heißt der
+  Knopf „Mehrere importieren (ZIP)“). In der ZIP-Datei liegen die Grundrisse als
   PNG, JPG oder SVG. Gebäude, Etage und Titel kommen aus einer Datei `plaene.json`
   (`[{"datei": "...png", "gebaeude": "Finger 1", "etage": "2. OG", "titel": "Finger 1 2. OG"}]`) oder aus dem
   Dateinamen `Gebäude__Etage__Titel.png`. Vorhandene Pläne mit gleichem Gebäude, Etage und Titel werden übersprungen.
@@ -189,6 +190,26 @@ einen Leser aus dem Internet.
   von Breite und Höhe. Fehlt die Matrix, stehen die Anlagen danach unter „Noch nicht im Plan“.
 - Gibt es die neuen Pläne schon (weil ohne Haken importiert wurde), reicht ein zweiter Import mit Haken: Die
   neuen Pläne werden übersprungen, die alten ersetzt.
+
+## Gebäude-Übersicht (Standorte & Pläne)
+
+- **Standorte & Pläne** zeigt zuerst das ganze Objekt: je Gebäude eine Spalte (bei Options die fünf Finger), die
+  Etagen von oben nach unten wie im Haus, darunter nach der Linie „Gelände“ die Untergeschosse. Pläne ohne
+  erkennbare Etage stehen unter „Weitere Pläne“. Sind mehrere Objekte sichtbar, wählt man zuerst das Objekt.
+- Jedes Feld ist eine Etage. Die Zahl nennt die Anlagen im Plan. Grün: alles in Ordnung. Gelb: ein Termin in den
+  nächsten 30 Tagen oder eingeschränkter Betrieb. Rot: Störung offen, Termin überfällig oder außer Betrieb.
+  Gestreift: noch keine Anlagen im Plan. Die runde Marke oben rechts zählt die auffälligen Anlagen. Kleine
+  Buchstaben (a, b, c) stehen für Teilpläne derselben Etage.
+- Klick auf ein Feld zeigt rechts die Etage mit kleinem Plan, den auffälligen Anlagen, **„Plan öffnen“** und
+  **„QR-Etiketten“**. Darunter steht die Liste **„Auffällig“** über alle Etagen und die Zahl der Anlagen, die noch
+  auf keinem Plan sind. **„Einordnen“** öffnet die Liste dieser Anlagen: Plan wählen, „Setzen“, dann im Plan die
+  Stelle antippen. Der Vorschlag für den Plan kommt aus dem Feld Standort der Anlage.
+- Die **Suche** über dem Gebäude findet Anlagen (Bezeichnung, Inventar-Nr., Standort, Gewerk) und Etagen. Ein Klick
+  oder Enter öffnet gleich den richtigen Plan und zeigt die Anlage.
+- Oben rechts lässt sich auf **Kacheln** (Pläne mit Bild, je Gebäude) und **Liste** (Tabelle) umschalten. Die Wahl
+  bleibt gespeichert. Im Plan führt **„← Gebäude-Übersicht“** zurück.
+- Die Übersicht ändert nichts an den Plänen. Sie liest nur, was im Programm steht (Abfrage
+  `GET /api/plaene/uebersicht?objekt_id=…`, mit denselben Sichtregeln wie die Pläne selbst).
 
 ## Grundriss im Vollbild
 

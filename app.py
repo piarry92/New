@@ -49,7 +49,7 @@ WD_PFAD = DATEN / "winterdienstfotos"
 PROFIL_PFAD = DATEN / "profilbilder"
 MAX_SYMBOL = 2 * 1024 * 1024
 MAX_UPLOAD = 25 * 1024 * 1024
-VERSION = "2026.11.16-3"  # muss zu VERSION in static/app.js passen
+VERSION = "2026.11.16-4"  # muss zu VERSION in static/app.js passen
 SITZUNG_TAGE = 7
 
 GEWERKE = [
@@ -1734,26 +1734,26 @@ def db_sichern(grund: str) -> str | None:
         return None
 
 
-def plan_anlagen(con, pid: int) -> dict:
-    plan = zeile(con.execute("SELECT * FROM plaene WHERE id=?", (pid,)).fetchone())
-    if not plan:
-        raise Fehler(404, "Plan nicht gefunden.")
-    plan.pop("pfad", None)
+def anlagen_mit_ampel(con, objekt_id: int) -> list[dict]:
+    """Alle Anlagen eines Objekts mit Ampel: rot bei offener Störung, überfälligem Termin oder außer Betrieb, gelb bei
+    Termin in den nächsten 30 Tagen oder eingeschränktem Betrieb, sonst grün. Dazu der nächste Termin mit Art."""
     h = heute()
     hs, in30 = h.isoformat(), (h + dt.timedelta(days=30)).isoformat()
     tickets = {r[0]: r[1] for r in con.execute(
         "SELECT anlage_id, COUNT(*) FROM tickets WHERE anlage_id IS NOT NULL "
         "AND status NOT IN ('Erledigt','Abgeschlossen') GROUP BY anlage_id")}
-    naechste = {r[0]: r[1] for r in con.execute(
-        "SELECT anlage_id, MIN(naechste) FROM wartungen WHERE aktiv=1 AND anlage_id IS NOT NULL GROUP BY anlage_id")}
+    naechste = {}
+    for r in con.execute("SELECT anlage_id, naechste, art FROM wartungen WHERE aktiv=1 AND anlage_id IS NOT NULL AND naechste IS NOT NULL "
+                         "ORDER BY naechste DESC"):
+        naechste[r[0]] = (r[1], r[2])                       # die früheste Fälligkeit bleibt stehen
     fotos = {r[0]: r[1] for r in con.execute(
         "SELECT anlage_id, MIN(id) FROM dokumente WHERE kategorie='Foto' AND anlage_id IS NOT NULL GROUP BY anlage_id")}
     alle = []
-    for r in con.execute("SELECT * FROM anlagen WHERE objekt_id=? ORDER BY bezeichnung", (plan["objekt_id"],)):
+    for r in con.execute("SELECT * FROM anlagen WHERE objekt_id=? ORDER BY bezeichnung", (objekt_id,)):
         a = dict(r)
         a["foto_id"] = fotos.get(a["id"])
         a["tickets_offen"] = tickets.get(a["id"], 0)
-        a["naechste"] = naechste.get(a["id"])
+        a["naechste"], a["naechste_art"] = naechste.get(a["id"], (None, None))
         if a["tickets_offen"] or (a["naechste"] and a["naechste"] < hs) or a["status"] == "Außer Betrieb":
             a["ampel"] = "rot"
         elif (a["naechste"] and a["naechste"] <= in30) or a["status"] == "Eingeschränkt":
@@ -1761,9 +1761,31 @@ def plan_anlagen(con, pid: int) -> dict:
         else:
             a["ampel"] = "gruen"
         alle.append(a)
+    return alle
+
+
+def plan_anlagen(con, pid: int) -> dict:
+    plan = zeile(con.execute("SELECT * FROM plaene WHERE id=?", (pid,)).fetchone())
+    if not plan:
+        raise Fehler(404, "Plan nicht gefunden.")
+    plan.pop("pfad", None)
+    alle = anlagen_mit_ampel(con, plan["objekt_id"])
     return {"plan": plan,
             "platziert": [a for a in alle if a["plan_id"] == pid],
             "frei": [a for a in alle if not a["plan_id"]]}
+
+
+def plaene_uebersicht(con, objekt_id: int) -> dict:
+    """Für die Gebäude-Übersicht unter Standorte & Pläne: alle Pläne eines Objekts und alle seine Anlagen mit Ampel."""
+    o = con.execute("SELECT id, kuerzel, name, ort FROM objekte WHERE id=?", (objekt_id,)).fetchone()
+    if not o:
+        raise Fehler(404, "Objekt nicht gefunden.")
+    plaene = [dict(r) for r in con.execute(
+        "SELECT id, titel, gebaeude, etage, dateiname, breite, hoehe FROM plaene WHERE objekt_id=? ORDER BY titel", (objekt_id,))]
+    felder = ("id", "bezeichnung", "nummer", "gewerk", "standort", "status", "plan_id", "planzeichen", "symbol_id", "kategorie_id",
+              "typ_id", "qr_token", "tickets_offen", "naechste", "naechste_art", "ampel")
+    return {"objekt": dict(o), "heute": heute().isoformat(), "plaene": plaene,
+            "anlagen": [{k: a.get(k) for k in felder} for a in anlagen_mit_ampel(con, objekt_id)]}
 
 
 # ---------------------------------------------------------------------------
@@ -4153,6 +4175,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self.symbol_bild(con, sid)
             if m == "PUT":
                 return self.symbol_hochladen(con, b, sid)
+        if erstes == "plaene" and len(teile) == 2 and teile[1] == "uebersicht" and m == "GET":
+            try:
+                return self.json(plaene_uebersicht(con, int((q.get("objekt_id") or [""])[0])))
+            except ValueError:
+                raise Fehler(400, "Bitte ein Objekt wählen.")
         if erstes == "plaene" and len(teile) == 2 and teile[1] == "import" and m == "POST":
             if not self.rechte.get("plaene_bearbeiten"):
                 raise Fehler(403, "Dafür fehlt dir das Recht: Grundrisse hochladen, Symbole setzen und verschieben.")
