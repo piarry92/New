@@ -29,6 +29,7 @@ import secrets
 import sqlite3
 import sys
 import threading
+import time
 from http import cookies
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -46,7 +47,7 @@ SCHL_PFAD = DATEN / "schluesselfotos"
 PROFIL_PFAD = DATEN / "profilbilder"
 MAX_SYMBOL = 2 * 1024 * 1024
 MAX_UPLOAD = 25 * 1024 * 1024
-VERSION = "2026.11.15-28"  # muss zu VERSION in static/app.js passen
+VERSION = "2026.11.15-29"  # muss zu VERSION in static/app.js passen
 SITZUNG_TAGE = 7
 
 GEWERKE = [
@@ -933,9 +934,11 @@ EINSTELLUNGEN_STANDARD = {"basis_url": "", "oeffentlich_melden": "0", "oeffentli
                           "smtp_host": "", "smtp_port": "587", "smtp_tls": "starttls", "smtp_user": "", "smtp_pass": "",
                           "smtp_absender": "", "vapid_privat": "", "vapid_public": "",
                           "ki_aktiv": "0", "ki_schluessel": "", "feierabend": "17:00", "schluessel_vorlauf": "60",
-                          "weihnachten": "auto", "motto": ""}
+                          "weihnachten": "auto", "motto": "",
+                          "wetter_aktiv": "1", "wetter_ort": "Frankfurt am Main", "wetter_lat": "50.1109", "wetter_lon": "8.6821"}
 EINSTELLUNGEN_OEFFENTLICH = ("basis_url", "oeffentlich_melden", "oeffentlich_objekt", "mail_aktiv", "ki_aktiv", "feierabend",
-                             "schluessel_vorlauf", "weihnachten", "motto")
+                             "schluessel_vorlauf", "weihnachten", "motto", "wetter_aktiv",
+                             "wetter_ort", "wetter_lat", "wetter_lon")
 EINSTELLUNGEN_SMTP = ("smtp_host", "smtp_port", "smtp_tls", "smtp_user", "smtp_absender")
 VERSAND: "versand.Versand | None" = None
 MIETER_THEMEN = {
@@ -944,6 +947,67 @@ MIETER_THEMEN = {
     "Brandschutz / Fluchtweg": "Brandschutz", "Reinigung / Müll": "Reinigung", "Außenanlagen / Parkplatz": "Außenanlagen",
     "Sonstiges": "Sonstiges",
 }
+
+
+# ---------------------------------------------------------------------------
+# Wetter (Open-Meteo, ohne Schlüssel). Abruf ohne Datenbank-Sperre, 20 Minuten zwischengespeichert.
+# ---------------------------------------------------------------------------
+_wetter_cache: dict = {}
+_wetter_lock = threading.Lock()
+WETTER_URL = os.environ.get("CAFM_WETTER_URL") or "https://api.open-meteo.com/v1/forecast"
+ORTE_URL = os.environ.get("CAFM_ORTE_URL") or "https://geocoding-api.open-meteo.com/v1/search"
+
+
+def _json_holen(url: str, timeout: float = 8.0):
+    import urllib.request
+    req = urllib.request.Request(url, headers={"User-Agent": "CasaCAFM/1.0"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return json.loads(r.read().decode("utf-8"))
+
+
+def wetter_holen(lat: str, lon: str, ort: str) -> dict:
+    from urllib.parse import urlencode
+    schl = f"{lat},{lon}"
+    with _wetter_lock:
+        c = _wetter_cache.get(schl)
+        if c and time.time() - c[0] < 1200:
+            return {**c[1], "ort": ort}
+    try:
+        d = _json_holen(WETTER_URL + "?" + urlencode({
+            "latitude": lat, "longitude": lon, "timezone": "Europe/Berlin", "forecast_days": 3, "wind_speed_unit": "kmh",
+            "current": "temperature_2m,apparent_temperature,weather_code,is_day,wind_speed_10m,relative_humidity_2m",
+            "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max"}))
+        cur, tag = d["current"], d["daily"]
+        erg = {
+            "jetzt": {"temp": cur.get("temperature_2m"), "gefuehlt": cur.get("apparent_temperature"), "code": cur.get("weather_code"),
+                      "tag": cur.get("is_day", 1), "wind": cur.get("wind_speed_10m"), "feuchte": cur.get("relative_humidity_2m"),
+                      "zeit": cur.get("time")},
+            "tage": [{"datum": tag["time"][i], "code": tag["weather_code"][i], "max": tag["temperature_2m_max"][i],
+                      "min": tag["temperature_2m_min"][i], "regen": (tag.get("precipitation_probability_max") or [None] * 3)[i]}
+                     for i in range(min(3, len(tag.get("time") or [])))],
+        }
+    except Exception:  # noqa: BLE001
+        with _wetter_lock:
+            c = _wetter_cache.get(schl)
+        if c:  # lieber ältere Werte als gar nichts
+            return {**c[1], "ort": ort, "alt": True}
+        return {"fehler": "Wetter gerade nicht erreichbar.", "ort": ort}
+    with _wetter_lock:
+        _wetter_cache[schl] = (time.time(), erg)
+    return {**erg, "ort": ort}
+
+
+def wetter_orte(suche: str) -> list:
+    from urllib.parse import urlencode
+    try:
+        d = _json_holen(ORTE_URL + "?" + urlencode({"name": suche, "count": 8, "language": "de", "format": "json"}))
+    except Exception:  # noqa: BLE001
+        raise Fehler(503, "Die Ortssuche ist gerade nicht erreichbar. Bitte später noch einmal versuchen.")
+    aus = []
+    for r in d.get("results") or []:
+        teile = [r.get("name"), r.get("admin1"), r.get("country")]
+        aus.append({"name": r.get("name"), "text": ", ".join(t for t in teile if t), "lat": r.get("latitude"), "lon": r.get("longitude")})
+    return aus
 
 
 def einstellung(con, schluessel: str) -> str:
@@ -2834,7 +2898,9 @@ class Handler(BaseHTTPRequestHandler):
                         self.api(con, methode, url.path[5:].strip("/").split("/"), parse_qs(url.query))
                 finally:
                     con.close()
-            if self._spaeter:
+            if callable(self._spaeter):
+                self._spaeter()
+            elif self._spaeter:
                 self.sv_auswerten(*self._spaeter)
         except Fehler as e:
             self.json({"fehler": e.text}, e.status)
@@ -3024,6 +3090,20 @@ class Handler(BaseHTTPRequestHandler):
             return self.json({"ressourcen": RESSOURCEN, "rechte": [{"key": k, "text": x, "gruppe": g} for k, x, g in RECHTE],
                               "medien_einheit": {
                 "Strom": "kWh", "Wasser": "m³", "Wärme": "MWh", "Kälte": "MWh", "Gas": "m³", "Weitere": ""}})
+        if erstes == "wetter" and m == "GET":
+            if len(teile) == 2 and teile[1] == "orte":
+                if not self.rechte.get("einstellungen"):
+                    raise Fehler(403, "Dafür fehlt dir das Recht.")
+                suche = ((q.get("q") or [""])[0]).strip()[:80]
+                if len(suche) < 2:
+                    return self.json([])
+                self._spaeter = lambda: self.json(wetter_orte(suche))
+                return
+            if einstellung(con, "wetter_aktiv") == "0":
+                return self.json({"aus": True})
+            lat, lon, ort = einstellung(con, "wetter_lat"), einstellung(con, "wetter_lon"), einstellung(con, "wetter_ort")
+            self._spaeter = lambda: self.json(wetter_holen(lat, lon, ort))
+            return
         if erstes == "dashboard":
             return self.json(dashboard(con))
         if erstes == "suche":
@@ -3139,6 +3219,19 @@ class Handler(BaseHTTPRequestHandler):
                     if not 0 <= wert <= 720:
                         raise Fehler(400, "Die Vorlaufzeit muss zwischen 0 und 720 Minuten liegen.")
                     con.execute("INSERT OR REPLACE INTO einstellungen VALUES ('schluessel_vorlauf', ?)", (str(wert),))
+                if "wetter_aktiv" in d:
+                    con.execute("INSERT OR REPLACE INTO einstellungen VALUES ('wetter_aktiv', ?)",
+                                ("1" if d["wetter_aktiv"] in (1, True, "1") else "0",))
+                if "wetter_ort" in d:
+                    try:
+                        lat, lon = float(d.get("wetter_lat")), float(d.get("wetter_lon"))
+                    except (TypeError, ValueError):
+                        raise Fehler(400, "Bitte den Ort aus der Liste wählen.")
+                    if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+                        raise Fehler(400, "Bitte den Ort aus der Liste wählen.")
+                    ort = str(d["wetter_ort"] or "").strip()[:120] or "Unbekannter Ort"
+                    for k, v in (("wetter_ort", ort), ("wetter_lat", f"{lat:.4f}"), ("wetter_lon", f"{lon:.4f}")):
+                        con.execute("INSERT OR REPLACE INTO einstellungen VALUES (?, ?)", (k, v))
                 if "motto" in d:
                     if d["motto"] not in ("auto", "aus", "weihnachten", "silvester", "neujahr", "winter", "ostern", "fruehling",
                                           "sommer", "herbst"):
