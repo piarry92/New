@@ -54,7 +54,12 @@ function kopfInfoZeichnen() {
   const wetter = !w || w.aus ? "" : w.fehler ? `<span class="kw-fehler" title="${esc(w.fehler)}">${wetterIcon(3)}<b>–</b></span>`
     : `<button class="kw" id="kwKnopf" aria-haspopup="dialog" title="Wetter in ${esc(w.ort)}: ${esc(WETTER_TEXT[w.jetzt.code] || "")}">
         ${wetterIcon(w.jetzt.code, w.jetzt.tag)}<b>${Math.round(w.jetzt.temp)}°</b><span class="kw-ort">${esc(w.ort)}</span></button>`;
-  box.innerHTML = `<span class="kd" title="Heute">${kopfDatum()}</span>${wetter}`;
+  const ww = (w && w.wd_warnungen) || [];
+  const schnee = ww.find((x) => x.art === "Neuschnee"), glatt = ww.find((x) => x.art === "Glätte");
+  const warnTag = (d) => new Date(d + "T12:00:00").toDateString() === new Date().toDateString() ? "heute" : "morgen";
+  const warn = schnee ? `<a class="kw-warn" href="#/winterdienst" title="Winterdienst: ${String(schnee.neuschnee_cm).replace(".", ",")} cm Neuschnee ${warnTag(schnee.datum)}">❄ ${Math.round(schnee.neuschnee_cm)} cm<span> ${warnTag(schnee.datum)}</span></a>`
+    : glatt ? `<a class="kw-warn glatt" href="#/winterdienst" title="Winterdienst: Glättegefahr ${warnTag(glatt.datum)}">⚠<span> Glätte ${warnTag(glatt.datum)}</span></a>` : "";
+  box.innerHTML = `<span class="kd" title="Heute">${kopfDatum()}</span>${warn}${wetter}`;
   const k = box.querySelector("#kwKnopf");
   if (k) k.onclick = (e) => { e.stopPropagation(); wetterFenster(k); };
 }
@@ -74,7 +79,7 @@ function wetterFenster(anker) {
     ${frost ? '<div class="wp-hinweis">Frost möglich. An Glätte und Winterdienst denken.</div>' : ""}
     <div class="wp-tage">${w.tage.map((t, i) => {
       const n = i === 0 ? "Heute" : i === 1 ? "Morgen" : new Date(t.datum + "T12:00:00").toLocaleDateString("de-DE", { weekday: "long" });
-      return `<div class="wp-tag"><span>${n}</span>${wetterIcon(t.code)}<b>${Math.round(t.max)}°</b><small>${Math.round(t.min)}°</small>${t.regen != null ? `<em title="Regenwahrscheinlichkeit">${t.regen} %</em>` : ""}</div>`;
+      return `<div class="wp-tag"><span>${n}</span>${wetterIcon(t.code)}<b>${Math.round(t.max)}°</b><small>${Math.round(t.min)}°</small>${t.regen != null ? `<em title="Regenwahrscheinlichkeit">${t.regen} %</em>` : ""}${t.schnee ? `<span class="schnee">❄ ${String(Math.round(t.schnee * 10) / 10).replace(".", ",")} cm</span>` : ""}</div>`;
     }).join("")}</div>
     <div class="wp-quelle">Wetterdaten: Open-Meteo</div>`;
   document.body.appendChild(pop);

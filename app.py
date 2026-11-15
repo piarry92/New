@@ -44,10 +44,11 @@ PLAN_PFAD = DATEN / "plaene"
 SYM_PFAD = DATEN / "symbole"
 OBJ_PFAD = DATEN / "objektbilder"
 SCHL_PFAD = DATEN / "schluesselfotos"
+WD_PFAD = DATEN / "winterdienstfotos"
 PROFIL_PFAD = DATEN / "profilbilder"
 MAX_SYMBOL = 2 * 1024 * 1024
 MAX_UPLOAD = 25 * 1024 * 1024
-VERSION = "2026.11.15-29"  # muss zu VERSION in static/app.js passen
+VERSION = "2026.11.15-30"  # muss zu VERSION in static/app.js passen
 SITZUNG_TAGE = 7
 
 GEWERKE = [
@@ -105,6 +106,8 @@ DOK_KATEGORIEN = [
 # Datenmodell: eine Beschreibung fuer Datenbank, Schnittstelle und Oberflaeche
 # ---------------------------------------------------------------------------
 # Feldtypen: text, textarea, number, money, date, select, ref, email, tel, bool
+WD_ANLAESSE = ["Neuschnee", "Glätte / Eisregen", "Reifglätte", "Kontrollgang"]
+WD_STREUMITTEL = ["Streusalz", "Sole", "Splitt", "Granulat", "Sand", "Kein Streumittel"]
 RESSOURCEN: dict[str, dict] = {
     "objekte": {
         "label": "Objekte", "einzahl": "Objekt", "anzeige": ["kuerzel", "name"], "sort": "kuerzel",
@@ -124,6 +127,7 @@ RESSOURCEN: dict[str, dict] = {
             {"name": "notiz", "label": "Notiz", "typ": "textarea"},
             {"name": "bild", "label": "Bild", "typ": "text", "nurlesen": True, "intern": True},
             {"name": "qr_token", "label": "QR-Kennung", "typ": "text", "nurlesen": True, "intern": True},
+            {"name": "wd_token", "label": "Winterdienst-Link", "typ": "text", "nurlesen": True, "intern": True},
         ],
     },
     "anlagen": {
@@ -378,6 +382,31 @@ RESSOURCEN: dict[str, dict] = {
             {"name": "notiz", "label": "Notiz", "typ": "textarea"},
         ],
     },
+    "winterdienst": {
+        "label": "Winterdienst-Einsätze", "einzahl": "Winterdienst-Einsatz", "anzeige": ["nummer"], "sort": "beginn",
+        "felder": [
+            {"name": "objekt_id", "label": "Objekt", "typ": "ref", "ref": "objekte", "pflicht": True, "liste": True},
+            {"name": "nummer", "label": "Nummer", "typ": "text", "nurlesen": True, "liste": True},
+            {"name": "anlass", "label": "Anlass", "typ": "select", "optionen": WD_ANLAESSE, "standard": "Neuschnee", "liste": True},
+            {"name": "status", "label": "Status", "typ": "select", "optionen": ["läuft", "erledigt"], "standard": "läuft", "liste": True},
+            {"name": "beginn", "label": "Beginn", "typ": "text", "nurlesen": True, "liste": True},
+            {"name": "ende", "label": "Ende", "typ": "text", "nurlesen": True},
+            {"name": "ausgefuehrt_von", "label": "Ausgeführt von", "typ": "text", "pflicht": True, "liste": True},
+            {"name": "firma", "label": "Firma", "typ": "text", "liste": True},
+            {"name": "dienstleister_id", "label": "Dienstleister", "typ": "ref", "ref": "dienstleister"},
+            {"name": "neuschnee_cm", "label": "Neuschnee (cm)", "typ": "number", "liste": True},
+            {"name": "temperatur", "label": "Temperatur (°C)", "typ": "number"},
+            {"name": "geraeumt", "label": "Geräumt", "typ": "bool"},
+            {"name": "gestreut", "label": "Gestreut", "typ": "bool"},
+            {"name": "streumittel", "label": "Streumittel", "typ": "select", "optionen": WD_STREUMITTEL},
+            {"name": "streumenge", "label": "Streumenge", "typ": "text"},
+            {"name": "flaechen", "label": "Flächen (Gehwege, Zufahrt, Eingänge …)", "typ": "textarea"},
+            {"name": "bemerkung", "label": "Bemerkung", "typ": "textarea"},
+            {"name": "quelle", "label": "Erfasst über", "typ": "text", "nurlesen": True},
+            {"name": "warnung_id", "label": "Warnung", "typ": "number", "intern": True},
+            {"name": "link_geheim", "label": "Link-Kennung", "typ": "text", "intern": True, "nurlesen": True},
+        ],
+    },
     "sv_maengel": {
         "label": "SV-Mängel", "einzahl": "SV-Mangel", "anzeige": ["beschreibung"], "sort": "frist",
         "felder": [
@@ -483,6 +512,26 @@ CREATE TABLE IF NOT EXISTS schluessel_fotos (
     pfad TEXT NOT NULL,
     zeit TEXT NOT NULL,
     von TEXT
+);
+CREATE TABLE IF NOT EXISTS winterdienst_fotos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    einsatz_id INTEGER NOT NULL,
+    art TEXT NOT NULL,
+    pfad TEXT NOT NULL,
+    zeit TEXT NOT NULL,
+    von TEXT
+);
+CREATE TABLE IF NOT EXISTS winterdienst_warnungen (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    datum TEXT NOT NULL,
+    art TEXT NOT NULL,
+    neuschnee_cm REAL,
+    temp_min REAL,
+    ab TEXT,
+    ort TEXT,
+    erstellt TEXT,
+    geaendert TEXT,
+    UNIQUE(datum, art)
 );
 CREATE TABLE IF NOT EXISTS sv_auswertungen (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -605,6 +654,7 @@ def db_anlegen() -> None:
     SYM_PFAD.mkdir(parents=True, exist_ok=True)
     OBJ_PFAD.mkdir(parents=True, exist_ok=True)
     SCHL_PFAD.mkdir(parents=True, exist_ok=True)
+    WD_PFAD.mkdir(parents=True, exist_ok=True)
     PROFIL_PFAD.mkdir(parents=True, exist_ok=True)
     with db() as con:
         for name, res in RESSOURCEN.items():
@@ -935,10 +985,12 @@ EINSTELLUNGEN_STANDARD = {"basis_url": "", "oeffentlich_melden": "0", "oeffentli
                           "smtp_absender": "", "vapid_privat": "", "vapid_public": "",
                           "ki_aktiv": "0", "ki_schluessel": "", "feierabend": "17:00", "schluessel_vorlauf": "60",
                           "weihnachten": "auto", "motto": "",
-                          "wetter_aktiv": "1", "wetter_ort": "Frankfurt am Main", "wetter_lat": "50.1109", "wetter_lon": "8.6821"}
+                          "wetter_aktiv": "1", "wetter_ort": "Frankfurt am Main", "wetter_lat": "50.1109", "wetter_lon": "8.6821",
+                          "wd_aktiv": "1", "wd_schwelle": "1", "wd_glaette": "1", "wd_empfaenger": ""}
 EINSTELLUNGEN_OEFFENTLICH = ("basis_url", "oeffentlich_melden", "oeffentlich_objekt", "mail_aktiv", "ki_aktiv", "feierabend",
                              "schluessel_vorlauf", "weihnachten", "motto", "wetter_aktiv",
-                             "wetter_ort", "wetter_lat", "wetter_lon")
+                             "wetter_ort", "wetter_lat", "wetter_lon", "wd_aktiv",
+                             "wd_schwelle", "wd_glaette", "wd_empfaenger")
 EINSTELLUNGEN_SMTP = ("smtp_host", "smtp_port", "smtp_tls", "smtp_user", "smtp_absender")
 VERSAND: "versand.Versand | None" = None
 MIETER_THEMEN = {
@@ -976,14 +1028,15 @@ def wetter_holen(lat: str, lon: str, ort: str) -> dict:
         d = _json_holen(WETTER_URL + "?" + urlencode({
             "latitude": lat, "longitude": lon, "timezone": "Europe/Berlin", "forecast_days": 3, "wind_speed_unit": "kmh",
             "current": "temperature_2m,apparent_temperature,weather_code,is_day,wind_speed_10m,relative_humidity_2m",
-            "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max"}))
+            "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,snowfall_sum"}))
         cur, tag = d["current"], d["daily"]
         erg = {
             "jetzt": {"temp": cur.get("temperature_2m"), "gefuehlt": cur.get("apparent_temperature"), "code": cur.get("weather_code"),
                       "tag": cur.get("is_day", 1), "wind": cur.get("wind_speed_10m"), "feuchte": cur.get("relative_humidity_2m"),
                       "zeit": cur.get("time")},
             "tage": [{"datum": tag["time"][i], "code": tag["weather_code"][i], "max": tag["temperature_2m_max"][i],
-                      "min": tag["temperature_2m_min"][i], "regen": (tag.get("precipitation_probability_max") or [None] * 3)[i]}
+                      "min": tag["temperature_2m_min"][i], "regen": (tag.get("precipitation_probability_max") or [None] * 3)[i],
+                      "schnee": (tag.get("snowfall_sum") or [None] * 3)[i]}
                      for i in range(min(3, len(tag.get("time") or [])))],
         }
     except Exception:  # noqa: BLE001
@@ -1008,6 +1061,270 @@ def wetter_orte(suche: str) -> list:
         teile = [r.get("name"), r.get("admin1"), r.get("country")]
         aus.append({"name": r.get("name"), "text": ", ".join(t for t in teile if t), "lat": r.get("latitude"), "lon": r.get("longitude")})
     return aus
+
+
+# ---------------------------------------------------------------------------
+# Winterdienst: Warnung aus der Wettervorhersage, Einsätze mit Vorher-/Nachher-Fotos
+# ---------------------------------------------------------------------------
+_wd_lage: dict = {}
+
+
+def bilder_pruefen(fotos, fehlt_text: str, hoechstens: int = 8) -> list:
+    if not isinstance(fotos, list) or not fotos:
+        raise Fehler(400, fehlt_text)
+    if len(fotos) > hoechstens:
+        raise Fehler(400, f"Höchstens {hoechstens} Fotos.")
+    aus = []
+    for f in fotos:
+        if not isinstance(f, str) or "," not in f or not f.startswith("data:image/"):
+            raise Fehler(400, "Ein Foto ist ungültig.")
+        try:
+            inhalt = base64.b64decode(f.split(",", 1)[1], validate=True)
+        except (ValueError, binascii.Error):
+            raise Fehler(400, "Ein Foto ist ungültig.")
+        endung = bild_endung(inhalt)
+        if endung not in ("jpg", "png", "webp"):
+            raise Fehler(400, "Fotos bitte als JPG, PNG oder WEBP.")
+        if len(inhalt) > 6 * 1024 * 1024:
+            raise Fehler(400, "Ein Foto ist zu groß (höchstens 6 MB).")
+        aus.append((inhalt, endung))
+    return aus
+
+
+def wd_fotos_speichern(con, eid: int, art: str, fotos: list, wer: str) -> None:
+    for inhalt, endung in fotos:
+        name = f"{eid}_{art}_{secrets.token_hex(6)}.{endung}"
+        (WD_PFAD / name).write_bytes(inhalt)
+        con.execute("INSERT INTO winterdienst_fotos (einsatz_id, art, pfad, zeit, von) VALUES (?,?,?,?,?)",
+                    (eid, art, name, jetzt(), wer))
+
+
+def wd_vorhersage(lat: str, lon: str) -> list:
+    """Neuschnee und Glätte je Tag für heute und die nächsten zwei Tage (Open-Meteo)."""
+    from urllib.parse import urlencode
+    d = _json_holen(WETTER_URL + "?" + urlencode({
+        "latitude": lat, "longitude": lon, "timezone": "Europe/Berlin", "forecast_days": 3,
+        "daily": "snowfall_sum,rain_sum,showers_sum,temperature_2m_min,temperature_2m_max,weather_code",
+        "hourly": "snowfall,weather_code,temperature_2m"}))
+    tag, std = d.get("daily") or {}, d.get("hourly") or {}
+    aus = []
+    for i, datum_ in enumerate(tag.get("time") or []):
+        stunden = [k for k, t in enumerate(std.get("time") or []) if t.startswith(datum_)]
+        ab = next((std["time"][k][11:16] for k in stunden if (std.get("snowfall") or [0])[k] and std["snowfall"][k] >= 0.1), None)
+        codes = {(std.get("weather_code") or [None])[k] for k in stunden} if std.get("weather_code") else set()
+        regen = (tag.get("rain_sum") or [0])[i] or 0
+        regen += (tag.get("showers_sum") or [0])[i] or 0
+        tmin = (tag.get("temperature_2m_min") or [None])[i]
+        eisregen = bool(codes & {56, 57, 66, 67})
+        aus.append({"datum": datum_, "neuschnee_cm": round(float((tag.get("snowfall_sum") or [0])[i] or 0), 1), "ab": ab,
+                    "temp_min": tmin, "temp_max": (tag.get("temperature_2m_max") or [None])[i],
+                    "glaette": eisregen or (tmin is not None and tmin <= 0 and regen >= 0.2), "eisregen": eisregen,
+                    "code": (tag.get("weather_code") or [None])[i]})
+    return aus
+
+
+def wd_empfaenger(con) -> list:
+    roh = einstellung(con, "wd_empfaenger")
+    if roh:
+        try:
+            ids = [int(i) for i in json.loads(roh)]
+        except (ValueError, TypeError):
+            ids = []
+        return [r["id"] for r in con.execute(
+            f"SELECT id FROM benutzer WHERE aktiv=1 AND id IN ({','.join('?' * len(ids)) or 'NULL'})", ids)]
+    ids = {r["id"] for r in con.execute("SELECT id FROM benutzer WHERE aktiv=1 AND rolle IN ('admin','objektleiter')")}
+    ids |= {r["objektleiter_id"] for r in con.execute(
+        "SELECT DISTINCT o.objektleiter_id FROM objekte o JOIN benutzer b ON b.id=o.objektleiter_id WHERE b.aktiv=1")}
+    return sorted(ids)
+
+
+def _wd_tag(datum_: str) -> str:
+    d = dt.date.fromisoformat(datum_)
+    return ["Mo.", "Di.", "Mi.", "Do.", "Fr.", "Sa.", "So."][d.weekday()] + d.strftime(" %d.%m.")
+
+
+def wd_warnungen_pruefen() -> dict:
+    """Holt die Vorhersage (ohne Datenbank-Sperre) und legt Warnungen samt Benachrichtigungen an."""
+    with _db_lock:
+        con = db()
+        try:
+            cfg = {k: einstellung(con, k) for k in ("wd_aktiv", "wd_schwelle", "wd_glaette", "wetter_lat", "wetter_lon", "wetter_ort")}
+        finally:
+            con.close()
+    if cfg["wd_aktiv"] == "0":
+        return {"aus": True}
+    try:
+        tage = wd_vorhersage(cfg["wetter_lat"], cfg["wetter_lon"])
+    except Exception:  # noqa: BLE001
+        _wd_lage.update({"fehler": "Die Wettervorhersage ist gerade nicht erreichbar."})
+        return {"fehler": _wd_lage["fehler"]}
+    schwelle = float(cfg["wd_schwelle"] or 1)
+    neu = 0
+    with _db_lock:
+        con = db()
+        try:
+            with con:
+                empf = wd_empfaenger(con)
+                for t in tage:
+                    arten = []
+                    if t["neuschnee_cm"] >= schwelle:
+                        arten.append("Neuschnee")
+                    if cfg["wd_glaette"] != "0" and t["glaette"]:
+                        arten.append("Glätte")
+                    for art in arten:
+                        alt = con.execute("SELECT * FROM winterdienst_warnungen WHERE datum=? AND art=?", (t["datum"], art)).fetchone()
+                        if alt:
+                            con.execute("UPDATE winterdienst_warnungen SET neuschnee_cm=?, temp_min=?, ab=?, ort=?, geaendert=? WHERE id=?",
+                                        (t["neuschnee_cm"], t["temp_min"], t["ab"], cfg["wetter_ort"], jetzt(), alt["id"]))
+                            wid = alt["id"]
+                            if art == "Neuschnee" and t["neuschnee_cm"] < (alt["neuschnee_cm"] or 0) + 3:
+                                continue
+                        else:
+                            wid = con.execute("INSERT INTO winterdienst_warnungen (datum, art, neuschnee_cm, temp_min, ab, ort, erstellt, geaendert) "
+                                              "VALUES (?,?,?,?,?,?,?,?)", (t["datum"], art, t["neuschnee_cm"], t["temp_min"], t["ab"],
+                                                                           cfg["wetter_ort"], jetzt(), jetzt())).lastrowid
+                            neu += 1
+                        tmin = "" if t["temp_min"] is None else f' Tiefstwert {round(t["temp_min"])} °C.'
+                        if art == "Neuschnee":
+                            cm = f'{t["neuschnee_cm"]:g}'.replace(".", ",")
+                            titel = f'Winterdienst: {cm} cm Neuschnee am {_wd_tag(t["datum"])}' + (" (Prognose erhöht)" if alt else "")
+                            text = f'Vorhersage für {cfg["wetter_ort"]}' + (f', ab ca. {t["ab"]} Uhr' if t["ab"] else "") + f'.{tmin} Bitte Winterdienst einplanen.'
+                            schl = f'wd:{wid}:{round(t["neuschnee_cm"])}'
+                        else:
+                            titel = f'Winterdienst: Glättegefahr am {_wd_tag(t["datum"])}'
+                            text = f'Vorhersage für {cfg["wetter_ort"]}: ' + ("Eisregen möglich." if t["eisregen"] else "Frost und Nässe.") + f'{tmin} Bitte Streuen einplanen.'
+                            schl = f'wd:{wid}'
+                        for bid in empf:
+                            benachrichtigen(con, bid, schl, titel, text, "#/winterdienst", "bald")
+        finally:
+            con.close()
+    _wd_lage.clear()
+    _wd_lage.update({"tage": tage, "stand": jetzt(), "ort": cfg["wetter_ort"], "schwelle": schwelle})
+    return {"ok": True, "neu": neu, "tage": tage}
+
+
+def wd_hintergrund() -> None:
+    time.sleep(20)
+    while True:
+        try:
+            wd_warnungen_pruefen()
+        except Exception:  # noqa: BLE001
+            import traceback
+            traceback.print_exc()
+        time.sleep(3600)
+
+
+def wd_lage(con) -> dict:
+    heute_ = heute().isoformat()
+    warn = [dict(r) for r in con.execute("SELECT * FROM winterdienst_warnungen WHERE datum>=? ORDER BY datum, art", (heute_,))]
+    return {"warnungen": warn, "tage": [t for t in (_wd_lage.get("tage") or []) if t["datum"] >= heute_],
+            "stand": _wd_lage.get("stand"), "ort": _wd_lage.get("ort") or einstellung(con, "wetter_ort"),
+            "schwelle": float(einstellung(con, "wd_schwelle") or 1), "aktiv": einstellung(con, "wd_aktiv") != "0",
+            "fehler": _wd_lage.get("fehler")}
+
+
+def wd_laden(con, eid: int) -> dict:
+    r = con.execute("SELECT w.*, o.kuerzel AS o_kuerzel, o.name AS o_name, o.strasse AS o_strasse, o.plz AS o_plz, o.ort AS o_ort "
+                    "FROM winterdienst w LEFT JOIN objekte o ON o.id=w.objekt_id WHERE w.id=?", (eid,)).fetchone()
+    if not r:
+        raise Fehler(404, "Einsatz nicht gefunden.")
+    z = dict(r)
+    z.pop("link_geheim", None)
+    z["fotos"] = [dict(f) for f in con.execute("SELECT id, art, zeit, von FROM winterdienst_fotos WHERE einsatz_id=? ORDER BY id", (eid,))]
+    return z
+
+
+def wd_liste(con, q: dict) -> list:
+    bed, werte = [], []
+    oid = (q.get("objekt_id") or [""])[0]
+    if oid.isdigit():
+        bed.append("w.objekt_id=?"); werte.append(int(oid))
+    rows = con.execute("SELECT w.*, o.kuerzel AS o_kuerzel, o.name AS o_name, "
+                       "(SELECT COUNT(*) FROM winterdienst_fotos f WHERE f.einsatz_id=w.id AND f.art='vorher') AS n_vorher, "
+                       "(SELECT COUNT(*) FROM winterdienst_fotos f WHERE f.einsatz_id=w.id AND f.art='nachher') AS n_nachher "
+                       "FROM winterdienst w LEFT JOIN objekte o ON o.id=w.objekt_id"
+                       + (" WHERE " + " AND ".join(bed) if bed else "") + " ORDER BY w.beginn DESC LIMIT 500", werte).fetchall()
+    aus = []
+    for r in rows:
+        z = dict(r)
+        z.pop("link_geheim", None)
+        aus.append(z)
+    return aus
+
+
+def _wd_text(d, feld, n=200):
+    return str(d.get(feld) or "").strip()[:n]
+
+
+def wd_beginnen(con, d: dict, wer: str, quelle: str, objekt_id: int | None = None) -> dict:
+    oid = objekt_id or d.get("objekt_id")
+    try:
+        oid = int(oid)
+    except (TypeError, ValueError):
+        raise Fehler(400, "Bitte ein Objekt wählen.")
+    if not con.execute("SELECT 1 FROM objekte WHERE id=?", (oid,)).fetchone():
+        raise Fehler(400, "Bitte ein Objekt wählen.")
+    anlass = d.get("anlass") if d.get("anlass") in WD_ANLAESSE else None
+    if not anlass:
+        raise Fehler(400, "Bitte den Anlass wählen.")
+    name = _wd_text(d, "ausgefuehrt_von", 120)
+    if len(name) < 2:
+        raise Fehler(400, "Bitte den Namen angeben, wer den Winterdienst macht.")
+    fotos = bilder_pruefen(d.get("fotos"), "Bitte vor dem Räumen oder Streuen mindestens ein Vorher-Foto machen.")
+    tage_ = ((heute() - dt.timedelta(days=1)).isoformat(), heute().isoformat())
+    warnung = con.execute("SELECT * FROM winterdienst_warnungen WHERE datum IN (?, ?) ORDER BY art='Neuschnee' DESC, datum DESC LIMIT 1",
+                          tage_).fetchone()
+    cm = d.get("neuschnee_cm")
+    try:
+        cm = float(str(cm).replace(",", ".")) if cm not in (None, "") else (
+            warnung["neuschnee_cm"] if warnung and warnung["art"] == "Neuschnee" else None)
+    except ValueError:
+        raise Fehler(400, "Neuschnee bitte als Zahl in Zentimetern angeben.")
+    dlid = d.get("dienstleister_id")
+    dlid = int(dlid) if str(dlid or "").isdigit() and con.execute("SELECT 1 FROM dienstleister WHERE id=?", (int(dlid),)).fetchone() else None
+    geheim = secrets.token_urlsafe(18)
+    eid = einfuegen(con, "winterdienst", {
+        "objekt_id": oid, "anlass": anlass, "status": "läuft", "beginn": jetzt(), "ausgefuehrt_von": name,
+        "firma": _wd_text(d, "firma", 120) or None, "dienstleister_id": dlid, "neuschnee_cm": cm,
+        "warnung_id": warnung["id"] if warnung else None, "quelle": quelle, "link_geheim": geheim})
+    con.execute("UPDATE winterdienst SET nummer=? WHERE id=?", (f"WD-{heute().year}-{eid:04d}", eid))
+    wd_fotos_speichern(con, eid, "vorher", fotos, name)
+    return {"id": eid, "nummer": f"WD-{heute().year}-{eid:04d}", "geheim": geheim}
+
+
+def wd_abschliessen(con, eid: int, d: dict, wer: str) -> dict:
+    e = con.execute("SELECT * FROM winterdienst WHERE id=?", (eid,)).fetchone()
+    if not e:
+        raise Fehler(404, "Einsatz nicht gefunden.")
+    if e["status"] == "erledigt":
+        raise Fehler(400, "Dieser Einsatz ist schon abgeschlossen.")
+    geraeumt, gestreut = bool(d.get("geraeumt")), bool(d.get("gestreut"))
+    if not geraeumt and not gestreut and e["anlass"] != "Kontrollgang":
+        raise Fehler(400, "Bitte angeben, ob geräumt oder gestreut wurde.")
+    streumittel = d.get("streumittel") if d.get("streumittel") in WD_STREUMITTEL else None
+    if gestreut and not streumittel:
+        raise Fehler(400, "Bitte das Streumittel wählen.")
+    fotos = bilder_pruefen(d.get("fotos"), "Bitte nach dem Räumen oder Streuen mindestens ein Nachher-Foto machen.")
+    temp = d.get("temperatur")
+    try:
+        temp = float(str(temp).replace(",", ".")) if temp not in (None, "") else None
+    except ValueError:
+        raise Fehler(400, "Temperatur bitte als Zahl angeben.")
+    con.execute("UPDATE winterdienst SET status='erledigt', ende=?, geraeumt=?, gestreut=?, streumittel=?, streumenge=?, flaechen=?, "
+                "bemerkung=?, temperatur=COALESCE(?, temperatur), geaendert=? WHERE id=?",
+                (jetzt(), int(geraeumt), int(gestreut), streumittel, _wd_text(d, "streumenge", 120) or None,
+                 _wd_text(d, "flaechen", 1000) or None, _wd_text(d, "bemerkung", 2000) or None, temp, jetzt(), eid))
+    wd_fotos_speichern(con, eid, "nachher", fotos, wer)
+    o = con.execute("SELECT kuerzel, name, objektleiter_id FROM objekte WHERE id=?", (e["objekt_id"],)).fetchone()
+    taten = " und ".join(x for x, ja in (("geräumt", geraeumt), ("gestreut", gestreut)) if ja) or "kontrolliert"
+    empf = set(wd_empfaenger(con))
+    if o and o["objektleiter_id"]:
+        empf.add(o["objektleiter_id"])
+    for bid in empf:
+        benachrichtigen(con, bid, f"wdfertig:{eid}", f'Winterdienst erledigt: {o["kuerzel"] if o else ""} {e["nummer"] or ""}'.strip(),
+                        f'{e["ausgefuehrt_von"]} hat {taten}. Protokoll mit Vorher- und Nachher-Fotos ansehen.',
+                        f"#/winterdienst/{eid}", "info")
+    return {"ok": True}
 
 
 def einstellung(con, schluessel: str) -> str:
@@ -1098,6 +1415,7 @@ RECHTE = [
     ("tickets_bearbeiten", "Störmeldungen bearbeiten, Status ändern, Notizen", "Störungen"),
     ("wartung_planen", "Wartungsplan: Aufgaben anlegen und ändern", "Wartung"),
     ("wartung_erledigen", "Wartungen und Prüfungen als erledigt melden", "Wartung"),
+    ("winterdienst", "Winterdienst-Einsätze protokollieren (mit Fotos)", "Wartung"),
     ("vertraege_bearbeiten", "Verträge und Dienstleister bearbeiten", "Verwaltung"),
     ("zaehler_erfassen", "Zähler anlegen und Zählerstände erfassen", "Verwaltung"),
     ("dokumente_hochladen", "Dokumente und Fotos hochladen", "Verwaltung"),
@@ -1113,7 +1431,7 @@ RECHTE_STANDARD = {
     # Objektleiter: alles im Objekt, aber keine Zugänge und keine Einstellungen
     "objektleiter": {k: k not in ("benutzer_verwalten", "einstellungen") for k in RECHTE_KEYS},
     # Benutzer: Tagesgeschäft melden und erledigen, aber keine Pläne, Anlagen, Verträge oder Wartungsplanung ändern
-    "benutzer": {k: k in ("tickets_anlegen", "tickets_bearbeiten", "wartung_erledigen", "zaehler_erfassen",
+    "benutzer": {k: k in ("tickets_anlegen", "tickets_bearbeiten", "wartung_erledigen", "winterdienst", "zaehler_erfassen",
                           "dokumente_hochladen", "schluessel_verwalten", "export") for k in RECHTE_KEYS},
     "zuschauer": {k: k == "export" for k in RECHTE_KEYS},
 }
@@ -1154,7 +1472,7 @@ def effektive_rechte(con, b) -> dict:
 RESSOURCE_RECHT = {
     "objekte": "anlagen_bearbeiten", "anlagen": "anlagen_bearbeiten", "plaene": "plaene_bearbeiten",
     "symbole": "plaene_bearbeiten", "wartungen": "wartung_planen", "sv_maengel": "tickets_bearbeiten",
-    "schluessel": "schluessel_verwalten", "schluesseluebergaben": "schluessel_verwalten", "vertraege": "vertraege_bearbeiten",
+    "schluessel": "schluessel_verwalten", "schluesseluebergaben": "schluessel_verwalten", "winterdienst": "winterdienst", "vertraege": "vertraege_bearbeiten",
     "dienstleister": "vertraege_bearbeiten", "zaehler": "zaehler_erfassen", "ablesungen": "zaehler_erfassen",
     "dokumente": "dokumente_hochladen", "kat_kategorien": "katalog_bearbeiten", "kat_gruppen": "katalog_bearbeiten",
     "kat_typen": "katalog_bearbeiten", "kat_maengel": "katalog_bearbeiten", "checklisten": "wartung_planen",
@@ -1185,6 +1503,10 @@ def benoetigtes_recht(m: str, teile: list[str]) -> str | None:
         return "tickets_bearbeiten"
     if t0 == "svberichte":
         return "tickets_bearbeiten"
+    if t0 == "winterdienstlink":
+        return "anlagen_bearbeiten"
+    if t0 == "winterdienst" and len(teile) == 2 and teile[1] in ("pruefen",):
+        return "einstellungen"
     if t0 in ("schluesseluebergaben", "schluesselbestand"):
         return None if m == "GET" else "schluessel_verwalten"
     if t0 == "wartungen" and len(teile) == 3 and teile[2] == "erledigt":
@@ -1226,6 +1548,19 @@ def qr_bremse(ip: str) -> None:
         raise Fehler(429, "Zu viele Meldungen in kurzer Zeit. Bitte später noch einmal versuchen.")
     liste.append(jetzt_s)
     _qr_zeiten[ip] = liste
+
+
+_wd_zeiten: dict[str, list[float]] = {}
+
+
+def wd_bremse(ip: str) -> None:
+    """Höchstens 40 Schritte je Stunde und Adresse über den Winterdienst-Link."""
+    jetzt_s = time.time()
+    liste = [t for t in _wd_zeiten.get(ip, []) if jetzt_s - t < 3600]
+    if len(liste) >= 40:
+        raise Fehler(429, "Zu viele Einträge in kurzer Zeit. Bitte später noch einmal versuchen.")
+    liste.append(jetzt_s)
+    _wd_zeiten[ip] = liste
 
 
 def checkliste_termin(c: dict, letzte: str | None) -> dict:
@@ -2935,6 +3270,8 @@ class Handler(BaseHTTPRequestHandler):
 
         if erstes == "qr" and len(teile) >= 2:
             return self.qr_api(con, m, teile)
+        if erstes == "wd" and len(teile) >= 2:
+            return self.wd_api(con, m, teile)
 
         if erstes == "status" and m == "GET":
             b = self.angemeldet(con)
@@ -3102,7 +3439,11 @@ class Handler(BaseHTTPRequestHandler):
             if einstellung(con, "wetter_aktiv") == "0":
                 return self.json({"aus": True})
             lat, lon, ort = einstellung(con, "wetter_lat"), einstellung(con, "wetter_lon"), einstellung(con, "wetter_ort")
-            self._spaeter = lambda: self.json(wetter_holen(lat, lon, ort))
+            bis = (heute() + dt.timedelta(days=1)).isoformat()
+            warn = [dict(r) for r in con.execute("SELECT datum, art, neuschnee_cm, ab FROM winterdienst_warnungen "
+                                                 "WHERE datum BETWEEN ? AND ? ORDER BY datum, art", (heute().isoformat(), bis))] \
+                if einstellung(con, "wd_aktiv") != "0" else []
+            self._spaeter = lambda: self.json({**wetter_holen(lat, lon, ort), "wd_warnungen": warn})
             return
         if erstes == "dashboard":
             return self.json(dashboard(con))
@@ -3232,6 +3573,22 @@ class Handler(BaseHTTPRequestHandler):
                     ort = str(d["wetter_ort"] or "").strip()[:120] or "Unbekannter Ort"
                     for k, v in (("wetter_ort", ort), ("wetter_lat", f"{lat:.4f}"), ("wetter_lon", f"{lon:.4f}")):
                         con.execute("INSERT OR REPLACE INTO einstellungen VALUES (?, ?)", (k, v))
+                for k in ("wd_aktiv", "wd_glaette"):
+                    if k in d:
+                        con.execute("INSERT OR REPLACE INTO einstellungen VALUES (?, ?)", (k, "1" if d[k] in (1, True, "1") else "0"))
+                if "wd_schwelle" in d:
+                    try:
+                        cm = float(str(d["wd_schwelle"]).replace(",", "."))
+                    except ValueError:
+                        raise Fehler(400, "Die Schwelle für Neuschnee bitte als Zahl in Zentimetern angeben.")
+                    if not 0 < cm <= 50:
+                        raise Fehler(400, "Die Schwelle für Neuschnee muss zwischen 0,1 und 50 cm liegen.")
+                    con.execute("INSERT OR REPLACE INTO einstellungen VALUES ('wd_schwelle', ?)", (f"{cm:g}",))
+                if "wd_empfaenger" in d:
+                    ids = d["wd_empfaenger"]
+                    if not isinstance(ids, list) or not all(isinstance(i, int) for i in ids):
+                        raise Fehler(400, "Empfänger sind ungültig.")
+                    con.execute("INSERT OR REPLACE INTO einstellungen VALUES ('wd_empfaenger', ?)", (json.dumps(ids) if ids else "",))
                 if "motto" in d:
                     if d["motto"] not in ("auto", "aus", "weihnachten", "silvester", "neujahr", "winter", "ostern", "fruehling",
                                           "sommer", "herbst"):
@@ -3383,6 +3740,52 @@ class Handler(BaseHTTPRequestHandler):
             if not teile_:
                 raise Fehler(400, "Bitte mindestens einen Teilbereich auswählen.")
             return self.json(objekt_bericht(con, self.id(teile[1]), von, bis, teile_, (q.get("kosten") or ["0"])[0] == "1"))
+        if erstes == "winterdienst":
+            if len(teile) == 1 and m == "GET":
+                return self.json(wd_liste(con, q))
+            if len(teile) == 2 and teile[1] == "lage" and m == "GET":
+                return self.json(wd_lage(con))
+            if len(teile) == 2 and teile[1] == "pruefen" and m == "POST":
+                self._spaeter = lambda: self.json(wd_warnungen_pruefen())
+                return
+            if len(teile) == 2 and teile[1] == "beginnen" and m == "POST":
+                r = wd_beginnen(con, self.body(), b["name"], "Programm")
+                protokollieren(con, b, "Winterdienst begonnen", "winterdienst", r["id"])
+                return self.json(wd_laden(con, r["id"]), 201)
+            if len(teile) == 2 and teile[1].isdigit() and m == "GET":
+                return self.json(wd_laden(con, int(teile[1])))
+            if len(teile) == 3 and teile[1].isdigit() and teile[2] == "abschluss" and m == "POST":
+                wd_abschliessen(con, int(teile[1]), self.body(), b["name"])
+                protokollieren(con, b, "Winterdienst abgeschlossen", "winterdienst", int(teile[1]))
+                return self.json(wd_laden(con, int(teile[1])))
+            if len(teile) == 3 and teile[1].isdigit() and teile[2] == "fotos" and m == "POST":
+                d = self.body()
+                art = d.get("art") if d.get("art") in ("vorher", "nachher") else None
+                if not art:
+                    raise Fehler(400, "Bitte angeben, ob es Vorher- oder Nachher-Fotos sind.")
+                wd_laden(con, int(teile[1]))
+                wd_fotos_speichern(con, int(teile[1]), art, bilder_pruefen(d.get("fotos"), "Bitte ein Foto auswählen."), b["name"])
+                return self.json(wd_laden(con, int(teile[1])))
+        if erstes == "winterdienstfotos" and len(teile) == 2 and m == "GET":
+            r = con.execute("SELECT pfad FROM winterdienst_fotos WHERE id=?", (self.id(teile[1]),)).fetchone()
+            pf = (WD_PFAD / r["pfad"]).resolve() if r else None
+            if not pf or not str(pf).startswith(str(WD_PFAD.resolve())) or not pf.is_file():
+                raise Fehler(404, "Foto nicht gefunden.")
+            typ = mimetypes.guess_type(pf.name)[0] or "image/jpeg"
+            return self.senden(200, pf.read_bytes(), typ, {"Cache-Control": "private, max-age=86400",
+                                                            "Content-Security-Policy": "sandbox"})
+        if erstes == "winterdienstlink":
+            if len(teile) == 1 and m == "GET":
+                return self.json([{"id": r["id"], "kuerzel": r["kuerzel"], "name": r["name"], "wd_token": r["wd_token"]}
+                                  for r in con.execute("SELECT id, kuerzel, name, wd_token FROM objekte ORDER BY kuerzel COLLATE NOCASE")])
+            if len(teile) == 2 and m == "POST":
+                oid = self.id(teile[1])
+                if not con.execute("SELECT 1 FROM objekte WHERE id=?", (oid,)).fetchone():
+                    raise Fehler(404, "Objekt nicht gefunden.")
+                neu = None if self.body().get("aktion") == "aus" else secrets.token_urlsafe(16)
+                con.execute("UPDATE objekte SET wd_token=? WHERE id=?", (neu, oid))
+                protokollieren(con, b, "Winterdienst-Link " + ("abgeschaltet" if not neu else "erstellt"), "objekte", oid)
+                return self.json({"wd_token": neu})
         if erstes == "schluesselbestand" and m == "GET":
             oid = (q.get("objekt_id") or [""])[0]
             return self.json({"schluessel": schluessel_bestand(con, int(oid) if oid.isdigit() else None),
@@ -3844,6 +4247,45 @@ class Handler(BaseHTTPRequestHandler):
             return self.json({"ok": True, "nummer": nummer, "ticket_id": tid if b else None}, 201)
         raise Fehler(404, "Nicht gefunden.")
 
+    def wd_api(self, con, m: str, teile: list[str]):
+        """Öffentliche Seite für die Winterdienst-Firma: ohne Anmeldung, nur mit dem geheimen Link je Objekt."""
+        token = teile[1]
+        if not re.match(r"^[A-Za-z0-9_-]{12,40}$", token):
+            raise Fehler(404, "Dieser Link ist nicht gültig.")
+        o = con.execute("SELECT id, kuerzel, name, strasse, plz, ort FROM objekte WHERE wd_token=?", (token,)).fetchone()
+        if not o:
+            raise Fehler(404, "Dieser Link ist nicht mehr gültig. Bitte bei Casa Concept Consulting melden.")
+        if len(teile) == 2 and m == "GET":
+            gestern = (dt.datetime.now() - dt.timedelta(hours=24)).isoformat(timespec="seconds")
+            offen = [{"id": r["id"], "nummer": r["nummer"], "beginn": r["beginn"], "ausgefuehrt_von": r["ausgefuehrt_von"], "anlass": r["anlass"]}
+                     for r in con.execute("SELECT * FROM winterdienst WHERE objekt_id=? AND status='läuft' AND quelle='Winterdienst-Link' "
+                                          "AND beginn>=? ORDER BY beginn DESC", (o["id"], gestern))]
+            lage = wd_lage(con)
+            return self.json({"objekt": {"kuerzel": o["kuerzel"], "name": o["name"],
+                                         "anschrift": ", ".join(x for x in (o["strasse"], " ".join(y for y in (o["plz"], o["ort"]) if y)) if x)},
+                              "warnungen": [w for w in lage["warnungen"] if w["datum"] <= (heute() + dt.timedelta(days=1)).isoformat()],
+                              "offen": offen, "anlaesse": WD_ANLAESSE, "streumittel": WD_STREUMITTEL})
+        if m != "POST" or len(teile) != 3:
+            raise Fehler(404, "Nicht gefunden.")
+        wd_bremse(self.client_address[0])
+        d = self.body()
+        if teile[2] == "beginn":
+            r = wd_beginnen(con, d, _wd_text(d, "ausgefuehrt_von", 120), "Winterdienst-Link", o["id"])
+            protokollieren(con, {"name": _wd_text(d, "ausgefuehrt_von", 120) + " (Winterdienst-Link)"}, "Winterdienst begonnen", "winterdienst", r["id"])
+            return self.json(r, 201)
+        if teile[2] == "abschluss":
+            try:
+                eid = int(d.get("id"))
+            except (TypeError, ValueError):
+                raise Fehler(400, "Einsatz nicht gefunden.")
+            e = con.execute("SELECT * FROM winterdienst WHERE id=? AND objekt_id=?", (eid, o["id"])).fetchone()
+            if not e or not e["link_geheim"] or not hmac.compare_digest(e["link_geheim"], str(d.get("geheim") or "")):
+                raise Fehler(403, "Dieser Einsatz kann hier nicht abgeschlossen werden.")
+            wd_abschliessen(con, eid, d, e["ausgefuehrt_von"])
+            protokollieren(con, {"name": e["ausgefuehrt_von"] + " (Winterdienst-Link)"}, "Winterdienst abgeschlossen", "winterdienst", eid)
+            return self.json({"ok": True, "nummer": e["nummer"]})
+        raise Fehler(404, "Nicht gefunden.")
+
     def qr_api(self, con, m: str, teile: list[str]):
         if len(teile) >= 3 and teile[1] == "c":
             return self.checkpoint_api(con, m, teile)
@@ -4219,6 +4661,7 @@ def main():
     VERSAND.extern_holen = schluessel_mails_holen
     VERSAND.extern_melden = schluessel_mail_gemeldet
     VERSAND.starten()
+    threading.Thread(target=wd_hintergrund, daemon=True).start()
     srv = ThreadingHTTPServer((a.host, a.port), Handler)
     print(f"Casa CAFM läuft: http://{'localhost' if a.host in ('127.0.0.1', '0.0.0.0') else a.host}:{a.port}")
     print("Beenden mit Strg+C.")

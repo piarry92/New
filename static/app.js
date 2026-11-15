@@ -1,7 +1,7 @@
 /* Casa CAFM – Oberfläche (ohne Fremdbibliotheken) */
 "use strict";
 
-const VERSION = "2026.11.15-29"; // muss zu VERSION in app.py passen
+const VERSION = "2026.11.15-30"; // muss zu VERSION in app.py passen
 /* Hell- und Dunkelmodus: gemerkte Wahl, sonst wie das Gerät */
 const THEMA = (() => {
   let t = null;
@@ -35,7 +35,7 @@ const ROLLENNAMEN = { admin: "Administrator", objektleiter: "Objektleiter", benu
 const darf = (r) => !!(S.ich && S.ich.rechte && S.ich.rechte[r]);
 const RECHT_RES = { objekte: "anlagen_bearbeiten", anlagen: "anlagen_bearbeiten", plaene: "plaene_bearbeiten", symbole: "plaene_bearbeiten",
   wartungen: "wartung_planen", vertraege: "vertraege_bearbeiten", dienstleister: "vertraege_bearbeiten", zaehler: "zaehler_erfassen",
-  ablesungen: "zaehler_erfassen", dokumente: "dokumente_hochladen", sv_maengel: "tickets_bearbeiten", schluessel: "schluessel_verwalten" };
+  ablesungen: "zaehler_erfassen", dokumente: "dokumente_hochladen", sv_maengel: "tickets_bearbeiten", schluessel: "schluessel_verwalten", winterdienst: "winterdienst" };
 const darfNeu = (res) => (res === "tickets" ? darf("tickets_anlegen") : darf(RECHT_RES[res]));
 const darfAendernRes = (res) => (res === "tickets" ? darf("tickets_bearbeiten") : darf(RECHT_RES[res]));
 const darfAendern = () => !!(S.ich && Object.entries(S.ich.rechte || {}).some(([k, v]) => v && k !== "export"));
@@ -74,6 +74,7 @@ const ICONS = {
   dienstleister: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6 6 0 0 1 3.5 6"/>',
   checklisten: '<path d="M9 5h10M9 12h10M9 19h10"/><path d="M3.5 5l1.5 1.5L7.5 4M3.5 12l1.5 1.5L7.5 11M3.5 19l1.5 1.5L7.5 18"/>',
   schluessel: '<circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M16 7l3 3M14 9l2 2"/>',
+  winterdienst: '<path d="M12 2v20M3.3 7l17.4 10M20.7 7L3.3 17M9 4l3 2 3-2M9 20l3-2 3 2M4 10.5l2.7-.3L6 7.6M20 13.5l-2.7.3.7 2.6M4 13.5l2.7.3L6 16.4M20 10.5l-2.7-.3.7-2.6"/>',
   svpruefplan: '<path d="M12 3l7 3v5c0 5-3.5 8.5-7 10-3.5-1.5-7-5-7-10V6z"/><path d="M12 8v5M12 16h.01"/>',
   pruefungen: '<path d="M12 3l7 3v5c0 5-3.5 8.5-7 10-3.5-1.5-7-5-7-10V6z"/><path d="M8.5 12l2.5 2.5 4.5-5"/>',
   zugaenge: '<rect x="4" y="11" width="16" height="10" rx="1"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
@@ -186,6 +187,7 @@ const NAV = [
   ["tickets", "Mängel & Störungen", "#/tickets"],
   ["checklisten", "Checklisten & Rundgänge", "#/checklisten"],
   ["pruefungen", "Zur Prüfung", "#/pruefungen"],
+  ["winterdienst", "Winterdienst", "#/winterdienst"],
   ["kalender", "Kalender", "#/kalender"],
   "Verwaltung",
   ["vertraege", "Verträge", "#/vertraege"],
@@ -1054,6 +1056,7 @@ async function start() {
 
 window.addEventListener("DOMContentLoaded", async () => {
   if (location.pathname.startsWith("/m/c/")) return qrCheckpointSeite(decodeURIComponent(location.pathname.slice(5)));
+  if (location.pathname.startsWith("/m/w/")) return wdSeite(decodeURIComponent(location.pathname.slice(5)));
   if (location.pathname.startsWith("/m/o/")) return qrObjektSeite(decodeURIComponent(location.pathname.slice(5)));
   if (location.pathname.startsWith("/m/")) return qrSeite(decodeURIComponent(location.pathname.slice(3)));
   if (location.hash.startsWith("#/einladung/")) return zeigeEinladung(decodeURIComponent(location.hash.slice(12)));

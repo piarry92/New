@@ -1331,3 +1331,35 @@ html[data-theme="dark"] .kopf-info .kw { background: #222428; border-color: #2C2
   .wetter-icon { width: 20px; height: 20px; }
 }
 @media (max-width: 420px) { .kopf-info .kd { display: none; } }
+
+/* ---------- Winterdienst ---------- */
+.felder > div > small { display: block; font-size: 11.5px; color: var(--grau); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 2px; }
+.karte-kopf { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; flex-wrap: wrap; }
+.karte-kopf h3 { margin: 0; }
+.liste { list-style: none; margin: 0; padding: 0; }
+.liste > li { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--zartgrau); flex-wrap: wrap; }
+.liste > li:last-child { border-bottom: 0; }
+.liste > li .rechts, .liste > li > button { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; }
+.wd-lauf a { color: inherit; text-decoration: none; }
+.wd-tage { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 8px; }
+.wd-tag { border: 1px solid var(--rand, var(--hellgrau)); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+.wd-tag.warn-schnee { border-color: #6FA8DC; background: linear-gradient(160deg, #EAF2FB, transparent 80%); }
+.wd-tag.warn-glatt { border-color: #E0A500; background: linear-gradient(160deg, #FBF0CC, transparent 80%); }
+.wd-tag-k { font-weight: 700; } .wd-tag-k span { color: var(--grau); font-weight: 400; margin-left: 4px; }
+.wd-tag-w { font-size: 24px; font-weight: 700; line-height: 1.15; }
+.wd-tag-t { color: var(--dunkelgrau); font-size: 13px; }
+.wd-fotos { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
+.wd-fotos a { display: flex; flex-direction: column; gap: 4px; color: var(--grau); font-size: 12px; text-decoration: none; }
+.wd-fotos img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 10px; border: 1px solid var(--rand, var(--hellgrau)); }
+.wd-haken { display: flex; gap: 22px; flex-wrap: wrap; }
+.wd-empf { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 6px 14px; }
+.wd-oeff-warn { background: #EAF2FB; color: #2F5786; border-left: 4px solid #6FA8DC; border-radius: 8px; padding: 10px 14px; }
+.kopf-info .kw-warn { display: flex; align-items: center; gap: 5px; padding: 5px 9px; border-radius: 10px; background: #EAF2FB; color: #2F5786; font-weight: 700; text-decoration: none; font-size: 13px; }
+.kopf-info .kw-warn.glatt { background: #FBF0CC; color: #8A6600; }
+.wetter-pop .wp-tag .schnee { font-size: 11.5px; color: #2F5786; font-weight: 700; }
+html[data-theme="dark"] .wd-tag.warn-schnee { background: rgba(111,168,220,.12); }
+html[data-theme="dark"] .wd-tag.warn-glatt { background: rgba(224,165,0,.12); }
+html[data-theme="dark"] .wd-oeff-warn, html[data-theme="dark"] .kopf-info .kw-warn { background: rgba(111,168,220,.16); color: #A9CBEA; }
+html[data-theme="dark"] .kopf-info .kw-warn.glatt { background: rgba(224,165,0,.16); color: #F2C94C; }
+@media (max-width: 760px) { .wd-tage { grid-template-columns: 1fr; } }
+@media (max-width: 640px) { .kopf-info .kw-warn span { display: none; } }
