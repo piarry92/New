@@ -1,7 +1,8 @@
 """Aus einem Flucht- und Rettungsplan (PDF, viele Seiten je Etage) EINEN kompletten Etagenplan je Etage bauen.
 
-Aufruf:  python3 werkzeuge/frp_etagenplan.py <plaene.pdf> <zielordner> [Etage ...]
+Aufruf:  python3 werkzeuge/frp_etagenplan.py <plaene.pdf> <zielordner> [Etage ...] [--drehung=0|90|180|270]
          Etage z. B. 2UG, 1UG, EG, 1OG. Ohne Angabe: alle Etagen.
+         --drehung dreht den fertigen Plan im Uhrzeigersinn, etwa damit Norden oben liegt. Ohne Angabe: Querformat.
 Braucht: pip install pymupdf      (für die Gegenprobe zusätzlich: numpy)
 
 Hintergrund: In solchen Plänen zeigt jede Seite nur einen Ausschnitt der Etage, oft gedreht oder in anderem Maßstab,
@@ -374,15 +375,23 @@ def _farbe_hex(c):
     return "#%02x%02x%02x" % tuple(max(0, min(255, round(v * 255))) for v in c)
 
 
-def ausgabe_masse(fenster_alle, quer=True, rand=14):
-    """Blattgröße und Abbildung Etagenmaß → Blatt. quer=True legt die längere Seite waagerecht."""
+def ausgabe_masse(fenster_alle, quer=True, rand=14, drehung=None):
+    """Blattgröße und Abbildung Etagenmaß → Blatt.
+
+    drehung: 0, 90, 180 oder 270 Grad im Uhrzeigersinn gegenüber den Seiten des Plans. Ohne Angabe wird die längere
+    Seite waagerecht gelegt (quer=True). Liefert Abbildung, Breite, Höhe und die gewählte Drehung."""
     x0 = min(f[0] for f in fenster_alle); y0 = min(f[1] for f in fenster_alle)
     x1 = max(f[2] for f in fenster_alle); y1 = max(f[3] for f in fenster_alle)
     b, h = x1 - x0, y1 - y0
-    kippen = quer and h > b
-    if kippen:      # um 90° im Uhrzeigersinn drehen: (x, y) → (y1 − y, x − x0)
-        return (lambda p: (rand + (y1 - p[1]), rand + (p[0] - x0))), h + 2 * rand, b + 2 * rand, True
-    return (lambda p: (rand + (p[0] - x0), rand + (p[1] - y0))), b + 2 * rand, h + 2 * rand, False
+    if drehung is None:
+        drehung = 90 if (quer and h > b) else 0
+    if drehung == 90:
+        return (lambda p: (rand + (y1 - p[1]), rand + (p[0] - x0))), h + 2 * rand, b + 2 * rand, 90
+    if drehung == 180:
+        return (lambda p: (rand + (x1 - p[0]), rand + (y1 - p[1]))), b + 2 * rand, h + 2 * rand, 180
+    if drehung == 270:
+        return (lambda p: (rand + (p[1] - y0), rand + (x1 - p[0]))), h + 2 * rand, b + 2 * rand, 270
+    return (lambda p: (rand + (p[0] - x0), rand + (p[1] - y0))), b + 2 * rand, h + 2 * rand, 0
 
 
 def als_pdf(bestand, T, breite, hoehe):
@@ -514,7 +523,10 @@ def etagenname(c):
 
 def main():
     import os
-    pdf = pymupdf.open(sys.argv[1]); ziel = sys.argv[2]; nur = sys.argv[3:]
+    wahl = [a for a in sys.argv[1:] if a.startswith("--")]
+    rest = [a for a in sys.argv[1:] if not a.startswith("--")]
+    drehung = next((int(a.split("=")[1]) for a in wahl if a.startswith("--drehung=")), None)
+    pdf = pymupdf.open(rest[0]); ziel = rest[1]; nur = rest[2:]
     os.makedirs(ziel, exist_ok=True)
     alle = plannummern(pdf)
     meta = []
@@ -522,8 +534,8 @@ def main():
         if nur and code not in nur:
             continue
         bestand, fenster, bericht = etage_bauen(pdf, seiten)
-        T, breite, hoehe, gekippt = ausgabe_masse(fenster)
-        masse = {"breite_pt": round(breite, 1), "hoehe_pt": round(hoehe, 1), "gekippt": gekippt}
+        T, breite, hoehe, gedreht = ausgabe_masse(fenster, drehung=drehung)
+        masse = {"breite_pt": round(breite, 1), "hoehe_pt": round(hoehe, 1), "drehung": gedreht}
         doc = als_pdf(bestand, T, breite, hoehe)
         doc.save(f"{ziel}/{code}.pdf", deflate=True, garbage=3)
         zoom = min(4.0, 9000 / max(breite, hoehe))
