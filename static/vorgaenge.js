@@ -28,21 +28,22 @@ function vgZelle(v, n, dokumente) {
   return esc(w ?? "");
 }
 
-SEITEN.vorgaenge = async (el, _, q) => {
+/* Vorgangsliste eines Objekts. eingebettet = als Reiter auf der Objektseite */
+async function vgBereich(el, oidStart, eingebettet = false) {
   await Promise.all([lade("objekte"), einstellungenLaden()]);
   const objekte = S.cache.objekte || [];
-  let oid = q.get("objekt") || (objekte.length === 1 ? String(objekte[0].id) : "");
+  const oid = String(oidStart || "");
   const [liste, dokumente] = await Promise.all([api("GET", `vorgaenge${oid ? `?objekt_id=${oid}` : ""}`), api("GET", `dokumente${oid ? `?objekt_id=${oid}` : ""}`)]);
   const o = objekte.find((x) => String(x.id) === oid);
-  let suche = "", statusFilter = q.get("status") || "", sortFeld = "datum", sortAb = true;
+  let suche = "", statusFilter = "", sortFeld = "datum", sortAb = true;
   const bearbeitbar = darf("vorgaenge");
   const alleFelder = VG_GRUPPEN.flatMap((g) => g.felder).filter((n) => !(oid && n === "objekt_id" && false));
 
-  el.innerHTML = `<div class="vg-kopf"><div><h1>Vorgangsliste · ${esc(o ? o.name : "alle Objekte")}</h1>
+  el.innerHTML = `${eingebettet ? "" : '<a class="zurueck" href="#/vorgaenge">← Alle Objekte</a>'}<div class="vg-kopf ${eingebettet ? "vg-eingebettet" : ""}"><div>${eingebettet ? "<h2>" : "<h1>"}Vorgangsliste · ${esc(o ? o.name : "")}${eingebettet ? "</h2>" : "</h1>"}
       <p class="klein vg-hinweis">Angebote und Aufträge. Claude liest Angebote, Aufträge, Auftragsbestätigungen und Rechnungen aus und trägt sie ein. Die Nummer öffnet das Angebot. Abgelehnte Angebote bitte im „Angebotsstatus“ markieren.</p></div>
       <img src="/logo.png" alt="Casa Concept Consulting" class="vg-logo"></div>
     <div class="vg-werkzeug">
-      <select id="vgObj" aria-label="Objekt"><option value="">Alle Objekte</option>${objekte.map((x) => `<option value="${x.id}" ${String(x.id) === oid ? "selected" : ""}>${esc(anzeige("objekte", x))}</option>`).join("")}</select>
+      ${eingebettet ? "" : `<select id="vgObj" aria-label="Objekt">${objekte.map((x) => `<option value="${x.id}" ${String(x.id) === oid ? "selected" : ""}>${esc(anzeige("objekte", x))}</option>`).join("")}</select>`}
       <input type="search" id="vgSuche" placeholder="Suchen: Nummer, Firma, Beschreibung …">
       <span class="vg-chips">${["", "offen", "beauftragt", "fertiggestellt", "abgerechnet", "abgelehnt"].map((s) => `<button class="knopf klein ${s === statusFilter ? "haupt-k" : ""}" data-st="${s}">${s || "alle"}</button>`).join("")}</span>
       <span class="vg-rechts">${bearbeitbar ? `<button class="knopf haupt-k" id="vgKi">Dokument von Claude auswerten</button><button class="knopf" id="vgNeu">${icon("plus")} Vorgang</button><button class="knopf" id="vgImp">Excel-Liste übernehmen</button>` : ""}
@@ -77,11 +78,12 @@ SEITEN.vorgaenge = async (el, _, q) => {
   };
   zeichnen();
 
-  el.querySelector("#vgObj").onchange = (e) => { location.hash = `#/vorgaenge${e.target.value ? `?objekt=${e.target.value}` : ""}`; };
+  const objWahl = el.querySelector("#vgObj");
+  if (objWahl) objWahl.onchange = (e) => { location.hash = `#/vorgaenge/${e.target.value}`; };
   el.querySelector("#vgSuche").oninput = (e) => { suche = e.target.value.trim().toLowerCase(); zeichnen(); };
   el.querySelectorAll("[data-st]").forEach((b) => b.onclick = () => { statusFilter = b.dataset.st; el.querySelectorAll("[data-st]").forEach((x) => x.classList.toggle("haupt-k", x === b)); zeichnen(); });
   el.querySelectorAll("th[data-sort]").forEach((th) => th.onclick = () => { if (sortFeld === th.dataset.sort) sortAb = !sortAb; else { sortFeld = th.dataset.sort; sortAb = false; } zeichnen(); });
-  const neuLaden = () => route();
+  const neuLaden = () => vgBereich(el, oid, eingebettet);
 
   /* Direkt in der Tabelle bearbeiten, wie in Excel */
   el.querySelector("#vgBody").addEventListener("click", async (e) => {
@@ -140,7 +142,46 @@ SEITEN.vorgaenge = async (el, _, q) => {
     const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
     a.download = `${new Date().toISOString().slice(0, 10).replace(/-/g, "")}_Vorgangsliste_${(o ? o.kuerzel : "alle").replace(/\s+/g, "")}.csv`; a.click();
   };
+}
+
+/* Übersicht: je Objekt eine eigene Vorgangsliste */
+SEITEN.vorgaenge = async (el) => {
+  await lade("objekte");
+  const objekte = S.cache.objekte || [];
+  if (objekte.length === 1) { location.replace(`#/vorgaenge/${objekte[0].id}`); return; }
+  const liste = await api("GET", "vorgaenge");
+  const summe = (arr, f) => arr.reduce((s, v) => s + (Number(v[f]) || 0), 0);
+  el.innerHTML = seitenkopf("Vorgangsliste", "Angebote und Aufträge je Objekt",
+    darf("vorgaenge") ? `<button class="knopf haupt-k" id="vgKiAlle">Dokument von Claude auswerten</button>` : "") + `
+    <p class="klein">Jedes Objekt hat seine eigene Vorgangsliste. Objekt anklicken, um sie zu öffnen. Ein Dokument, das du hier auswertest, ordnet Claude dem richtigen Objekt zu.</p>
+    <div class="vg-objekte">${objekte.map((o) => {
+      const l = liste.filter((v) => v.objekt_id === o.id), of = l.filter((v) => v.status === "offen"), be = l.filter((v) => v.status === "beauftragt"), fe = l.filter((v) => v.status === "fertiggestellt");
+      return `<a class="karte vg-objekt" href="#/vorgaenge/${o.id}"><div class="kicker">${esc(o.kuerzel || "")}</div><b>${esc(o.name || "")}</b>
+        <div class="vg-objekt-zahlen"><span><b>${l.length}</b> Vorgänge</span><span><b>${of.length}</b> offen${of.length ? ` · ${vgEuro(summe(of, "summe_netto"))}` : ""}</span>
+        <span><b>${be.length}</b> beauftragt</span>${fe.length ? `<span class="vg-warn"><b>${fe.length}</b> fertig, nicht abgerechnet</span>` : ""}</div></a>`;
+    }).join("") || '<p class="klein">Noch keine Objekte.</p>'}</div>`;
+  const k = el.querySelector("#vgKiAlle");
+  if (k) k.onclick = async () => { if (await vgKiAuswerten("")) route(); };
 };
+DETAIL.vorgaenge = async (el, id) => vgBereich(el, id, false);
+
+/* Reiter „Vorgangsliste“ auf der Objektseite */
+(() => {
+  const alt = DETAIL.objekte;
+  DETAIL.objekte = async (el, id, q) => {
+    await alt(el, id, q);
+    if (S.ich.rolle === "eigentuemer") return;
+    const leiste = el.querySelector("#r");
+    if (!leiste) return;
+    const box = document.createElement("div");
+    box.className = "karte vg-reiter-karte";
+    box.innerHTML = `<div class="vg-ganz"><a class="knopf klein" href="#/vorgaenge/${id}">Als ganze Seite öffnen</a></div><div id="vgHier"></div>`;
+    leiste.parentNode.insertBefore(box, leiste);
+    leiste.insertAdjacentHTML("beforebegin", '<div class="abstand"></div>');
+    vgBereich(box.querySelector("#vgHier"), id, true);
+  };
+})();
+
 
 /* ---------- Alle Angaben und Unterlagen eines Vorgangs ---------- */
 async function vgDetail(v, dokumente) {
@@ -192,7 +233,7 @@ async function vgKiAuswerten(oidVorgabe) {
 document.addEventListener("click", async (e) => {
   if (!e.target.closest("#vgKopie")) return;
   const sel = document.querySelector(".dialog select[name=objekt_id]");
-  const oid = sel ? sel.value : (document.querySelector("#vgObj") || {}).value || "";
+  const oid = sel ? sel.value : ((document.querySelector("#vgObj") || {}).value || (location.hash.match(/#\/(?:vorgaenge|objekte)\/(\d+)/) || [])[1] || "");
   try { const v = await api("GET", `vorgaenge/vorlage${oid ? `?objekt_id=${oid}` : ""}`); await navigator.clipboard.writeText(v.text); melde("Anleitung kopiert."); }
   catch (err) { melde("Kopieren ging nicht. Bitte Pop-ups und Zwischenablage erlauben.", true); }
 });
@@ -296,7 +337,7 @@ function vgDrucken(rows, o, dokumente) {
     tr:nth-child(even) td { background: #FDF6F1; } td.r { text-align: right; white-space: nowrap; } tr.ab td { color: #939598; text-decoration: line-through; }
     a { color: #E63713; } .fuss { margin-top: 3mm; font-size: 7pt; color: #939598; }
   </style></head><body>
-    <div class="kopf"><div><h1>Vorgangsliste · ${esc(o ? o.name : "alle Objekte")}</h1><div class="h">Angebote und Aufträge · Stand ${new Date().toLocaleDateString("de-DE")}</div></div><img src="${location.origin}/logo.png" alt=""></div>
+    <div class="kopf"><div><h1>Vorgangsliste · ${esc(o ? o.name : "")}</h1><div class="h">Angebote und Aufträge · Stand ${new Date().toLocaleDateString("de-DE")}</div></div><img src="${location.origin}/logo.png" alt=""></div>
     <table><thead><tr class="g">${VG_GRUPPEN.map((g) => `<th colspan="${g.felder.length}">${esc(g.titel)}</th>`).join("")}</tr>
       <tr>${felder.map((n) => `<th>${esc(vgLabel(n))}</th>`).join("")}</tr></thead>
       <tbody>${rows.map((v) => `<tr class="${v.status === "abgelehnt" || v.status === "storniert" ? "ab" : ""}">${felder.map((n) => `<td class="${["summe_netto", "rg_betrag"].includes(n) ? "r" : ""}">${n === "status" ? esc(v.status || "") : vgZelle(v, n, dokumente).replace(/href="\//g, `href="${location.origin}/`)}</td>`).join("")}</tr>`).join("")}</tbody></table>

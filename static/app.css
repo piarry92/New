@@ -1409,3 +1409,16 @@ html[data-theme="dark"] .vg-hinweis { color: #9DBBEA; }
 @media (max-width: 760px) { .vg-logo { display: none; } .vg-rechts { margin-left: 0; } .vg-tabelle-wrap { max-height: none; } }
 .dialog .formular select, .dialog .formular input { min-width: 0; max-width: 100%; }
 #vgKpi .wert { font-size: 26px; }
+.vg-objekte { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; margin-top: 12px; }
+.vg-objekt { text-decoration: none; color: inherit; display: flex; flex-direction: column; gap: 4px; border-left: 4px solid var(--orange); }
+.vg-objekt:hover { box-shadow: 0 6px 18px rgba(0,0,0,.1); }
+.vg-objekt .kicker { font-size: 11.5px; letter-spacing: .12em; color: var(--orange); font-weight: 700; text-transform: uppercase; }
+.vg-objekt > b { font-size: 17px; }
+.vg-objekt-zahlen { display: flex; flex-wrap: wrap; gap: 4px 14px; color: var(--dunkelgrau); font-size: 13px; margin-top: 6px; }
+.vg-objekt-zahlen .vg-warn { color: var(--orange); }
+.vg-eingebettet h2 { margin: 0 0 4px; font-size: 20px; }
+.vg-eingebettet .vg-logo { width: 120px; }
+.vg-reiter-karte { position: relative; }
+.vg-ganz { position: absolute; top: 16px; right: 200px; }
+.vg-reiter-karte .vg-tabelle-wrap { min-height: 0; }
+@media (max-width: 760px) { .vg-ganz { position: static; margin-bottom: 8px; } }
