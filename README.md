@@ -211,6 +211,17 @@ einen Leser aus dem Internet.
 - Die Übersicht ändert nichts an den Plänen. Sie liest nur, was im Programm steht (Abfrage
   `GET /api/plaene/uebersicht?objekt_id=…`, mit denselben Sichtregeln wie die Pläne selbst).
 
+### Von Plan zu Plan wechseln
+
+- Beim Wechsel auf einen anderen Plan bleiben der Standortbaum links und die Symbolliste rechts an ihrer Stelle.
+  Sie springen nicht mehr an den Anfang. Die gewählte Etage ist im Baum immer zu sehen, auch wenn man aus der
+  Gebäude-Übersicht oder über die Suche kommt.
+- Kopfzeile und Suchfeld des Baums bleiben stehen, nur die Liste rollt. Das Suchwort bleibt beim Planwechsel
+  erhalten und filtert jetzt auch die Etagen: „Finger 2“ zeigt nur Finger 2, „3. OG“ das 3. OG aller Gebäude.
+- Im Katalog bleiben die aufgeklappten Kategorien und Gruppen offen, auch nach dem Setzen einer Anlage und auf
+  dem nächsten Plan. So lässt sich dasselbe Gerät zügig auf mehreren Etagen setzen.
+- Am Handy steht der Plan oben, Baum und Bauteil-Liste folgen darunter.
+
 ## Grundriss im Vollbild
 
 - Im Plan rechts über dem Grundriss auf **„Vollbild“** klicken (oder Taste **F**). Plan und Symbolliste füllen dann

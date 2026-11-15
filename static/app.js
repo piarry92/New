@@ -1,7 +1,7 @@
 /* Casa CAFM – Oberfläche (ohne Fremdbibliotheken) */
 "use strict";
 
-const VERSION = "2026.11.16-4"; // muss zu VERSION in app.py passen
+const VERSION = "2026.11.16-5"; // muss zu VERSION in app.py passen
 /* Hell- und Dunkelmodus: gemerkte Wahl, sonst wie das Gerät */
 const THEMA = (() => {
   let t = null;
@@ -1018,15 +1018,16 @@ async function route() {
   document.querySelectorAll("#nav a").forEach((a) => a.classList.toggle("aktiv", a.dataset.nav === name));
   document.getElementById("seite").classList.remove("offen");
   const el = document.getElementById("inhalt");
+  let bleibt = false;                                         // eine Seite kann melden, dass der Rollstand bleiben soll (Wechsel von Plan zu Plan)
   try {
-    if (teile[1] && DETAIL[name] && /^\d+$/.test(teile[1])) await DETAIL[name](el, Number(teile[1]), q);
+    if (teile[1] && DETAIL[name] && /^\d+$/.test(teile[1])) bleibt = (await DETAIL[name](el, Number(teile[1]), q)) === "rollen-bleibt";
     else if (SEITEN[name]) await SEITEN[name](el, teile[1], q);
     else el.innerHTML = seitenkopf("Seite nicht gefunden") + '<a href="#/">Zur Übersicht</a>';
     if (name !== "start") zaehlerNav();
   } catch (e) {
     if (S.ich) el.innerHTML = seitenkopf("Das hat nicht geklappt") + `<div class="fehler">${esc(e.message)}</div>`;
   }
-  window.scrollTo(0, 0);
+  if (!bleibt) window.scrollTo(0, 0);
 }
 
 function versionPruefen(serverVersion) {

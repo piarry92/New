@@ -516,7 +516,8 @@ table.jplan.gross td:last-child { white-space: nowrap; }
 /* Standortbaum */
 .standort-ansicht { display: grid; grid-template-columns: 330px minmax(0, 1fr); gap: 16px; align-items: start; }
 .baum-spalte { display: flex; flex-direction: column; gap: 14px; position: sticky; top: 80px; max-height: calc(100vh - 100px); }
-.baum-karte { padding: 12px 10px; max-height: 42vh; overflow-y: auto; flex: none; }
+.baum-karte { padding: 12px 10px; max-height: 42vh; overflow: hidden; flex: none; display: flex; flex-direction: column; }
+.baum-roll { overflow-y: auto; flex: 1; min-height: 0; overscroll-behavior: contain; }
 .bauteile-karte { padding: 12px 10px; flex: 1; min-height: 200px; overflow: hidden; display: flex; flex-direction: column; }
 .baum-kopf { display: flex; align-items: center; gap: 8px; margin: 0 4px 8px; }
 .baum-kopf h3 { margin: 0; flex: 1; }
@@ -547,7 +548,7 @@ table.bauteile tr.an td { background: var(--orange-hell); }
 .standort-rechts .plan-layout { grid-template-columns: minmax(0, 1fr) 250px; }
 .standort-rechts .palette { order: 2; }
 @media (max-width: 1200px) { .standort-rechts .plan-layout { grid-template-columns: 1fr; } .standort-rechts .palette { order: 2; position: static; max-height: 260px; } }
-@media (max-width: 900px) { .standort-ansicht { grid-template-columns: 1fr; } .baum-spalte { position: static; max-height: none; } .baum-karte { max-height: 260px; } .bauteile-karte { max-height: 300px; } }
+@media (max-width: 900px) { .standort-ansicht { grid-template-columns: 1fr; } .baum-spalte { position: static; max-height: none; order: 2; } .baum-karte { max-height: 260px; } .bauteile-karte { max-height: 300px; } }
 @media print { .baum-spalte { display: none !important; } .standort-ansicht { display: block; } }
 
 /* Objekt-Kacheln */

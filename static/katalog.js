@@ -269,6 +269,9 @@ function katalogPaletteItem(t) {
   return `<div class="p-item" data-typ="${t.id}" data-vorlage="${esc(kat.name)}" data-gewerk="${esc(kat.gewerk || "")}" title="${esc(kat.name)} · ${esc(grp ? grp.name : "")} · ${esc(t.name)}">${katSymbol(kat, 26)}<span>${esc(t.name)}<br><span class="klein">${esc(grp ? grp.name : "")}</span></span></div>`;
 }
 
+/* Geöffnete Kategorien und Gruppen des Katalogs: bleiben offen, auch nach dem Setzen und beim Wechsel auf einen anderen Plan */
+const KP_AUF = { k: new Set(), g: new Set() };
+const kpGruppen = (kid) => S.kat.g.filter((g) => g.kategorie_id === kid).map((g) => `<details class="kk-grp" data-kg="${g.id}" ${KP_AUF.g.has(g.id) ? "open" : ""}><summary>${esc(g.name)}</summary>${S.kat.t.filter((t) => t.gruppe_id === g.id).map(katalogPaletteItem).join("")}</details>`).join("");
 function katalogPalette(ziel, suche = "") {
   const k = S.kat;
   if (!k) return;
@@ -280,12 +283,17 @@ function katalogPalette(ziel, suche = "") {
   }
   const zuletzt = zuletztGenutzt().map((id) => k.tMap[id]).filter(Boolean);
   ziel.innerHTML = `${zuletzt.length ? `<details open><summary><span class="sym" style="--c:var(--anthrazit)">↺</span> Zuletzt benutzt</summary>${zuletzt.map(katalogPaletteItem).join("")}</details>` : ""}
-    <h3>Katalog</h3>${k.k.map((kat) => `<details data-kk="${kat.id}"><summary>${katSymbol(kat, 24)} ${esc(kat.name)}</summary><div class="kk-inhalt"></div></details>`).join("")}`;
-  ziel.querySelectorAll("details[data-kk]").forEach((d) => d.addEventListener("toggle", () => {
-    const box = d.querySelector(".kk-inhalt");
+    <h3>Katalog</h3>${k.k.map((kat) => { const auf = KP_AUF.k.has(kat.id); return `<details data-kk="${kat.id}" ${auf ? "open" : ""}><summary>${katSymbol(kat, 24)} ${esc(kat.name)}</summary><div class="kk-inhalt" ${auf ? 'data-fertig="1"' : ""}>${auf ? kpGruppen(kat.id) : ""}</div></details>`; }).join("")}`;
+  if (ziel.dataset.kp) return;
+  ziel.dataset.kp = "1";
+  ziel.addEventListener("toggle", (e) => {                    // „toggle“ steigt nicht auf, deshalb beim Absteigen abfangen
+    const d = e.target;
+    if (d.dataset.kg) { KP_AUF.g[d.open ? "add" : "delete"](Number(d.dataset.kg)); return; }
+    if (!d.dataset.kk) return;
+    const kid = Number(d.dataset.kk), box = d.querySelector(".kk-inhalt");
+    KP_AUF.k[d.open ? "add" : "delete"](kid);
     if (!d.open || box.dataset.fertig) return;
-    const kid = Number(d.dataset.kk);
-    box.innerHTML = k.g.filter((g) => g.kategorie_id === kid).map((g) => `<details class="kk-grp"><summary>${esc(g.name)}</summary>${k.t.filter((t) => t.gruppe_id === g.id).map(katalogPaletteItem).join("")}</details>`).join("");
+    box.innerHTML = kpGruppen(kid);
     box.dataset.fertig = "1";
-  }));
+  }, true);
 }

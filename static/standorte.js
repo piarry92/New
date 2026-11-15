@@ -31,22 +31,26 @@ function baumOffen(neu) {
 }
 
 async function standortAnsicht(el, planId, q) {
-  await Promise.all([lade("objekte"), katLaden(), lade("symbole")]);
+  const [objekte] = await Promise.all([lade("objekte"), katLaden(), lade("symbole")]);   // eigene Liste: Der Zwischenspeicher wird beim Setzen geleert
   const plaene = await api("GET", "plaene");
   const plan = planId ? plaene.find((p) => p.id === planId) : null;
   let objektId = plan ? plan.objekt_id : Number(q.get("o")) || null;
-  if (!plan && !S.cache.objekte.some((o) => o.id === objektId)) objektId = S.cache.objekte.length === 1 ? S.cache.objekte[0].id : null;
+  if (!plan && !objekte.some((o) => o.id === objektId)) objektId = objekte.length === 1 ? objekte[0].id : null;
   if (!plan) return objektId ? gebaeudeUebersicht(el, objektId, q) : objektePlaene(el, plaene);
   /* Ab hier: ein Plan ist gewählt. Links der Baum und die Bauteile der Etage, rechts die Plan-Arbeitsfläche. */
   let offen = baumOffen();
   if (!offen.has("o" + objektId)) offen = baumOffen("o" + objektId);
+  /* Wechsel von Plan zu Plan: Der Baum bleibt, wo er war (Rollstand und Suchwort), ebenso die Symbolliste rechts. */
+  const vorher = el.querySelector(":scope > .standort-ansicht");
+  const merk = vorher ? { baum: vorher.querySelector("#baumRoll").scrollTop, suche: vorher.querySelector("#bsuche").value, liste: (vorher.querySelector("#palette") || {}).scrollTop || 0, fenster: window.scrollY } : null;
+  if (merk) el.style.minHeight = el.offsetHeight + "px";      // die Seite behält ihre Höhe, bis der neue Plan steht, sonst springt sie nach oben
 
   el.innerHTML = `<div class="standort-ansicht">
     <aside class="baum-spalte">
       <div class="karte baum-karte">
         <div class="baum-kopf"><h3>Standorte</h3>${darf("plaene_bearbeiten") ? `<button class="knopf klein" id="bgr" title="Grundriss hochladen">${icon("plus")} Grundriss</button>` : ""}</div>
         <input type="search" id="bsuche" placeholder="Objekt oder Etage suchen">
-        <ul class="baum" id="baum"></ul>
+        <div class="baum-roll" id="baumRoll"><ul class="baum" id="baum"></ul></div>
       </div>
       <div class="karte bauteile-karte">
         <div class="baum-kopf"><h3>Bauteile</h3><span class="klein" id="banz"></span></div>
@@ -56,15 +60,17 @@ async function standortAnsicht(el, planId, q) {
     </aside>
     <section class="standort-rechts" id="sr"></section>
   </div>`;
-  const baum = el.querySelector("#baum"), sr = el.querySelector("#sr");
+  const baum = el.querySelector("#baum"), sr = el.querySelector("#sr"), baumRoll = el.querySelector("#baumRoll");
+  if (merk) el.querySelector("#bsuche").value = merk.suche;
 
   /* Baum zeichnen */
   const zeichneBaum = () => {
     const w = el.querySelector("#bsuche").value.trim().toLowerCase();
-    baum.innerHTML = S.cache.objekte.map((o) => {
-      const eigene = plaene.filter((p) => p.objekt_id === o.id).sort(etagenSort);
-      const passt = !w || anzeige("objekte", o).toLowerCase().includes(w) || eigene.some((p) => [p.gebaeude, p.etage, p.titel].join(" ").toLowerCase().includes(w));
-      if (!passt) return "";
+    baum.innerHTML = objekte.map((o) => {
+      const alle = plaene.filter((p) => p.objekt_id === o.id).sort(etagenSort);
+      const ganz = !w || anzeige("objekte", o).toLowerCase().includes(w);          // Suchwort trifft das Objekt: alle Etagen zeigen
+      const eigene = ganz ? alle : alle.filter((p) => [p.gebaeude, p.etage, p.titel].join(" ").toLowerCase().includes(w));
+      if (!ganz && !eigene.length) return "";
       const auf = offen.has("o" + o.id) || !!w;
       const gebaeude = [...new Set(eigene.map((p) => p.gebaeude || ""))];
       const mitGebaeude = gebaeude.some(Boolean);
@@ -81,6 +87,17 @@ async function standortAnsicht(el, planId, q) {
     }).join("") || '<li class="klein">Nichts gefunden.</li>';
   };
   zeichneBaum();
+  /* Die gewählte Etage im Baum zeigen: beim Wechsel von Plan zu Plan nur nachrücken, wenn sie nicht zu sehen ist, sonst in die Mitte holen */
+  const aktivZeigen = (mitte) => {
+    const an = baum.querySelector(".b-etage.an");
+    if (!an) return;
+    const k = baumRoll.getBoundingClientRect(), a = an.getBoundingClientRect();
+    if (mitte) baumRoll.scrollTop += a.top - k.top - (k.height - a.height) / 2;
+    else if (a.top < k.top) baumRoll.scrollTop += a.top - k.top - 8;
+    else if (a.bottom > k.bottom) baumRoll.scrollTop += a.bottom - k.bottom + 8;
+  };
+  if (merk) baumRoll.scrollTop = merk.baum;
+  aktivZeigen(!merk);
   baum.addEventListener("click", (e) => {
     const ot = e.target.closest("[data-otoggle]"), gt = e.target.closest("[data-gtoggle]");
     if (ot) { e.preventDefault(); offen = baumOffen("o" + ot.dataset.otoggle); zeichneBaum(); }
@@ -127,8 +144,14 @@ async function standortAnsicht(el, planId, q) {
   });
 
   /* Rechte Seite */
-  await planEditor(sr, plan.id, q);
-  await ladeBauteile();
+  const breit = !matchMedia("(max-width: 900px)").matches;
+  try {
+    await planEditor(sr, plan.id, q, { listeRoll: merk ? merk.liste : 0 });
+    await ladeBauteile();
+  } finally { el.style.minHeight = ""; }
+  if (!merk || !breit) return undefined;                       // erster Aufruf und schmale Ansicht: Die Seite beginnt oben beim Plan
+  if (Math.abs(window.scrollY - merk.fenster) > 1) window.scrollTo(0, merk.fenster);
+  return "rollen-bleibt";                                      // breite Ansicht: Die Seite bleibt beim Planwechsel stehen
 }
 
 /* ---------- Ohne gewähltes Objekt: erst das Objekt wählen ---------- */

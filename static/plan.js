@@ -255,7 +255,7 @@ SEITEN.plaene = async (el) => {
 
 /* ---------- Plan-Arbeitsfläche ---------- */
 /* Plan-Arbeitsfläche; wird in der Standortansicht neben dem Baum gezeigt */
-async function planEditor(el, id, q) {
+async function planEditor(el, id, q, opt = {}) {
   await Promise.all([...["objekte", "plaene", "symbole"].map((r) => lade(r)), katLaden()]);
   let daten = await api("GET", `plaene/${id}/anlagen`);
   const plan = daten.plan;
@@ -626,6 +626,7 @@ async function planEditor(el, id, q) {
     if (hervor) { zentrieren(hervor); popupZeigen(hervor); }
     const setz = daten.frei.find((a) => a.id === Number(q.get("platzieren")));
     if (setz && aendern) modusSetzen({ anlage: setz.id, name: setz.bezeichnung, gewerk: setz.gewerk, zeichen: setz.planzeichen, symbol_id: setz.symbol_id, el: el.querySelector(`[data-anlage="${setz.id}"]`) });
+    if (opt.listeRoll) el.querySelector("#palette").scrollTop = opt.listeRoll;   // Symbolliste steht nach dem Planwechsel wieder an derselben Stelle
   };
   if (bild.complete && bild.naturalWidth) fertig(); else { bild.onload = () => { bild.onload = einpassen; fertig(); }; bild.onerror = () => melde("Der Grundriss konnte nicht geladen werden.", true); }
   const ro = new ResizeObserver(() => { if (document.body.contains(buehne)) einpassen(); else ro.disconnect(); });
