@@ -49,7 +49,7 @@ WD_PFAD = DATEN / "winterdienstfotos"
 PROFIL_PFAD = DATEN / "profilbilder"
 MAX_SYMBOL = 2 * 1024 * 1024
 MAX_UPLOAD = 25 * 1024 * 1024
-VERSION = "2026.11.16-2"  # muss zu VERSION in static/app.js passen
+VERSION = "2026.11.16-3"  # muss zu VERSION in static/app.js passen
 SITZUNG_TAGE = 7
 
 GEWERKE = [
@@ -2820,6 +2820,16 @@ def plan_matrix(m) -> list | None:
     return werte if len(werte) == 6 and all(math.isfinite(v) and abs(v) < 1000 for v in werte) else None
 
 
+def plan_alte(con, oid: int, eintrag, neu_id: int) -> list:
+    """Die vorhandenen Pläne des Objekts, die ein Eintrag unter „ersetzt“ meint (gleiches Gebäude, gleiche Etage,
+    gleicher Titel), ohne den neuen Plan selbst."""
+    if not isinstance(eintrag, dict):
+        return []
+    return con.execute("SELECT id, pfad, titel FROM plaene WHERE objekt_id=? AND COALESCE(gebaeude,'')=? AND COALESCE(etage,'')=? "
+                       "AND titel=? AND id<>?", (oid, str(eintrag.get("gebaeude") or "").strip(), str(eintrag.get("etage") or "").strip(),
+                                                 str(eintrag.get("titel") or "").strip(), neu_id)).fetchall()
+
+
 def plan_ersetzen(con, benutzer, oid: int, neu_id: int, neu_titel: str, alte: list, dateien_weg: list) -> dict:
     """Alte Pläne durch einen neuen ersetzen: Die gesetzten Anlagen ziehen mit umgerechneter Lage auf den neuen Plan
     um, danach werden die alten Pläne gelöscht. Ohne brauchbare Abbildung kommen die Anlagen zurück unter
@@ -2830,9 +2840,7 @@ def plan_ersetzen(con, benutzer, oid: int, neu_id: int, neu_titel: str, alte: li
         if not isinstance(e, dict):
             continue
         matrix = plan_matrix(e.get("matrix"))
-        for alt in con.execute("SELECT id, pfad, titel FROM plaene WHERE objekt_id=? AND COALESCE(gebaeude,'')=? AND COALESCE(etage,'')=? "
-                               "AND titel=? AND id<>?", (oid, str(e.get("gebaeude") or "").strip(), str(e.get("etage") or "").strip(),
-                                                         str(e.get("titel") or "").strip(), neu_id)).fetchall():
+        for alt in plan_alte(con, oid, e, neu_id):
             for an in con.execute("SELECT id, plan_x, plan_y FROM anlagen WHERE plan_id=?", (alt["id"],)).fetchall():
                 if matrix and an["plan_x"] is not None and an["plan_y"] is not None:
                     x = matrix[0] * an["plan_x"] + matrix[2] * an["plan_y"] + matrix[4]
@@ -2861,7 +2869,10 @@ def plaene_importieren(con, benutzer, d: dict) -> dict:
     Ersetzen: Nennt plaene.json bei einem Plan unter „ersetzt“ alte Pläne (Gebäude, Etage, Titel und die Abbildung
     „matrix“), dann ziehen mit ersetzen=1 deren Anlagen auf den neuen Plan um und die alten Pläne werden gelöscht.
     Vorher wird die Datenbank gesichert. Unter „_dateien_weg“ stehen die Bilddateien der gelöschten Pläne: Die
-    räumt der Aufrufer weg, wenn alles gespeichert ist."""
+    räumt der Aufrufer weg, wenn alles gespeichert ist.
+
+    Mit pruefen=1 ändert sich nichts: Die Antwort nennt nur, welche Pläne das Ersetzen löschen würde und wie viele
+    Anlagen darauf sitzen. Die Oberfläche fragt damit nach, bevor etwas gelöscht wird."""
     import zipfile
     try:
         oid = int(d.get("objekt_id"))
@@ -2889,6 +2900,15 @@ def plaene_importieren(con, benutzer, d: dict) -> dict:
     if len(bilder) > 300:
         raise Fehler(400, "Höchstens 300 Grundrisse auf einmal.")
     ersetzen = d.get("ersetzen") in (True, 1, "1", "true") and any(e.get("ersetzt") for e in angaben.values())
+    if d.get("pruefen") in (True, 1, "1", "true"):
+        loeschen, anlagen = {}, 0
+        for e in angaben.values() if ersetzen else []:
+            for alter in e.get("ersetzt") if isinstance(e.get("ersetzt"), list) else []:
+                for alt in plan_alte(con, oid, alter, 0):
+                    if alt["id"] not in loeschen:
+                        loeschen[alt["id"]] = alt["titel"]
+                        anlagen += con.execute("SELECT COUNT(*) FROM anlagen WHERE plan_id=?", (alt["id"],)).fetchone()[0]
+        return {"pruefung": True, "loeschen": sorted(loeschen.values()), "anlagen": anlagen, "_dateien_weg": []}
     sicherung = None
     if ersetzen:
         sicherung = db_sichern("vor_planwechsel")

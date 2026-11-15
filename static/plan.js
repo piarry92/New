@@ -213,9 +213,9 @@ async function plaeneImportieren(objektId) {
   const html = `<div class="dfehler"></div><form class="formular" onsubmit="return false">
     <label class="breit"><span class="pflicht">Objekt</span><select name="objekt_id"><option value="">Bitte wählen</option>${(S.cache.objekte || []).map((o) => `<option value="${o.id}" ${String(o.id) === String(objektId) ? "selected" : ""}>${esc(anzeige("objekte", o))}</option>`).join("")}</select></label>
     <label class="breit"><span class="pflicht">ZIP-Datei mit Grundrissen</span><input type="file" name="datei" accept=".zip,application/zip"></label>
-    <label class="check breit"><input type="checkbox" name="ersetzen" checked> Alte Pläne ersetzen, wenn die ZIP-Datei das vorsieht</label>
+    <label class="check breit"><input type="checkbox" name="ersetzen"> Alte Pläne ersetzen, wenn die ZIP-Datei das vorsieht (löscht Pläne)</label>
     <p class="klein breit">In der ZIP-Datei liegen die Grundrisse als PNG, JPG oder SVG. Gebäude und Etage kommen aus der Datei plaene.json oder aus dem Dateinamen, zum Beispiel „Finger 1__2. OG__Finger 1 2. OG.png“. Schon vorhandene Pläne werden übersprungen.</p>
-    <p class="klein breit">Ersetzen: Manche ZIP-Dateien bringen neue Pläne mit, die alte ablösen. Dann ziehen die gesetzten Anlagen auf den neuen Plan um und die alten Pläne werden gelöscht. Vorher legt das Programm eine Sicherung der Daten an.</p></form>`;
+    <p class="klein breit">Ersetzen: Manche ZIP-Dateien bringen neue Pläne mit, die alte ablösen. Nur mit dem Haken ziehen die gesetzten Anlagen auf den neuen Plan um und die alten Pläne werden gelöscht. Vorher zeigt das Programm, welche Pläne das sind, fragt nach und legt eine Sicherung der Daten an. Ohne Haken wird nichts gelöscht.</p></form>`;
   const erg = await dialog("Mehrere Grundrisse importieren", html, [{ text: "Abbrechen" }, {
     text: "Importieren", klasse: "haupt-k", aktion: async (hg) => {
       const fm = hg.querySelector("form"), datei = fm.datei.files[0];
@@ -223,7 +223,17 @@ async function plaeneImportieren(objektId) {
       if (!datei) throw new Error("Bitte die ZIP-Datei auswählen.");
       if (datei.size > 24 * 1024 * 1024) throw new Error("Die ZIP-Datei ist zu groß (höchstens 24 MB). Bitte in zwei Teilen importieren.");
       const inhalt = await new Promise((ok, nein) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(",")[1] || ""); r.onerror = nein; r.readAsDataURL(datei); });
-      return api("POST", "plaene/import", { objekt_id: Number(fm.objekt_id.value), inhalt, ersetzen: fm.ersetzen.checked });
+      const auftrag = { objekt_id: Number(fm.objekt_id.value), inhalt, ersetzen: fm.ersetzen.checked };
+      if (auftrag.ersetzen) {   // erst nachsehen, was gelöscht würde, und nachfragen
+        const v = await api("POST", "plaene/import", { ...auftrag, pruefen: true });
+        if (v.loeschen.length) {
+          const namen = v.loeschen.slice(0, 8).join(", ") + (v.loeschen.length > 8 ? ` und ${v.loeschen.length - 8} weitere` : "");
+          const frage = `Das löscht ${v.loeschen.length} ${v.loeschen.length === 1 ? "Plan" : "Pläne"} dieses Objekts:\n${namen}\n\n`
+            + `${v.anlagen} gesetzte ${v.anlagen === 1 ? "Anlage zieht" : "Anlagen ziehen"} auf die neuen Pläne um. Die gelöschten Pläne lassen sich nicht zurückholen.\n\nWirklich ersetzen?`;
+          if (!confirm(frage)) throw new Error("Nichts geändert. Ohne den Haken werden die neuen Pläne nur dazugelegt, es wird nichts gelöscht.");
+        }
+      }
+      return api("POST", "plaene/import", auftrag);
     },
   }]);
   if (!erg || erg === true) return erg;

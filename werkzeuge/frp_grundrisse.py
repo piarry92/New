@@ -1,10 +1,13 @@
 """Flucht- und Rettungspläne (PDF, ein Plan je Seite) in saubere Grundrisse für Casa CAFM umwandeln.
 
-Aufruf:  python3 werkzeuge/frp_grundrisse.py <plaene.pdf> <zielordner>
+Aufruf:  python3 werkzeuge/frp_grundrisse.py <plaene.pdf> <zielordner> [--ohne=2UG/1a,EG/2a,...]
+         --ohne: Plannummern, die wegbleiben. Viele Rettungspläne zeigen denselben Bereich mehrfach (Teil a, b, c
+                 für verschiedene Standorte). Im Programm reicht davon einer.
 Braucht: pip install pymupdf numpy pillow
 
 Je Seite entsteht ein PNG ohne Fluchtwege, Zeichen, Standort und Beschriftung, dazu plaene.json.
-Gebäude und Etage kommen aus der Plannummer (z. B. 2OG/1a = Finger 1, 2. OG, Teil a).
+Gebäude und Etage kommen aus der Plannummer (z. B. 2OG/1a = Finger 1, 2. OG, Teil a). Bleibt von einem Finger in
+einer Etage nur ein Plan übrig, heißt er ohne „Teil“ (Finger 1 2. OG).
 Den Zielordner als ZIP packen und im Programm unter Standorte & Pläne › „Mehrere importieren (ZIP)“ einspielen.
 """
 import sys, re, json
@@ -59,29 +62,35 @@ def grundriss(seite, zoom=2.6):
 
 def main():
     import os
+    from collections import Counter
+    ohne = {n.strip().upper() for a in sys.argv[3:] if a.startswith("--ohne=") for n in a.split("=", 1)[1].split(",") if n.strip()}
     d = pymupdf.open(sys.argv[1]); ziel = sys.argv[2]
     os.makedirs(ziel, exist_ok=True)
-    meta, probleme = [], []
+    meta, probleme, seiten = [], [], []
     def etage(c):
         if c == "EG": return "EG"
         m = re.match(r"(\d)(UG|OG)", c); return f"{m.group(1)}. {m.group(2)}"
     for i, s in enumerate(d, 1):
-        t = s.get_text()
-        m = re.search(r"\b(\dUG|EG|\dOG)\s*/\s*(\d)([a-c]?)\b", t)
+        m = re.search(r"\b(\dUG|EG|\dOG)\s*/\s*(\d)([a-c]?)\b", s.get_text())
         if not m:
             probleme.append((i, "keine Plannummer")); continue
+        plannr = m.group(0).replace(" ", "")
+        if plannr.upper() in ohne:
+            continue
+        seiten.append((i, s, m, plannr))
+    je_finger = Counter((m.group(1), m.group(2)) for _, _, m, _ in seiten)        # wie viele Pläne je Etage und Finger bleiben
+    for i, s, m, plannr in seiten:
         e, f, teil = etage(m.group(1)), m.group(2), m.group(3)
         pm = grundriss(s)
         if pm is None:
             probleme.append((i, "leer")); continue
-        titel = f"Finger {f} {e}" + (f" Teil {teil}" if teil else "")
+        titel = f"Finger {f} {e}" + (f" Teil {teil}" if teil and je_finger[(m.group(1), f)] > 1 else "")
         datei = f"Finger{f}_{m.group(1)}{('_' + teil) if teil else ''}.png"
         pm.save(f"{ziel}/{datei}", optimize=True)
-        meta.append({"datei": datei, "gebaeude": f"Finger {f}", "etage": e, "titel": titel, "seite": i, "plannr": m.group(0).replace(" ", ""),
-                     "notiz": f"Grundriss aus Flucht- und Rettungsplan Bürogebäude Nord 1, Plan-Nr. {m.group(0).replace(' ', '')}, Stand 26.08.2022 (Seite {i})."})
+        meta.append({"datei": datei, "gebaeude": f"Finger {f}", "etage": e, "titel": titel, "seite": i, "plannr": plannr,
+                     "notiz": f"Grundriss aus Flucht- und Rettungsplan Bürogebäude Nord 1, Plan-Nr. {plannr}, Stand 26.08.2022 (Seite {i})."})
     json.dump(meta, open(f"{ziel}/plaene.json", "w"), ensure_ascii=False, indent=1)
-    print(len(meta), "Grundrisse;", probleme)
-    from collections import Counter
+    print(len(meta), "Grundrisse;", len(ohne), "Plannummern weggelassen;", probleme)
     print(sorted(Counter(m["plannr"] for m in meta).items(), key=lambda x: x[1])[-3:])
 
 

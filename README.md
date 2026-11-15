@@ -160,6 +160,12 @@ einen Leser aus dem Internet.
 - Im Standortbaum erscheinen sie als Objekt › Gebäude (z. B. Finger 1) › Etage.
 - Flucht- und Rettungspläne als PDF lassen sich mit `python3 werkzeuge/frp_grundrisse.py <pläne.pdf> <ordner>`
   in saubere Grundrisse samt `plaene.json` umwandeln (braucht `pip install pymupdf numpy pillow`).
+  Viele Rettungspläne zeigen denselben Bereich mehrfach (Teil a, b, c). Mit `--ohne=<Plannummern>` bleiben die
+  doppelten weg.
+- **Options (Stand 15.11.2026, so festgelegt): 54 Pläne nach Fingern, je Finger und Etage ein Plan, im EG neun.**
+  Die doppelten Teile bleiben weg, bei Paaren bleibt der Plan im Querformat:
+  `--ohne=2UG/1a,1UG/1a,1UG/2a,1UG/3a,1UG/4a,EG/1b,EG/2a,1OG/1a,1OG/1b,1OG/2a,2OG/1a,2OG/1b,2OG/2a,3OG/1a,3OG/1b,3OG/2a,4OG/1b,5OG/1b,6OG/1b,7OG/1b`.
+  Diese Pläne nicht durch Pläne der ganzen Etage ersetzen und die weggelassenen Teile nicht wieder einspielen.
 - Auch **SVG** geht (gezeichnete Pläne, die beim Vergrößern scharf bleiben). Erlaubt ist nur die reine Zeichnung:
   Linien, Flächen und Schrift. Dateien mit Skripten, Verweisen oder eingebetteten Bildern lehnt das Programm ab.
 - Einen Plan je Etage für das ganze Haus macht `python3 werkzeuge/fwp_etagenplan.py <feuerwehrplan.pdf> <ordner>`
@@ -167,8 +173,10 @@ einen Leser aus dem Internet.
 
 ### Alte Pläne durch neue ersetzen
 
-- Im Import-Fenster ist der Haken **„Alte Pläne ersetzen, wenn die ZIP-Datei das vorsieht“** gesetzt. Nennt
-  `plaene.json` bei einem neuen Plan unter `ersetzt` die alten Pläne, dann
+- Im Import-Fenster gibt es den Haken **„Alte Pläne ersetzen, wenn die ZIP-Datei das vorsieht“**. Er ist nicht
+  vorbelegt: Ohne Haken werden neue Pläne nur dazugelegt, es wird nichts gelöscht. Mit Haken zeigt das Programm
+  erst, welche Pläne gelöscht würden, und fragt nach. Nennt `plaene.json` bei einem neuen Plan unter `ersetzt` die
+  alten Pläne, dann
   - ziehen die gesetzten Anlagen von den alten Plänen auf den neuen um, an dieselbe Stelle im Haus,
   - werden die alten Pläne gelöscht,
   - legt das Programm vorher eine Sicherung der Datenbank an (`daten/sicherung/`).
