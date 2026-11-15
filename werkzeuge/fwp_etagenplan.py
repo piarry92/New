@@ -118,7 +118,11 @@ def raster_abstand(seite):
 
 
 def beschriftung(seite, rahmen):
-    """Raumnamen im Gebäude: schmale Schrift. Die Texte der Schilder (Ziffern, „S“, „T1“ …) stehen in anderer Schrift."""
+    """Raumnamen im Gebäude: schmale Schrift. Die Texte der Schilder (Ziffern, „S“, „T1“ …) stehen in anderer Schrift.
+    Hinweise in farbig umrandeten Kästen (etwa „Sprinklerschutz über gesamte Etage“) sind keine Raumnamen."""
+    kaesten = [pymupdf.Rect(g["rect"]) + (-1, -1, 1, 1) for g in seite.get_drawings()
+               if "s" in g["type"] and not F.neutral(g.get("color")) and len(g["items"]) == 1 and g["items"][0][0] in ("re", "qu")
+               and g["rect"].width > 25 and g["rect"].height > 12]
     aus = []
     for block in seite.get_text("dict")["blocks"]:
         if block["type"] != 0:
@@ -132,7 +136,8 @@ def beschriftung(seite, rahmen):
                 if re.fullmatch(r"[+\-]?\d+|S|\d+\s?x", text) or (sp["color"] >> 16) > 0x60:    # Ziffern, Schild-„S“, „2x“, farbige Schrift
                     continue
                 r = pymupdf.Rect(sp["bbox"])
-                if not rahmen.contains(pymupdf.Point((r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2)):
+                mitte = pymupdf.Point((r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2)
+                if not rahmen.contains(mitte) or any(k.contains(mitte) for k in kaesten):
                     continue
                 laenge = r.width if abs(dx) > abs(dy) else r.height
                 aus.append({"text": text, "x": sp["origin"][0], "y": sp["origin"][1], "groesse": sp["size"], "dx": round(dx), "dy": round(dy),
