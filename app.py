@@ -22,6 +22,7 @@ import hashlib
 import hmac
 import io
 import json
+import math
 import mimetypes
 import os
 import re
@@ -48,7 +49,7 @@ WD_PFAD = DATEN / "winterdienstfotos"
 PROFIL_PFAD = DATEN / "profilbilder"
 MAX_SYMBOL = 2 * 1024 * 1024
 MAX_UPLOAD = 25 * 1024 * 1024
-VERSION = "2026.11.16-1"  # muss zu VERSION in static/app.js passen
+VERSION = "2026.11.16-2"  # muss zu VERSION in static/app.js passen
 SITZUNG_TAGE = 7
 
 GEWERKE = [
@@ -1672,6 +1673,67 @@ def bild_endung(inhalt: bytes) -> str | None:
     return None
 
 
+SVG_ERLAUBT = {"svg", "g", "path", "rect", "circle", "ellipse", "line", "polyline", "polygon", "text", "tspan", "title", "desc"}
+
+
+def ist_svg(inhalt: bytes) -> bool:
+    return b"<svg" in inhalt[:2000].lower()
+
+
+def svg_pruefen(inhalt: bytes) -> tuple[int, int]:
+    """Ein Grundriss als SVG darf nur Zeichnung enthalten: Linien, Flächen und Schrift. Kein Skript, keine Verweise
+    nach außen, keine eingebetteten Bilder. Liefert Breite und Höhe, sonst einen Fehler."""
+    import xml.etree.ElementTree as ET
+    if len(inhalt) > 8 * 1024 * 1024:
+        raise Fehler(400, "Der Grundriss ist zu groß (SVG höchstens 8 MB).")
+    klein = inhalt.lower()
+    if b"<!doctype" in klein or b"<!entity" in klein or b"<?xml-stylesheet" in klein:
+        raise Fehler(400, "Die SVG-Datei enthält Angaben, die in einem Grundriss nicht erlaubt sind.")
+    try:
+        wurzel = ET.fromstring(inhalt)
+    except ET.ParseError:
+        raise Fehler(400, "Die SVG-Datei lässt sich nicht lesen.")
+    if wurzel.tag != "{http://www.w3.org/2000/svg}svg":
+        raise Fehler(400, "Das ist keine SVG-Zeichnung.")
+    for el in wurzel.iter():
+        name = el.tag.rsplit("}", 1)[-1].lower() if isinstance(el.tag, str) else ""
+        if name not in SVG_ERLAUBT:
+            raise Fehler(400, f"Die SVG-Datei enthält etwas, das in einem Grundriss nicht erlaubt ist ({name or 'unbekannt'}).")
+        for attr, wert in el.attrib.items():
+            a, w = attr.rsplit("}", 1)[-1].lower(), str(wert).lower()
+            if a.startswith("on") or a in ("href", "src") or "javascript:" in w or "url(" in w or "@import" in w or "expression(" in w:
+                raise Fehler(400, "Die SVG-Datei enthält Verweise oder Befehle. Erlaubt ist nur die reine Zeichnung.")
+
+    def zahl(t) -> float:
+        m = re.match(r"\s*([0-9]+(?:\.[0-9]+)?)", str(t or ""))
+        return float(m.group(1)) if m else 0.0
+    breite, hoehe = zahl(wurzel.get("width")), zahl(wurzel.get("height"))
+    kasten = [zahl(v) for v in re.split(r"[\s,]+", (wurzel.get("viewBox") or "").strip()) if v]
+    if (not breite or not hoehe) and len(kasten) == 4:
+        breite, hoehe = kasten[2], kasten[3]
+    if not breite or not hoehe:
+        raise Fehler(400, "Der SVG-Datei fehlen Breite und Höhe.")
+    return int(round(breite)), int(round(hoehe))
+
+
+def db_sichern(grund: str) -> str | None:
+    """Kopie der Datenbank im Ordner daten/sicherung anlegen, bevor viel auf einmal geändert wird. Die Kopie zeigt
+    den Stand vor der laufenden Änderung. Liefert den Dateinamen oder None, wenn es nicht geklappt hat."""
+    ordner = DATEN / "sicherung"
+    try:
+        ordner.mkdir(parents=True, exist_ok=True)
+        name = f"cafm_{dt.datetime.now():%Y%m%d_%H%M%S}_{grund}.sqlite"
+        quelle, ziel = sqlite3.connect(DB_PFAD, timeout=15), sqlite3.connect(ordner / name)
+        try:
+            quelle.backup(ziel)
+        finally:
+            ziel.close()
+            quelle.close()
+        return name
+    except (sqlite3.Error, OSError):
+        return None
+
+
 def plan_anlagen(con, pid: int) -> dict:
     plan = zeile(con.execute("SELECT * FROM plaene WHERE id=?", (pid,)).fetchone())
     if not plan:
@@ -2748,9 +2810,58 @@ def bild_masse(inhalt: bytes) -> tuple[int, int]:
     return 0, 0
 
 
+def plan_matrix(m) -> list | None:
+    """Abbildung alter Plan → neuer Plan aus plaene.json: sechs Zahlen a, b, c, d, e, f mit
+    x' = a·x + c·y + e und y' = b·x + d·y + f (x, y als Anteil 0 bis 1 von Breite und Höhe). Sonst None."""
+    try:
+        werte = [float(v) for v in m]
+    except (TypeError, ValueError):
+        return None
+    return werte if len(werte) == 6 and all(math.isfinite(v) and abs(v) < 1000 for v in werte) else None
+
+
+def plan_ersetzen(con, benutzer, oid: int, neu_id: int, neu_titel: str, alte: list, dateien_weg: list) -> dict:
+    """Alte Pläne durch einen neuen ersetzen: Die gesetzten Anlagen ziehen mit umgerechneter Lage auf den neuen Plan
+    um, danach werden die alten Pläne gelöscht. Ohne brauchbare Abbildung kommen die Anlagen zurück unter
+    „Noch nicht im Plan“. Die Bilddateien der alten Pläne kommen in `dateien_weg`: Gelöscht werden sie erst, wenn
+    alles gespeichert ist."""
+    zahlen = {"ersetzt": 0, "umgezogen": 0, "ohne_platz": 0}
+    for e in alte if isinstance(alte, list) else []:
+        if not isinstance(e, dict):
+            continue
+        matrix = plan_matrix(e.get("matrix"))
+        for alt in con.execute("SELECT id, pfad, titel FROM plaene WHERE objekt_id=? AND COALESCE(gebaeude,'')=? AND COALESCE(etage,'')=? "
+                               "AND titel=? AND id<>?", (oid, str(e.get("gebaeude") or "").strip(), str(e.get("etage") or "").strip(),
+                                                         str(e.get("titel") or "").strip(), neu_id)).fetchall():
+            for an in con.execute("SELECT id, plan_x, plan_y FROM anlagen WHERE plan_id=?", (alt["id"],)).fetchall():
+                if matrix and an["plan_x"] is not None and an["plan_y"] is not None:
+                    x = matrix[0] * an["plan_x"] + matrix[2] * an["plan_y"] + matrix[4]
+                    y = matrix[1] * an["plan_x"] + matrix[3] * an["plan_y"] + matrix[5]
+                    con.execute("UPDATE anlagen SET plan_id=?, plan_x=?, plan_y=?, geaendert=? WHERE id=?",
+                                (neu_id, min(max(x, 0.002), 0.998), min(max(y, 0.002), 0.998), jetzt(), an["id"]))
+                    zahlen["umgezogen"] += 1
+                else:
+                    con.execute("UPDATE anlagen SET plan_id=NULL, plan_x=NULL, plan_y=NULL, geaendert=? WHERE id=?", (jetzt(), an["id"]))
+                    zahlen["ohne_platz"] += 1
+            if alt["pfad"]:
+                datei = (PLAN_PFAD / alt["pfad"]).resolve()
+                if str(datei).startswith(str(PLAN_PFAD.resolve())) and datei.is_file():
+                    dateien_weg.append(datei)
+            con.execute("DELETE FROM plaene WHERE id=?", (alt["id"],))
+            protokollieren(con, benutzer, "gelöscht", "plaene", alt["id"], f"{alt['titel']}: ersetzt durch {neu_titel}")
+            zahlen["ersetzt"] += 1
+    return zahlen
+
+
 def plaene_importieren(con, benutzer, d: dict) -> dict:
-    """Mehrere Grundrisse aus einer ZIP-Datei anlegen. Angaben aus plaene.json oder aus dem Dateinamen
-    „Gebäude__Etage__Titel.png“. Gibt es einen Plan mit gleichem Gebäude, gleicher Etage und gleichem Titel, wird er übersprungen."""
+    """Mehrere Grundrisse aus einer ZIP-Datei anlegen (PNG, JPG oder SVG). Angaben aus plaene.json oder aus dem
+    Dateinamen „Gebäude__Etage__Titel.png“. Gibt es einen Plan mit gleichem Gebäude, gleicher Etage und gleichem
+    Titel, wird er übersprungen.
+
+    Ersetzen: Nennt plaene.json bei einem Plan unter „ersetzt“ alte Pläne (Gebäude, Etage, Titel und die Abbildung
+    „matrix“), dann ziehen mit ersetzen=1 deren Anlagen auf den neuen Plan um und die alten Pläne werden gelöscht.
+    Vorher wird die Datenbank gesichert. Unter „_dateien_weg“ stehen die Bilddateien der gelöschten Pläne: Die
+    räumt der Aufrufer weg, wenn alles gespeichert ist."""
     import zipfile
     try:
         oid = int(d.get("objekt_id"))
@@ -2772,12 +2883,19 @@ def plaene_importieren(con, benutzer, d: dict) -> dict:
                 angaben[os.path.basename(str(e.get("datei") or ""))] = e
         except (ValueError, UnicodeDecodeError, AttributeError, TypeError):
             raise Fehler(400, "Die Datei plaene.json ist ungültig.")
-    bilder = [n for n in namen if n.lower().endswith((".png", ".jpg", ".jpeg"))]
+    bilder = [n for n in namen if n.lower().endswith((".png", ".jpg", ".jpeg", ".svg"))]
     if not bilder:
-        raise Fehler(400, "In der ZIP-Datei sind keine Grundrisse (PNG oder JPG).")
+        raise Fehler(400, "In der ZIP-Datei sind keine Grundrisse (PNG, JPG oder SVG).")
     if len(bilder) > 300:
         raise Fehler(400, "Höchstens 300 Grundrisse auf einmal.")
-    angelegt, uebersprungen = [], []
+    ersetzen = d.get("ersetzen") in (True, 1, "1", "true") and any(e.get("ersetzt") for e in angaben.values())
+    sicherung = None
+    if ersetzen:
+        sicherung = db_sichern("vor_planwechsel")
+        if not sicherung:
+            raise Fehler(500, "Die Sicherung vor dem Ersetzen hat nicht geklappt. Es wurde nichts geändert.")
+    angelegt, uebersprungen, dateien_weg = [], [], []
+    zahlen = {"ersetzt": 0, "umgezogen": 0, "ohne_platz": 0}
     gesamt = 0
     for n in sorted(bilder):
         info = zf.getinfo(n)
@@ -2793,26 +2911,36 @@ def plaene_importieren(con, benutzer, d: dict) -> dict:
         titel = str(e.get("titel") or os.path.splitext(datei)[0]).strip()[:200]
         geb = str(e.get("gebaeude") or "").strip()[:100]
         etage = str(e.get("etage") or "").strip()[:100]
-        if con.execute("SELECT 1 FROM plaene WHERE objekt_id=? AND COALESCE(gebaeude,'')=? AND COALESCE(etage,'')=? AND titel=?",
-                       (oid, geb, etage, titel)).fetchone():
+        da = con.execute("SELECT id FROM plaene WHERE objekt_id=? AND COALESCE(gebaeude,'')=? AND COALESCE(etage,'')=? AND titel=?",
+                         (oid, geb, etage, titel)).fetchone()
+        if da:
+            pid = da["id"]
             uebersprungen.append(titel)
-            continue
-        inhalt = zf.read(n)
-        endung = bild_endung(inhalt)
-        if endung not in ("png", "jpg"):
-            uebersprungen.append(titel)
-            continue
-        breite, hoehe = bild_masse(inhalt)
-        sauber = daten_pruefen(RESSOURCEN["plaene"], {"objekt_id": oid, "titel": titel, "gebaeude": geb or None,
-                                                       "etage": etage or None, "notiz": str(e.get("notiz") or "")[:2000] or None}, neu=True)
-        sauber.update({"dateiname": re.sub(r"[^\w.\- äöüÄÖÜß]", "_", datei)[:150], "breite": breite, "hoehe": hoehe})
-        pid = einfuegen(con, "plaene", sauber)
-        pfad = f"{pid:06d}_{secrets.token_hex(6)}.{endung}"
-        (PLAN_PFAD / pfad).write_bytes(inhalt)
-        con.execute("UPDATE plaene SET pfad=? WHERE id=?", (pfad, pid))
-        angelegt.append(titel)
-    protokollieren(con, benutzer, "Grundrisse importiert", "plaene", None, f"{len(angelegt)} angelegt, {len(uebersprungen)} übersprungen")
-    return {"angelegt": len(angelegt), "uebersprungen": uebersprungen}
+        else:
+            inhalt = zf.read(n)
+            if datei.lower().endswith(".svg") or ist_svg(inhalt):
+                endung, (breite, hoehe) = "svg", svg_pruefen(inhalt)
+            else:
+                endung = bild_endung(inhalt)
+                if endung not in ("png", "jpg"):
+                    uebersprungen.append(titel)
+                    continue
+                breite, hoehe = bild_masse(inhalt)
+            sauber = daten_pruefen(RESSOURCEN["plaene"], {"objekt_id": oid, "titel": titel, "gebaeude": geb or None,
+                                                           "etage": etage or None, "notiz": str(e.get("notiz") or "")[:2000] or None}, neu=True)
+            sauber.update({"dateiname": re.sub(r"[^\w.\- äöüÄÖÜß]", "_", datei)[:150], "breite": breite, "hoehe": hoehe})
+            pid = einfuegen(con, "plaene", sauber)
+            pfad = f"{pid:06d}_{secrets.token_hex(6)}.{endung}"
+            (PLAN_PFAD / pfad).write_bytes(inhalt)
+            con.execute("UPDATE plaene SET pfad=? WHERE id=?", (pfad, pid))
+            angelegt.append(titel)
+        if ersetzen and e.get("ersetzt"):
+            for k, v in plan_ersetzen(con, benutzer, oid, pid, titel, e["ersetzt"], dateien_weg).items():
+                zahlen[k] += v
+    protokollieren(con, benutzer, "Grundrisse importiert", "plaene", None,
+                   f"{len(angelegt)} angelegt, {len(uebersprungen)} übersprungen"
+                   + (f", {zahlen['ersetzt']} alte Pläne ersetzt, {zahlen['umgezogen']} Anlagen umgezogen" if ersetzen else ""))
+    return {"angelegt": len(angelegt), "uebersprungen": uebersprungen, **zahlen, "sicherung": sicherung, "_dateien_weg": dateien_weg}
 
 
 def sv_uebernehmen(con, benutzer, rechte, did: int, d: dict) -> dict:
@@ -4008,7 +4136,17 @@ class Handler(BaseHTTPRequestHandler):
         if erstes == "plaene" and len(teile) == 2 and teile[1] == "import" and m == "POST":
             if not self.rechte.get("plaene_bearbeiten"):
                 raise Fehler(403, "Dafür fehlt dir das Recht: Grundrisse hochladen, Symbole setzen und verschieben.")
-            return self.json(plaene_importieren(con, b, self.body()))
+            ergebnis = plaene_importieren(con, b, self.body())
+            weg = ergebnis.pop("_dateien_weg")
+
+            def aufraeumen():  # erst nach dem Speichern: Bilder der ersetzten Pläne löschen
+                for datei in weg:
+                    try:
+                        datei.unlink()
+                    except OSError:
+                        pass
+            self._spaeter = aufraeumen
+            return self.json(ergebnis)
         if erstes == "plaene" and len(teile) == 1 and m == "POST":
             return self.plan_hochladen(con, b, None)
         if erstes == "plaene" and len(teile) == 3:
@@ -5039,7 +5177,7 @@ class Handler(BaseHTTPRequestHandler):
         p = (PLAN_PFAD / r["pfad"]).resolve()
         if not str(p).startswith(str(PLAN_PFAD.resolve())) or not p.is_file():
             raise Fehler(404, "Grundriss nicht gefunden.")
-        typ = mimetypes.guess_type(p.name)[0] or "application/octet-stream"
+        typ = "image/svg+xml" if p.suffix == ".svg" else mimetypes.guess_type(p.name)[0] or "application/octet-stream"
         self.senden(200, p.read_bytes(), typ, {"Cache-Control": "private, max-age=3600",
                                                 "Content-Security-Policy": "sandbox"})
 

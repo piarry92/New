@@ -305,6 +305,8 @@ td.zahl, th.zahl { text-align: right; white-space: nowrap; }
 .plan-legende { margin-top: 8px; }
 .mini-plan { position: relative; display: block; background: var(--zartgrau); border-radius: var(--radius); overflow: hidden; --inv: 1; }
 .mini-plan img { display: block; width: 100%; }
+.mini-plan.weit { aspect-ratio: 16 / 9; background: #fff; }
+.mini-plan.weit .mp-welt { position: absolute; display: block; }
 
 @media (max-width: 900px) {
   .plan-layout { grid-template-columns: 1fr; }

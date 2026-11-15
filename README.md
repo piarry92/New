@@ -154,12 +154,30 @@ einen Leser aus dem Internet.
 ## Mehrere Grundrisse auf einmal (ZIP-Import)
 
 - Standorte & Pläne › Objekt wählen › **„Mehrere importieren (ZIP)“**. In der ZIP-Datei liegen die Grundrisse als
-  PNG oder JPG. Gebäude, Etage und Titel kommen aus einer Datei `plaene.json`
+  PNG, JPG oder SVG. Gebäude, Etage und Titel kommen aus einer Datei `plaene.json`
   (`[{"datei": "...png", "gebaeude": "Finger 1", "etage": "2. OG", "titel": "Finger 1 2. OG"}]`) oder aus dem
   Dateinamen `Gebäude__Etage__Titel.png`. Vorhandene Pläne mit gleichem Gebäude, Etage und Titel werden übersprungen.
 - Im Standortbaum erscheinen sie als Objekt › Gebäude (z. B. Finger 1) › Etage.
 - Flucht- und Rettungspläne als PDF lassen sich mit `python3 werkzeuge/frp_grundrisse.py <pläne.pdf> <ordner>`
   in saubere Grundrisse samt `plaene.json` umwandeln (braucht `pip install pymupdf numpy pillow`).
+- Auch **SVG** geht (gezeichnete Pläne, die beim Vergrößern scharf bleiben). Erlaubt ist nur die reine Zeichnung:
+  Linien, Flächen und Schrift. Dateien mit Skripten, Verweisen oder eingebetteten Bildern lehnt das Programm ab.
+- Einen Plan je Etage für das ganze Haus macht `python3 werkzeuge/fwp_etagenplan.py <feuerwehrplan.pdf> <ordner>`
+  aus einem Feuerwehrplan. Mit `--neuer=<ordner>` arbeitet es jüngere Rettungsplan-Blätter ein.
+
+### Alte Pläne durch neue ersetzen
+
+- Im Import-Fenster ist der Haken **„Alte Pläne ersetzen, wenn die ZIP-Datei das vorsieht“** gesetzt. Nennt
+  `plaene.json` bei einem neuen Plan unter `ersetzt` die alten Pläne, dann
+  - ziehen die gesetzten Anlagen von den alten Plänen auf den neuen um, an dieselbe Stelle im Haus,
+  - werden die alten Pläne gelöscht,
+  - legt das Programm vorher eine Sicherung der Datenbank an (`daten/sicherung/`).
+- Danach zeigt ein Fenster, wie viele Pläne gelöscht und wie viele Anlagen umgezogen sind.
+- Format: `"ersetzt": [{"gebaeude": "Finger 1", "etage": "2. OG", "titel": "Finger 1 2. OG", "matrix": [a, b, c, d, e, f]}]`.
+  Die sechs Zahlen rechnen die Lage um: `x' = a·x + c·y + e`, `y' = b·x + d·y + f`, jeweils als Anteil 0 bis 1
+  von Breite und Höhe. Fehlt die Matrix, stehen die Anlagen danach unter „Noch nicht im Plan“.
+- Gibt es die neuen Pläne schon (weil ohne Haken importiert wurde), reicht ein zweiter Import mit Haken: Die
+  neuen Pläne werden übersprungen, die alten ersetzt.
 
 ## Grundriss im Vollbild
 
@@ -288,7 +306,8 @@ Ordner hinein. Die Datenbank wird beim Start automatisch auf den neuen Stand geb
 ## Wo die Daten liegen
 
 Alles liegt im Ordner `daten/`: die Datenbank `cafm.sqlite` und die hochgeladenen Dateien unter
-`dokumente/`. Zum Sichern diesen Ordner kopieren. Mit der Umgebungsvariable `CAFM_DATEN` lässt sich
+`dokumente/`, die Grundrisse unter `plaene/`. Unter `sicherung/` legt das Programm vor dem Ersetzen von Plänen
+eine Kopie der Datenbank ab. Zum Sichern diesen Ordner kopieren. Mit der Umgebungsvariable `CAFM_DATEN` lässt sich
 ein anderer Ort wählen.
 
 ## Technik in Kürze

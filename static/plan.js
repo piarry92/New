@@ -213,19 +213,29 @@ async function plaeneImportieren(objektId) {
   const html = `<div class="dfehler"></div><form class="formular" onsubmit="return false">
     <label class="breit"><span class="pflicht">Objekt</span><select name="objekt_id"><option value="">Bitte wählen</option>${(S.cache.objekte || []).map((o) => `<option value="${o.id}" ${String(o.id) === String(objektId) ? "selected" : ""}>${esc(anzeige("objekte", o))}</option>`).join("")}</select></label>
     <label class="breit"><span class="pflicht">ZIP-Datei mit Grundrissen</span><input type="file" name="datei" accept=".zip,application/zip"></label>
-    <p class="klein breit">In der ZIP-Datei liegen die Grundrisse als PNG oder JPG. Gebäude und Etage kommen aus der Datei plaene.json oder aus dem Dateinamen, zum Beispiel „Finger 1__2. OG__Finger 1 2. OG.png“. Schon vorhandene Pläne werden übersprungen.</p></form>`;
-  return dialog("Mehrere Grundrisse importieren", html, [{ text: "Abbrechen" }, {
+    <label class="check breit"><input type="checkbox" name="ersetzen" checked> Alte Pläne ersetzen, wenn die ZIP-Datei das vorsieht</label>
+    <p class="klein breit">In der ZIP-Datei liegen die Grundrisse als PNG, JPG oder SVG. Gebäude und Etage kommen aus der Datei plaene.json oder aus dem Dateinamen, zum Beispiel „Finger 1__2. OG__Finger 1 2. OG.png“. Schon vorhandene Pläne werden übersprungen.</p>
+    <p class="klein breit">Ersetzen: Manche ZIP-Dateien bringen neue Pläne mit, die alte ablösen. Dann ziehen die gesetzten Anlagen auf den neuen Plan um und die alten Pläne werden gelöscht. Vorher legt das Programm eine Sicherung der Daten an.</p></form>`;
+  const erg = await dialog("Mehrere Grundrisse importieren", html, [{ text: "Abbrechen" }, {
     text: "Importieren", klasse: "haupt-k", aktion: async (hg) => {
       const fm = hg.querySelector("form"), datei = fm.datei.files[0];
       if (!fm.objekt_id.value) throw new Error("Bitte ein Objekt wählen.");
       if (!datei) throw new Error("Bitte die ZIP-Datei auswählen.");
       if (datei.size > 24 * 1024 * 1024) throw new Error("Die ZIP-Datei ist zu groß (höchstens 24 MB). Bitte in zwei Teilen importieren.");
       const inhalt = await new Promise((ok, nein) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(",")[1] || ""); r.onerror = nein; r.readAsDataURL(datei); });
-      const r = await api("POST", "plaene/import", { objekt_id: Number(fm.objekt_id.value), inhalt });
-      melde(`${r.angelegt} Grundrisse angelegt${r.uebersprungen.length ? `, ${r.uebersprungen.length} schon vorhanden und übersprungen` : ""}.`);
-      return r;
+      return api("POST", "plaene/import", { objekt_id: Number(fm.objekt_id.value), inhalt, ersetzen: fm.ersetzen.checked });
     },
   }]);
+  if (!erg || erg === true) return erg;
+  const zeilen = [`${erg.angelegt} ${erg.angelegt === 1 ? "Grundriss" : "Grundrisse"} angelegt`];
+  if (erg.uebersprungen.length) zeilen.push(`${erg.uebersprungen.length} schon vorhanden und übersprungen`);
+  if (!erg.ersetzt) { melde(zeilen.join(", ") + "."); return erg; }
+  zeilen.push(`${erg.ersetzt} alte ${erg.ersetzt === 1 ? "Plan" : "Pläne"} gelöscht`);
+  zeilen.push(`${erg.umgezogen} ${erg.umgezogen === 1 ? "Anlage ist" : "Anlagen sind"} auf die neuen Pläne umgezogen`);
+  if (erg.ohne_platz) zeilen.push(`${erg.ohne_platz} ${erg.ohne_platz === 1 ? "Anlage steht" : "Anlagen stehen"} jetzt unter „Noch nicht im Plan“`);
+  await dialog("Pläne ersetzt", `<ul class="liste-einfach">${zeilen.map((z) => `<li>${esc(z)}</li>`).join("")}</ul>
+    <p class="klein">Schau bei den umgezogenen Anlagen einmal nach, ob sie richtig sitzen. Die Sicherung von vorher liegt im Ordner daten › sicherung${erg.sicherung ? `: ${esc(erg.sicherung)}` : ""}.</p>`, [{ text: "Schließen", klasse: "haupt-k" }]);
+  return erg;
 }
 
 SEITEN.plaene = async (el) => {
@@ -286,7 +296,7 @@ async function planEditor(el, id, q) {
     anwenden();
   };
   const zoomUm = (faktor, cx, cy) => {
-    const neu = Math.min(Math.max(ansicht.s * faktor, 0.05), 8);
+    const neu = Math.min(Math.max(ansicht.s * faktor, 0.05), /\.svg$/i.test(plan.dateiname || "") ? 16 : 8);   // gezeichnete Pläne (SVG) bleiben auch groß scharf
     const f = neu / ansicht.s;
     ansicht.x = cx - (cx - ansicht.x) * f; ansicht.y = cy - (cy - ansicht.y) * f; ansicht.s = neu;
     anwenden();
@@ -611,10 +621,17 @@ async function planEditor(el, id, q) {
   };
 }
 
-/* Kleiner Planausschnitt für die Anlagen-Seite */
+/* Kleiner Planausschnitt für die Anlagen-Seite. Bei einem Plan der ganzen Etage (sehr breit) wird der Bereich um die Anlage gezeigt. */
 function planAusschnitt(a) {
   if (!a.plan_id) return "";
-  return `<a class="mini-plan" href="#/plaene/${a.plan_id}?anlage=${a.id}" title="Im Plan zeigen">
-    <img src="/api/plaene/${a.plan_id}/bild" alt="">
-    <span class="mk ${quadratSymbol(a, 32) ? "zeichen" : ""} ampel-gruen" style="left:${a.plan_x * 100}%;top:${a.plan_y * 100}%;--c:${stil(a.gewerk)[1]}">${quadratSymbol(a, 32) || esc(stil(a.gewerk)[0])}</span></a>`;
+  const p = (S.cache.plaene || []).find((x) => x.id === a.plan_id);
+  const form = p && p.breite && p.hoehe ? p.breite / p.hoehe : 1;
+  const marke = `<span class="mk ${quadratSymbol(a, 32) ? "zeichen" : ""} ampel-gruen" style="left:${a.plan_x * 100}%;top:${a.plan_y * 100}%;--c:${stil(a.gewerk)[1]}">${quadratSymbol(a, 32) || esc(stil(a.gewerk)[0])}</span>`;
+  if (form <= 2.4) {
+    return `<a class="mini-plan" href="#/plaene/${a.plan_id}?anlage=${a.id}" title="Im Plan zeigen"><img src="/api/plaene/${a.plan_id}/bild" alt="">${marke}</a>`;
+  }
+  const fenster = 16 / 9, hoch = 1.6, z = hoch * form / fenster;              // Plan 1,6-mal so hoch wie das Fenster
+  const l = Math.min(0, Math.max(-(z - 1), 0.5 - a.plan_x * z)), t = Math.min(0, Math.max(-(hoch - 1), 0.5 - a.plan_y * hoch));
+  return `<a class="mini-plan weit" href="#/plaene/${a.plan_id}?anlage=${a.id}" title="Im Plan zeigen">
+    <span class="mp-welt" style="width:${z * 100}%;left:${l * 100}%;top:${t * 100}%"><img src="/api/plaene/${a.plan_id}/bild" alt="">${marke}</span></a>`;
 }
