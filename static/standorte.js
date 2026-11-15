@@ -11,6 +11,13 @@ const ETAGE_RANG = (e) => {
   if (/^(DG|DACH)/.test(t)) return 90;
   return 400;
 };
+/* Etage im Baum; mehrere Teilpläne derselben Etage zeigen ihren Zusatz (z. B. „2. OG Teil a“) */
+const etagenName = (p) => {
+  if (!p.etage) return p.titel;
+  const vorne = [p.gebaeude, p.etage].filter(Boolean).join(" ");
+  const rest = p.titel && p.titel.startsWith(vorne) ? p.titel.slice(vorne.length).trim() : "";
+  return rest ? `${p.etage} ${rest}` : p.etage;
+};
 const etagenSort = (a, b) => ETAGE_RANG(a.etage) - ETAGE_RANG(b.etage) || String(a.etage || a.titel).localeCompare(String(b.etage || b.titel), "de");
 
 function baumOffen(neu) {
@@ -59,7 +66,7 @@ async function standortAnsicht(el, planId, q) {
       const auf = offen.has("o" + o.id) || !!w;
       const gebaeude = [...new Set(eigene.map((p) => p.gebaeude || ""))];
       const mitGebaeude = gebaeude.some(Boolean);
-      const etage = (p) => `<li><a class="b-knoten b-etage ${plan && plan.id === p.id ? "an" : ""}" href="#/plaene/${p.id}">${icon("plaene")}<span>${esc(p.etage || p.titel)}</span><span class="b-zahl">${p.anlagen_anzahl || 0}</span></a></li>`;
+      const etage = (p) => `<li><a class="b-knoten b-etage ${plan && plan.id === p.id ? "an" : ""}" href="#/plaene/${p.id}">${icon("plaene")}<span>${esc(etagenName(p))}</span><span class="b-zahl">${p.anlagen_anzahl || 0}</span></a></li>`;
       const kinder = !mitGebaeude ? eigene.map(etage).join("") : gebaeude.map((g) => {
         const key = `g${o.id}|${g}`, gAuf = !offen.has("zu" + key) || !!w;
         return `<li><span class="b-knoten b-gebaeude" data-gtoggle="${esc(key)}"><span class="b-pfeil">${gAuf ? "▾" : "▸"}</span>${icon("objekte")}<span>${esc(g || "Ohne Gebäudeangabe")}</span></span>

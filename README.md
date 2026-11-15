@@ -135,6 +135,8 @@ einen Leser aus dem Internet.
   (`[{"datei": "...png", "gebaeude": "Finger 1", "etage": "2. OG", "titel": "Finger 1 2. OG"}]`) oder aus dem
   Dateinamen `Gebäude__Etage__Titel.png`. Vorhandene Pläne mit gleichem Gebäude, Etage und Titel werden übersprungen.
 - Im Standortbaum erscheinen sie als Objekt › Gebäude (z. B. Finger 1) › Etage.
+- Flucht- und Rettungspläne als PDF lassen sich mit `python3 werkzeuge/frp_grundrisse.py <pläne.pdf> <ordner>`
+  in saubere Grundrisse samt `plaene.json` umwandeln (braucht `pip install pymupdf numpy pillow`).
 
 ## Grundriss im Vollbild
 
