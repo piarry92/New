@@ -209,6 +209,7 @@ async function planListe(ziel, filter = {}) {
 }
 
 async function plaeneImportieren(objektId) {
+  await lade("objekte");
   const html = `<div class="dfehler"></div><form class="formular" onsubmit="return false">
     <label class="breit"><span class="pflicht">Objekt</span><select name="objekt_id"><option value="">Bitte wählen</option>${(S.cache.objekte || []).map((o) => `<option value="${o.id}" ${String(o.id) === String(objektId) ? "selected" : ""}>${esc(anzeige("objekte", o))}</option>`).join("")}</select></label>
     <label class="breit"><span class="pflicht">ZIP-Datei mit Grundrissen</span><input type="file" name="datei" accept=".zip,application/zip"></label>

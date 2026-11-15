@@ -126,7 +126,7 @@ function berichtDrucken(d, e) {
   }
   if (d.svmaengel) {
     const s = d.svmaengel;
-    const einst = (x) => marke(x.einstufung || "unklar", x.einstufung === "gefährlich" ? "rot" : x.einstufung === "wesentlich" ? "gelb" : "grau");
+    const einst = (x) => marke(x.einstufung || "unklar", x.einstufung === "gefährlich" ? "rot" : x.einstufung === "erheblich" ? "gelb" : "grau");
     teile.push(abschnitt("SV-Mängel", kacheln([[s.offen.length, "offen", s.offen.length ? "rot" : "gruen"], [s.offen.filter((m) => m.einstufung === "gefährlich").length, "davon gefährlich", s.offen.some((m) => m.einstufung === "gefährlich") ? "rot" : ""], [s.behoben_zeitraum.length, "behoben im Zeitraum", "gruen"], [s.neu_zeitraum, "neu erfasst im Zeitraum"]])
       + `<h3>Offene SV-Mängel</h3>${tabelle(["Anlage", "Mangel", "Einstufung", "Frist", "Status"], s.offen.map((m) => [h(m.anlage), `${m.nummer ? `<small>${h(m.nummer)}</small> ` : ""}<b>${h(m.beschreibung)}</b>${m.ort ? `<br><small>${h(m.ort)}</small>` : ""}`, einst(m), m.frist ? `${dat(m.frist)} ${faellig(m.frist)}` : `<small>${h(m.frist_text)}</small>`, h(m.status)]), "Keine offenen SV-Mängel.")}`
       + (s.behoben_zeitraum.length ? `<h3>Behoben im Zeitraum</h3>${tabelle(["Anlage", "Mangel", "Behoben am", "Maßnahme"], s.behoben_zeitraum.map((m) => [h(m.anlage), h(m.beschreibung), dat(m.behoben_am), h(m.massnahme)]))}` : "")));

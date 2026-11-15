@@ -1,7 +1,7 @@
 "use strict";
 /* SV-Berichte hochladen, mit KI auswerten, SV-Mängelplan je Objekt */
 
-const SV_EINST_FARBE = { "gefährlich": "m-ueber", "wesentlich": "m-bald", "geringfügig": "m-geplant", "unklar": "m-geplant" };
+const SV_EINST_FARBE = { "gefährlich": "m-ueber", "erheblich": "m-bald", "geringfügig": "m-geplant", "unklar": "m-geplant" };
 const SV_STATUS_FARBE = { offen: "m-ueber", "in Arbeit": "m-bald", behoben: "m-ok", "nachgeprüft": "m-ok" };
 const svEinstMarke = (e) => e ? `<span class="marke ${SV_EINST_FARBE[e] || "m-geplant"}">${esc(e)}</span>` : "";
 const svStatusMarke = (s) => `<span class="marke ${SV_STATUS_FARBE[s] || "m-geplant"}">${esc(s || "offen")}</span>`;
@@ -178,42 +178,70 @@ async function svMaengelReiter(ziel, filter = {}) {
     <button class="knopf" data-druck>Drucken / PDF</button>${darf("export") ? `<button class="knopf" data-csv>${icon("export")} Excel</button>` : ""}<span class="anzahl" data-anz></span></div>
     <div data-kz></div><div data-inhalt></div>`;
   let daten = [];
-  const RANG = { "gefährlich": 0, "wesentlich": 1, "unklar": 2, "geringfügig": 3 };
-  const sichtbar = () => daten.slice().sort((x, y) => (RANG[x.einstufung] ?? 2) - (RANG[y.einstufung] ?? 2) || String(x.frist || "9999").localeCompare(String(y.frist || "9999"))).filter((m) => (z.status === "offen" ? svOffen(m) : z.status === "erledigt" ? !svOffen(m) : true)
-    && (!z.q || [m.beschreibung, m.nummer, m.ort, refText("anlagen", m.anlage_id)].some((x) => String(x || "").toLowerCase().includes(z.q.toLowerCase()))));
+  const RANG = { "gefährlich": 0, "erheblich": 1, "unklar": 2, "geringfügig": 3 };
+  const sichtbar = () => daten.slice().sort((x, y) => String(refText("anlagen", x.anlage_id) || "~").localeCompare(String(refText("anlagen", y.anlage_id) || "~"), "de") || (RANG[x.einstufung] ?? 2) - (RANG[y.einstufung] ?? 2) || String(x.nummer || "").localeCompare(String(y.nummer || ""), "de", { numeric: true })).filter((m) => (z.status === "offen" ? svOffen(m) : z.status === "erledigt" ? !svOffen(m) : true)
+    && (!z.q || [m.beschreibung, m.nummer, m.ort, m.firma, m.sachstand, m.angebot, refText("anlagen", m.anlage_id)].some((x) => String(x || "").toLowerCase().includes(z.q.toLowerCase()))));
+  let kopfInfo = {};
+  const gruppen = (liste) => {
+    const g = new Map();
+    for (const m of liste) { const k = m.anlage_id || 0; if (!g.has(k)) g.set(k, []); g.get(k).push(m); }
+    return [...g];
+  };
+  const kopfText = (aid) => {
+    const k = kopfInfo[aid];
+    if (!k) return "";
+    return [k.pruefer, k.pruefnummer, k.letzte && `Prüfung ${datum(k.letzte)}`, k.nachpruefung && `Nachprüfung ${datum(k.nachpruefung)}`, k.maengelfrist && `Frist Mängelbeseitigung ${datum(k.maengelfrist)}`].filter(Boolean).join(" · ");
+  };
+  const bewertung = (m) => `${svEinstMarke(m.einstufung)}${m.bewertung_bericht ? `<br><span class="klein">${esc(m.bewertung_bericht)}</span>` : ""}`;
   const zeichnen = () => {
     const liste = sichtbar();
     const offen = daten.filter(svOffen);
     const ueber = offen.filter((m) => m.frist && tageBis(m.frist) < 0).length;
+    const kosten = offen.reduce((n, m) => n + (Number(m.kosten) || 0), 0);
     ziel.querySelector("[data-anz]").textContent = `${liste.length} Einträge`;
-    ziel.querySelector("[data-kz]").innerHTML = `<div class="raster k4 sv-kz">
+    ziel.querySelector("[data-kz]").innerHTML = `<div class="raster k4 sv-kz sv-kz5">
       <div class="karte kennzahl ${offen.length ? "orange" : ""}"><div class="wert">${offen.length}</div><div class="text">SV-Mängel offen</div></div>
-      <div class="karte kennzahl ${offen.some((m) => m.einstufung === "gefährlich") ? "rot" : ""}"><div class="wert">${offen.filter((m) => m.einstufung === "gefährlich").length}</div><div class="text">gefährlich</div></div>
+      <div class="karte kennzahl ${offen.some((m) => ["erheblich", "gefährlich"].includes(m.einstufung)) ? "rot" : ""}"><div class="wert">${offen.filter((m) => ["erheblich", "gefährlich"].includes(m.einstufung)).length}</div><div class="text">erheblich oder gefährlich</div></div>
       <div class="karte kennzahl ${ueber ? "rot" : ""}"><div class="wert">${ueber}</div><div class="text">Frist überschritten</div></div>
+      <div class="karte kennzahl"><div class="wert">${kosten ? geld(kosten) : "–"}</div><div class="text">Kosten netto der offenen Mängel</div></div>
       <div class="karte kennzahl"><div class="wert">${daten.length - offen.length}</div><div class="text">behoben oder nachgeprüft</div></div></div><div class="abstand"></div>`;
-    ziel.querySelector("[data-inhalt]").innerHTML = liste.length ? `<div class="tabelle-wrap"><table><thead><tr><th>Nr.</th><th>Mangel</th>${filter.anlage_id ? "" : "<th>Anlage</th>"}${filter.objekt_id ? "" : "<th>Objekt</th>"}<th>Einstufung</th><th>Frist</th><th>Status</th><th>Bericht</th><th></th></tr></thead><tbody>
-      ${liste.map((m) => `<tr class="klickbar" data-id="${m.id}"><td>${esc(m.nummer || "")}</td>
-        <td class="sv-text"><b>${esc(m.beschreibung)}</b>${m.ort ? `<br><span class="klein">${esc(m.ort)}</span>` : ""}${m.massnahme ? `<br><span class="klein">Maßnahme: ${esc(m.massnahme)}</span>` : ""}</td>
-        ${filter.anlage_id ? "" : `<td>${m.anlage_id ? `<a href="#/anlagen/${m.anlage_id}">${esc(refText("anlagen", m.anlage_id))}</a>` : ""}</td>`}
+    const spalten = 11 + (filter.objekt_id ? 0 : 1);
+    ziel.querySelector("[data-inhalt]").innerHTML = liste.length ? `<div class="tabelle-wrap"><table class="sv-mtab"><thead><tr><th>Lfd. Nr.</th><th>Feststellung</th>${filter.objekt_id ? "" : "<th>Objekt</th>"}<th>Bewertung</th><th>Frist</th><th>Kosten netto</th><th>Firma</th><th>Sachstand</th><th>Beauftragt</th><th>Gepl. Ausführung</th><th>Fertigstellung</th><th>Status</th><th></th></tr></thead><tbody>
+      ${gruppen(liste).map(([aid, l]) => (filter.anlage_id ? "" : `<tr class="sv-gruppe"><td colspan="${spalten + 1}">${aid ? `<a href="#/anlagen/${aid}">${esc(refText("anlagen", aid))}</a>` : "Ohne Anlage"} <span class="klein">${esc(kopfText(aid))}</span></td></tr>`)
+        + l.map((m) => `<tr class="klickbar" data-id="${m.id}"><td>${esc(m.nummer || "")}</td>
+        <td class="sv-text"><b>${esc(m.beschreibung)}</b>${m.ort ? `<br><span class="klein">${esc(m.ort)}</span>` : ""}${m.bericht_id ? `<br><a class="klein" href="/api/dokumente/${m.bericht_id}/datei" target="_blank" rel="noopener">${esc(refText("dokumente", m.bericht_id))}${m.seite ? `, S. ${zahl(m.seite)}` : ""}</a>` : ""}</td>
         ${filter.objekt_id ? "" : `<td>${esc(refText("objekte", m.objekt_id))}</td>`}
-        <td>${svEinstMarke(m.einstufung)}</td>
+        <td>${bewertung(m)}</td>
         <td>${m.frist ? `${datum(m.frist)}${svOffen(m) ? `<br>${faelligMarke(m.frist)}` : ""}` : `<span class="klein">${esc(m.frist_text || "")}</span>`}</td>
-        <td>${svStatusMarke(m.status)}${m.behoben_am ? `<br><span class="klein">${datum(m.behoben_am)}</span>` : ""}</td>
-        <td>${m.bericht_id ? `<a href="/api/dokumente/${m.bericht_id}/datei" target="_blank" rel="noopener">${esc(refText("dokumente", m.bericht_id))}</a>${m.seite ? ` <span class="klein">S. ${zahl(m.seite)}</span>` : ""}` : ""}</td>
-        <td class="sv-akt">${darfAendernRes("sv_maengel") && svOffen(m) ? `<button class="knopf klein" data-beh="${m.id}">Behoben</button>` : ""}${darf("tickets_anlegen") && svOffen(m) && !m.ticket_id ? `<button class="knopf klein" data-tik="${m.id}">Störmeldung</button>` : ""}${m.ticket_id ? `<a class="knopf klein" href="#/tickets/${m.ticket_id}">Störmeldung</a>` : ""}</td></tr>`).join("")}</tbody></table></div>`
+        <td class="zahl">${m.kosten ? geld(m.kosten) : ""}</td>
+        <td>${esc(m.firma || (m.dienstleister_id ? refText("dienstleister", m.dienstleister_id) : ""))}${m.angebot ? `<br><span class="klein">${esc(m.angebot)}</span>` : ""}</td>
+        <td class="sv-text klein">${esc(m.sachstand || "")}${m.kommentar ? `<br><i>${esc(m.kommentar)}</i>` : ""}</td>
+        <td>${datum(m.beauftragt_am)}</td><td>${esc(m.geplant || "")}</td>
+        <td>${datum(m.behoben_am)}${m.rechnung_nr ? `<br><span class="klein">RG ${esc(m.rechnung_nr)}${m.rechnung_summe ? ", " + geld(m.rechnung_summe) : ""}</span>` : ""}</td>
+        <td>${svStatusMarke(m.status)}</td>
+        <td class="sv-akt">${darfAendernRes("sv_maengel") && svOffen(m) ? `<button class="knopf klein" data-beh="${m.id}">Behoben</button>` : ""}${darf("tickets_anlegen") && svOffen(m) && !m.ticket_id ? `<button class="knopf klein" data-tik="${m.id}">Störmeldung</button>` : ""}${m.ticket_id ? `<a class="knopf klein" href="#/tickets/${m.ticket_id}">Störmeldung</a>` : ""}</td></tr>`).join("")).join("")}</tbody></table></div>`
       : `<div class="karte leer">${daten.length ? "Keine Einträge für diese Auswahl." : "Noch keine SV-Mängel. Lade auf einer sicherheitsrelevanten Anlage den SV-Bericht hoch, dann landen die Mängel hier."}</div>`;
   };
-  const laden = async () => { [daten] = await Promise.all([api("GET", `sv_maengel?${new URLSearchParams(filter)}`), refsLaden("sv_maengel")]); zeichnen(); };
+  const laden = async () => {
+    const qs = new URLSearchParams(filter);
+    const [d, , plan] = await Promise.all([api("GET", `sv_maengel?${qs}`), refsLaden("sv_maengel"), api("GET", `svpruefplan${filter.objekt_id ? "?objekt_id=" + filter.objekt_id : ""}`).catch(() => ({ anlagen: [] }))]);
+    daten = d;
+    kopfInfo = {};
+    for (const a of plan.anlagen) { const w = a.pruefungen[0]; if (w) kopfInfo[a.id] = { pruefer: w.pruefer || w.dl_name, pruefnummer: w.pruefnummer, letzte: w.letztes ? w.letztes.datum : w.letzte, nachpruefung: w.nachpruefung, maengelfrist: w.maengelfrist }; }
+    zeichnen();
+  };
   let t;
   ziel.querySelector("[data-q]").oninput = (e) => { clearTimeout(t); t = setTimeout(() => { z.q = e.target.value; zeichnen(); }, 200); };
   ziel.querySelector("[data-st]").onchange = (e) => { z.status = e.target.value; zeichnen(); };
   const nb = ziel.querySelector("[data-neu]");
   if (nb) nb.onclick = async () => { if (await bearbeiten("sv_maengel", null, { ...filter, status: "offen" })) laden(); };
-  ziel.querySelector("[data-druck]").onclick = () => svMaengelDrucken(sichtbar(), titelObjekt);
+  ziel.querySelector("[data-druck]").onclick = () => svMaengelDrucken(sichtbar(), titelObjekt, kopfText);
   const cs = ziel.querySelector("[data-csv]");
   if (cs) cs.onclick = () => {
-    const kopf = ["Objekt", "Anlage", "Nr.", "Mangel", "Ort", "Einstufung", "Frist", "Frist laut Bericht", "Status", "Behoben am", "Maßnahme", "Bericht", "Seite", "Prüfdatum"];
-    const rows = sichtbar().map((m) => [refText("objekte", m.objekt_id), m.anlage_id ? refText("anlagen", m.anlage_id) : "", m.nummer, m.beschreibung, m.ort, m.einstufung, datum(m.frist), m.frist_text, m.status, datum(m.behoben_am), m.massnahme, m.bericht_id ? refText("dokumente", m.bericht_id) : "", m.seite, datum(m.pruefdatum)]);
+    const kopf = ["Objekt", "Anlage", "Prüfung", "Lfd. Nr.", "Feststellung", "Ort", "Bewertung", "Bewertung laut Bericht", "Frist", "Kosten netto", "Firma", "Angebot-Nr.", "Sachstand", "Bemerkung", "Beauftragt", "Geplante Ausführung", "Fertigstellung", "Rechnung-Nr.", "RG-Summe", "Kommentar", "Status", "Bericht"];
+    const rows = sichtbar().map((m) => [refText("objekte", m.objekt_id), m.anlage_id ? refText("anlagen", m.anlage_id) : "", kopfText(m.anlage_id), m.nummer, m.beschreibung, m.ort, m.einstufung, m.bewertung_bericht, m.frist ? datum(m.frist) : m.frist_text,
+      m.kosten != null ? String(m.kosten).replace(".", ",") : "", m.firma || (m.dienstleister_id ? refText("dienstleister", m.dienstleister_id) : ""), m.angebot, m.sachstand, m.massnahme, datum(m.beauftragt_am), m.geplant, datum(m.behoben_am), m.rechnung_nr,
+      m.rechnung_summe != null ? String(m.rechnung_summe).replace(".", ",") : "", m.kommentar, m.status, m.bericht_id ? refText("dokumente", m.bericht_id) : ""]);
     const csv = "﻿" + [kopf, ...rows].map((r) => r.map((x) => `"${String(x ?? "").replace(/"/g, '""')}"`).join(";")).join("\r\n");
     const l = document.createElement("a");
     l.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
@@ -233,8 +261,8 @@ async function svMaengelReiter(ziel, filter = {}) {
       const m = daten.find((x) => x.id === Number(tik.dataset.tik));
       const neu = await bearbeiten("tickets", null, { objekt_id: m.objekt_id, anlage_id: m.anlage_id, art: "Mangel", titel: `SV-Mangel${m.nummer ? " " + m.nummer : ""}: ${m.beschreibung}`.slice(0, 200),
         beschreibung: [m.beschreibung, m.ort && `Ort: ${m.ort}`, m.frist_text && `Frist laut Bericht: ${m.frist_text}`].filter(Boolean).join("\n"),
-        faellig_am: m.frist || "", prioritaet: m.einstufung === "gefährlich" ? "Notfall" : m.einstufung === "wesentlich" ? "Hoch" : "Normal",
-        gefaehrdung: m.einstufung === "gefährlich" ? "hoch" : m.einstufung === "wesentlich" ? "mittel" : "gering" });
+        faellig_am: m.frist || "", prioritaet: m.einstufung === "gefährlich" ? "Notfall" : m.einstufung === "erheblich" ? "Hoch" : "Normal",
+        gefaehrdung: m.einstufung === "gefährlich" ? "hoch" : m.einstufung === "erheblich" ? "mittel" : "gering" });
       if (neu && neu.id) { await api("PUT", `sv_maengel/${m.id}`, { ticket_id: neu.id, status: "in Arbeit" }).catch(() => {}); laden(); }
       return;
     }
@@ -246,27 +274,34 @@ async function svMaengelReiter(ziel, filter = {}) {
   await laden();
 }
 
-function svMaengelDrucken(liste, objektText) {
-  const html = `<!doctype html><html lang="de"><head><meta charset="utf-8"><title>SV-Mängelplan</title><style>
+function svMaengelDrucken(liste, objektText, kopfText = () => "") {
+  const g = new Map();
+  for (const m of liste) { const k = m.anlage_id || 0; if (!g.has(k)) g.set(k, []); g.get(k).push(m); }
+  const html = `<!doctype html><html lang="de"><head><meta charset="utf-8"><title>SV-Mängelplan ${esc(objektText || "")}</title><style>
     @font-face { font-family: Carlito; src: url("${location.origin}/schrift/Carlito-Regular.ttf"); }
     @font-face { font-family: Carlito; src: url("${location.origin}/schrift/Carlito-Bold.ttf"); font-weight: 700; }
-    @page { size: A4 landscape; margin: 14mm 12mm; }
-    body { font-family: Calibri, Carlito, sans-serif; color: #3C3C3B; font-size: 9.5pt; }
-    .kopf { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: .6mm solid #E63713; padding-bottom: 3mm; margin-bottom: 5mm; }
-    .kopf img { width: 48mm; } h1 { font-size: 19pt; margin: 4mm 0 1mm; }
-    .k { font-size: 8.5pt; letter-spacing: .12em; color: #E63713; font-weight: 700; text-transform: uppercase; }
-    table { width: 100%; border-collapse: collapse; }
-    th { background: #3C3C3B; color: #fff; text-align: left; padding: 1.8mm 2.5mm; font-size: 8.5pt; }
-    td { padding: 1.8mm 2.5mm; border-bottom: .2mm solid #D9DADB; vertical-align: top; }
-    tr.g td { background: #F5DDE2; } small { color: #626366; }
-    .fuss { position: fixed; bottom: 0; left: 0; right: 0; font-size: 7.5pt; color: #939598; text-align: center; }
+    @page { size: A4 landscape; margin: 12mm 10mm; }
+    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    body { font-family: Calibri, Carlito, sans-serif; color: #3C3C3B; font-size: 8.4pt; }
+    .kopf { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: .6mm solid #E63713; padding-bottom: 3mm; margin-bottom: 4mm; }
+    .kopf img { width: 44mm; } h1 { font-size: 17pt; margin: 3mm 0 1mm; }
+    .k { font-size: 8pt; letter-spacing: .12em; color: #E63713; font-weight: 700; text-transform: uppercase; }
+    table { width: 100%; border-collapse: collapse; } thead { display: table-header-group; } tr { break-inside: avoid; }
+    th { background: #3C3C3B; color: #fff; text-align: left; padding: 1.5mm 1.8mm; font-size: 7.8pt; }
+    td { padding: 1.4mm 1.8mm; border-bottom: .2mm solid #D9DADB; vertical-align: top; }
+    tr.gr td { background: #FBEEE5; color: #B82C0F; font-weight: 700; padding-top: 2mm; } tr.gr small { font-weight: 400; color: #8A5A44; }
+    tr.x td { background: #F5DDE2; } small { color: #626366; } td.z { text-align: right; white-space: nowrap; }
+    .fuss { position: fixed; bottom: 0; left: 0; right: 0; font-size: 7pt; color: #939598; text-align: center; }
   </style></head><body>
-    <div class="kopf"><div><div class="k">Mängel aus Sachverständigen-Prüfungen · Stand ${datum(heute())}</div><h1>SV-Mängelplan${objektText ? " " + esc(objektText) : ""}</h1></div><img src="${location.origin}/logo.png" alt=""></div>
-    <table><thead><tr><th>Anlage</th><th>Nr.</th><th>Mangel</th><th>Einstufung</th><th>Frist</th><th>Status</th><th>Maßnahme</th><th>Bericht</th></tr></thead><tbody>
-    ${liste.map((m) => `<tr class="${m.einstufung === "gefährlich" && svOffen(m) ? "g" : ""}"><td>${esc(m.anlage_id ? refText("anlagen", m.anlage_id) : "")}${objektText ? "" : `<br><small>${esc(refText("objekte", m.objekt_id))}</small>`}</td><td>${esc(m.nummer || "")}</td>
-      <td><b>${esc(m.beschreibung)}</b>${m.ort ? `<br><small>${esc(m.ort)}</small>` : ""}</td><td>${esc(m.einstufung || "")}</td>
-      <td>${m.frist ? datum(m.frist) : `<small>${esc(m.frist_text || "")}</small>`}</td><td>${esc(m.status || "offen")}${m.behoben_am ? `<br><small>${datum(m.behoben_am)}</small>` : ""}</td>
-      <td>${esc(m.massnahme || "")}</td><td><small>${esc(m.bericht_id ? refText("dokumente", m.bericht_id) : "")}${m.pruefdatum ? `<br>Prüfung ${datum(m.pruefdatum)}` : ""}</small></td></tr>`).join("")}</tbody></table>
+    <div class="kopf"><div><div class="k">Übersicht Mängel aus SV-Prüfungen · Stand ${datum(heute())}</div><h1>SV-Mängelplan${objektText ? " " + esc(objektText) : ""}</h1></div><img src="${location.origin}/logo.png" alt=""></div>
+    <table><thead><tr><th>Lfd. Nr.</th><th>Feststellung</th><th>Bewertung</th><th>Frist</th><th>Kosten netto</th><th>Firma</th><th>Sachstand</th><th>Beauftragt</th><th>Gepl. Ausführung</th><th>Fertigstellung</th><th>Status</th></tr></thead><tbody>
+    ${[...g].map(([aid, l]) => `<tr class="gr"><td colspan="11">${esc(aid ? refText("anlagen", aid) : "Ohne Anlage")}${objektText ? "" : ` · ${esc(refText("objekte", l[0].objekt_id))}`} <small>${esc(kopfText(aid))}</small></td></tr>` + l.map((m) => `<tr class="${["gefährlich"].includes(m.einstufung) && svOffen(m) ? "x" : ""}">
+      <td>${esc(m.nummer || "")}</td><td><b>${esc(m.beschreibung)}</b>${m.ort ? `<br><small>${esc(m.ort)}</small>` : ""}${m.massnahme ? `<br><small>${esc(m.massnahme)}</small>` : ""}</td>
+      <td>${esc(m.einstufung || "")}${m.bewertung_bericht ? `<br><small>${esc(m.bewertung_bericht)}</small>` : ""}</td>
+      <td>${m.frist ? datum(m.frist) : `<small>${esc(m.frist_text || "")}</small>`}</td><td class="z">${m.kosten ? geld(m.kosten) : ""}</td>
+      <td>${esc(m.firma || (m.dienstleister_id ? refText("dienstleister", m.dienstleister_id) : ""))}${m.angebot ? `<br><small>${esc(m.angebot)}</small>` : ""}</td>
+      <td><small>${esc(m.sachstand || "")}${m.kommentar ? `<br>${esc(m.kommentar)}` : ""}</small></td><td>${datum(m.beauftragt_am)}</td><td>${esc(m.geplant || "")}</td>
+      <td>${datum(m.behoben_am)}${m.rechnung_nr ? `<br><small>RG ${esc(m.rechnung_nr)}</small>` : ""}</td><td>${esc(m.status || "offen")}</td></tr>`).join("")).join("")}</tbody></table>
     <div class="fuss">Casa Concept Consulting GmbH &amp; Co. KG · www.ccc-frankfurt.com</div>
     <script>window.onload = () => setTimeout(() => print(), 300);<\/script></body></html>`;
   const f = window.open("", "_blank");

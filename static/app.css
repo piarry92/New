@@ -1144,3 +1144,23 @@ html[data-theme="dark"] .plan-layout.vollbild { background: var(--flaeche); }
 .sl-kz-t::before { background: #1D4F91 !important; }
 .sl-kz-t .wert { color: #1D4F91; }
 html[data-theme="dark"] .sl-kz-t .wert { color: #A9C8F0; }
+/* SV-Prüfplan im Excel-Aufbau */
+.sv-kz5 { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+.sv-plan td, .sv-plan th { white-space: nowrap; }
+.sv-plan td.sv-komm { white-space: normal; min-width: 200px; max-width: 320px; }
+.sv-plan tr.sv-gruppe td { background: var(--orange-zart, #FBEEE5); color: var(--orange-dunkel, #B82C0F); font-weight: 700; font-size: 13px; letter-spacing: .02em; }
+.sv-plan .sv-j { text-align: center; width: 46px; padding-left: 4px; padding-right: 4px; }
+.sv-plan th.sv-j.jetzt, .sv-plan td.sv-j.jetzt { background: color-mix(in srgb, var(--orange, #E63713) 6%, transparent); }
+.sv-code { display: inline-block; min-width: 26px; padding: 2px 5px; border-radius: 6px; background: #3C3C3B; color: #fff; font-size: 11px; font-weight: 700; text-align: center; }
+.sv-code.np { background: #8A5A00; }
+.sv-code.geplant { background: transparent; color: var(--orange, #E63713); box-shadow: inset 0 0 0 1.5px var(--orange, #E63713); }
+.sv-legende { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 10px; font-size: 13px; color: var(--grau, #626366); }
+.sv-legende > span { display: inline-flex; gap: 6px; align-items: center; }
+html[data-theme="dark"] .sv-code:not(.geplant) { background: #E4E6EB; color: #15171C; }
+html[data-theme="dark"] .sv-plan tr.sv-gruppe td { background: rgba(230,55,19,.14); }
+.sv-mtab tr.sv-gruppe td { background: var(--orange-zart, #FBEEE5); font-weight: 700; }
+.sv-mtab tr.sv-gruppe td a { color: var(--orange-dunkel, #B82C0F); text-decoration: none; }
+.sv-mtab tr.sv-gruppe .klein { font-weight: 400; margin-left: 8px; }
+.sv-mtab td.sv-text { min-width: 200px; max-width: 360px; }
+html[data-theme="dark"] .sv-mtab tr.sv-gruppe td { background: rgba(230,55,19,.14); }
+.sv-mtab td:nth-child(6), .sv-mtab td:nth-child(7) { min-width: 120px; }

@@ -46,7 +46,7 @@ SCHL_PFAD = DATEN / "schluesselfotos"
 PROFIL_PFAD = DATEN / "profilbilder"
 MAX_SYMBOL = 2 * 1024 * 1024
 MAX_UPLOAD = 25 * 1024 * 1024
-VERSION = "2026.11.15-20"  # muss zu VERSION in static/app.js passen
+VERSION = "2026.11.15-21"  # muss zu VERSION in static/app.js passen
 SITZUNG_TAGE = 7
 
 GEWERKE = [
@@ -59,15 +59,25 @@ RHYTHMUS = {"täglich": 1, "wöchentlich": 7, "14-tägig": 14, "monatlich": 30, 
 KAT_FARBEN = ["Rot", "Blau", "Grün", "Gelb", "Orange", "Grau", "Lila", "Petrol", "Schwarz"]
 GEFAEHRDUNG = ["gering", "mittel", "hoch"]
 SV_GEGENSTAENDE = [
-    "Brandmelde- und Alarmierungsanlage", "Rauchabzugsanlage (RWA)", "Druckbelüftungsanlage (RDA)",
-    "Lüftungsanlage", "CO-Warnanlage", "Feuerlöschanlage (Sprinkler, Gaslöschanlage)",
-    "Wandhydranten / Steigleitungen", "Sicherheitsstromversorgung / Notstrom", "Sicherheitsbeleuchtung",
-    "Feststellanlage (Brandschutztür)", "Aufzug", "Druckbehälter", "Elektrische Anlage", "Blitzschutzanlage", "Sonstiges",
+    "Raumlufttechnische Anlage (RLT)", "Brandschutzklappen (BSK)", "Lüftungsanlage", "Abgasanlage / Feuerstätte",
+    "Starkstromanlage", "Elektrische Anlage", "Sicherheitsbeleuchtung", "Sicherheitsstromversorgung / Notstrom",
+    "Blitzschutzanlage", "Brandmelde- und Alarmierungsanlage", "Maschinelle Rauchabzugsanlage (MRA)",
+    "Natürliche Rauchabzugsanlage (NRA)", "Rauchabzugsanlage (RWA)", "Druckbelüftungsanlage (RDA)",
+    "Wandhydranten / Steigleitungen", "Sprinkleranlage", "Gaslöschanlage", "Feuerlöschanlage (Sprinkler, Gaslöschanlage)",
+    "CO-Warnanlage", "Aufzug", "Fassadenbefahranlage", "Verdunstungskühlanlage", "Feststellanlage (Brandschutztür)",
+    "Druckbehälter", "Sonstiges",
 ]
-SV_EINSTUFUNGEN = ["geringfügig", "wesentlich", "gefährlich", "unklar"]
+SV_BEREICHE = [
+    "Raumlufttechnik", "Heiztechnik", "Sanitärtechnik", "Elektrotechnik", "MSR-Technik und Gebäudeautomation",
+    "Brandschutztechnische Geräte und Anlagen", "Förderanlagen", "Kältetechnik", "Dach und Fach (Gebäudehülle)",
+    "Außenanlagen",
+]
+SV_EINSTUFUNGEN = ["geringfügig", "erheblich", "gefährlich", "unklar"]
 SV_STATUS = ["offen", "in Arbeit", "behoben", "nachgeprüft"]
 SV_GRUNDLAGEN = [
     "Prüfverordnung des Landes (z. B. TPrüfVO Hessen)", "BetrSichV (zugelassene Überwachungsstelle)",
+    "BetrSichV §15 (Prüfung vor Inbetriebnahme / wiederkehrend)", "BetrSichV §16 (wiederkehrende Prüfung, Aufzüge)",
+    "1. BImSchV (Feuerstätten, Schornsteinfeger)", "42. BImSchV (Verdunstungskühlanlagen)",
     "DGUV Vorschrift 3", "Baugenehmigung / Brandschutzkonzept", "Versicherer (z. B. VdS)", "Sonstige",
 ]
 GRUPPEN = [
@@ -148,6 +158,7 @@ RESSOURCEN: dict[str, dict] = {
             {"name": "wartung_pflicht", "label": "Gesetzlich autorisierte Wartung erforderlich", "typ": "bool", "standard": 0},
             {"name": "sv_relevant", "label": "Sicherheitsrelevant: Prüfung durch Sachverständige (SV-Prüfplan)", "typ": "bool", "standard": 0},
             {"name": "sv_gegenstand", "label": "SV-Prüfgegenstand", "typ": "select", "optionen": SV_GEGENSTAENDE},
+            {"name": "sv_bereich", "label": "SV-Bereich (Gruppe im Prüfplan)", "typ": "select", "optionen": SV_BEREICHE},
             {"name": "sv_grundlage", "label": "SV-Prüfgrundlage", "typ": "select", "optionen": SV_GRUNDLAGEN},
             {"name": "notiz", "label": "Notiz", "typ": "textarea"},
             {"name": "plan_id", "label": "Plan", "typ": "ref", "ref": "plaene", "nurlesen": True, "lose": True},
@@ -259,6 +270,11 @@ RESSOURCEN: dict[str, dict] = {
             {"name": "naechste", "label": "Nächste Fälligkeit", "typ": "date", "pflicht": True, "liste": True},
             {"name": "dienstleister_id", "label": "Dienstleister", "typ": "ref", "ref": "dienstleister", "liste": True},
             {"name": "zustaendig", "label": "Zuständig bei Casa", "typ": "text"},
+            {"name": "pruefer", "label": "Prüfer / Sachverständige (z. B. TÜV Hessen)", "typ": "text"},
+            {"name": "pruefnummer", "label": "Prüf- / Bericht-Nr.", "typ": "text"},
+            {"name": "nachpruefung", "label": "Termin Nachprüfung", "typ": "date"},
+            {"name": "maengelfrist", "label": "Frist Mängelbeseitigung", "typ": "date"},
+            {"name": "raster", "label": "Jahresraster (aus Excel)", "typ": "json", "intern": True},
             {"name": "aktiv", "label": "Aktiv", "typ": "bool", "standard": 1},
             {"name": "notiz", "label": "Notiz", "typ": "textarea"},
         ],
@@ -370,12 +386,22 @@ RESSOURCEN: dict[str, dict] = {
             {"name": "beschreibung", "label": "Mangel", "typ": "textarea", "pflicht": True, "liste": True},
             {"name": "ort", "label": "Ort", "typ": "text"},
             {"name": "einstufung", "label": "Einstufung", "typ": "select", "optionen": SV_EINSTUFUNGEN, "liste": True},
+            {"name": "bewertung_bericht", "label": "Bewertung laut Bericht (z. B. M(B), 2)", "typ": "text"},
             {"name": "frist", "label": "Frist", "typ": "date", "liste": True},
             {"name": "frist_text", "label": "Frist laut Bericht", "typ": "text"},
             {"name": "status", "label": "Status", "typ": "select", "optionen": SV_STATUS, "standard": "offen", "liste": True},
-            {"name": "dienstleister_id", "label": "Beauftragt", "typ": "ref", "ref": "dienstleister"},
-            {"name": "behoben_am", "label": "Behoben am", "typ": "date"},
-            {"name": "massnahme", "label": "Maßnahme / Nachweis", "typ": "textarea"},
+            {"name": "sachstand", "label": "Sachstand", "typ": "textarea"},
+            {"name": "firma", "label": "Firma (ausführend)", "typ": "text"},
+            {"name": "dienstleister_id", "label": "Dienstleister aus der Liste", "typ": "ref", "ref": "dienstleister"},
+            {"name": "angebot", "label": "Angebot-Nr.", "typ": "text"},
+            {"name": "kosten", "label": "Kosten netto", "typ": "money"},
+            {"name": "beauftragt_am", "label": "Beauftragt am", "typ": "date"},
+            {"name": "geplant", "label": "Geplante Ausführung", "typ": "text"},
+            {"name": "behoben_am", "label": "Fertigstellung", "typ": "date"},
+            {"name": "rechnung_nr", "label": "Rechnung-Nr.", "typ": "text"},
+            {"name": "rechnung_summe", "label": "RG-Summe", "typ": "money"},
+            {"name": "massnahme", "label": "Bemerkung / Maßnahme / Nachweis", "typ": "textarea"},
+            {"name": "kommentar", "label": "Kommentar", "typ": "textarea"},
             {"name": "bericht_id", "label": "SV-Bericht", "typ": "ref", "ref": "dokumente", "filter": "objekt_id"},
             {"name": "pruefdatum", "label": "Prüfdatum", "typ": "date"},
             {"name": "seite", "label": "Seite im Bericht", "typ": "number"},
@@ -601,6 +627,7 @@ def db_anlegen() -> None:
         for r in con.execute("SELECT id FROM anlagen WHERE qr_token IS NULL OR qr_token=''").fetchall():
             con.execute("UPDATE anlagen SET qr_token=? WHERE id=?", (neuer_qr_token(), r["id"]))
         con.execute('CREATE UNIQUE INDEX IF NOT EXISTS "ux_anlagen_qr" ON anlagen(qr_token)')
+        con.execute("UPDATE sv_maengel SET einstufung='erheblich' WHERE einstufung='wesentlich'")
         for r in con.execute("SELECT id FROM objekte WHERE qr_token IS NULL OR qr_token=''").fetchall():
             con.execute("UPDATE objekte SET qr_token=? WHERE id=?", (neuer_qr_token(), r["id"]))
         con.execute('CREATE UNIQUE INDEX IF NOT EXISTS "ux_objekte_qr" ON objekte(qr_token)')
@@ -625,7 +652,7 @@ def db_anlegen() -> None:
             if spalte not in vorhanden_dg:
                 con.execute(f"ALTER TABLE checklisten_durchgaenge ADD COLUMN {spalte} INTEGER")
         vorhanden = {r["name"] for r in con.execute("PRAGMA table_info(wartung_historie)")}
-        for spalte, typ in (("lat", "REAL"), ("lon", "REAL"), ("checkliste", "TEXT")):
+        for spalte, typ in (("lat", "REAL"), ("lon", "REAL"), ("checkliste", "TEXT"), ("pruefart", "TEXT")):
             if spalte not in vorhanden:
                 con.execute(f"ALTER TABLE wartung_historie ADD COLUMN {spalte} {typ}")
         for idx in [
@@ -824,6 +851,9 @@ def wartung_erledigt(con, benutzer, wid: int, daten: dict) -> dict:
     if ergebnis not in ("Ohne Mängel", "Mängel behoben", "Mängel offen", "Nicht durchgeführt"):
         raise Fehler(400, "Ergebnis ist ungültig.")
     bemerkung = (daten.get("bemerkung") or "").strip()[:5000]
+    pruefart = daten.get("pruefart") or None
+    if pruefart not in (None, "Prüfung", "Nachprüfung"):
+        raise Fehler(400, "Prüfart ist ungültig.")
     checkliste = daten.get("checkliste")
     if checkliste is not None:
         if not isinstance(checkliste, list) or len(checkliste) > 100:
@@ -849,9 +879,12 @@ def wartung_erledigt(con, benutzer, wid: int, daten: dict) -> dict:
             "gemeldet_am": datum, "dienstleister_id": w["dienstleister_id"],
         })
     con.execute(
-        "INSERT INTO wartung_historie (wartung_id, datum, ergebnis, bemerkung, erfasst_von, ticket_id, lat, lon, checkliste) "
-        "VALUES (?,?,?,?,?,?,?,?,?)", (wid, datum, ergebnis, bemerkung, benutzer["name"], ticket_id, lat, lon, checkliste))
-    if ergebnis != "Nicht durchgeführt":
+        "INSERT INTO wartung_historie (wartung_id, datum, ergebnis, bemerkung, erfasst_von, ticket_id, lat, lon, checkliste, pruefart) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?)", (wid, datum, ergebnis, bemerkung, benutzer["name"], ticket_id, lat, lon, checkliste, pruefart))
+    if pruefart == "Nachprüfung":
+        # Eine Nachprüfung schließt Mängel ab, verschiebt aber nicht den Prüfzyklus
+        con.execute("UPDATE wartungen SET nachpruefung=NULL, geaendert=? WHERE id=?", (jetzt(), wid))
+    elif ergebnis != "Nicht durchgeführt":
         naechste = plus_monate(dt.date.fromisoformat(datum), int(w["intervall_monate"] or 12)).isoformat()
         con.execute("UPDATE wartungen SET letzte=?, naechste=?, geaendert=? WHERE id=?",
                     (datum, naechste, jetzt(), wid))
@@ -1734,7 +1767,7 @@ def objekt_bericht(con, oid: int, von: str, bis: str, teile: list, kosten: bool)
         aus["sv"] = sv_pruefplan(con, {"objekt_id": [str(oid)]})["anlagen"]
     if "svmaengel" in teile:
         sm = [dict(r) for r in con.execute("SELECT * FROM sv_maengel WHERE objekt_id=? ORDER BY CASE einstufung WHEN 'gefährlich' THEN 0 "
-                                           "WHEN 'wesentlich' THEN 1 ELSE 2 END, frist", (oid,))]
+                                           "WHEN 'erheblich' THEN 1 ELSE 2 END, frist", (oid,))]
         for m in sm:
             m["anlage"] = namen.get(m["anlage_id"])
         aus["svmaengel"] = {"offen": [m for m in sm if m["status"] in ("offen", "in Arbeit")],
@@ -1926,6 +1959,7 @@ def sv_uebernehmen(con, benutzer, rechte, did: int, d: dict) -> dict:
             "nummer": m.get("nummer"), "beschreibung": m.get("beschreibung"), "ort": m.get("ort"),
             "einstufung": m.get("einstufung") if m.get("einstufung") in SV_EINSTUFUNGEN else "unklar",
             "frist": m.get("frist") or None, "frist_text": m.get("frist_text"), "status": "offen",
+            "bewertung_bericht": (str(m.get("bewertung"))[:60] if m.get("bewertung") else None),
             "pruefdatum": pruefdatum, "seite": m.get("seite"),
         }, neu=True)
         sauber["quelle"] = "KI-Auswertung, geprüft von " + benutzer["name"] if d.get("ki") else benutzer["name"]
@@ -1947,6 +1981,223 @@ def sv_uebernehmen(con, benutzer, rechte, did: int, d: dict) -> dict:
     return {"ok": True, "angelegt": len(neu), "pruefung_eingetragen": eingetragen}
 
 
+# ---------- Excel lesen (ohne Zusatzpakete) und SV-Prüfplan importieren ----------
+def xlsx_zeilen(inhalt: bytes) -> list:
+    """Erstes sichtbares Arbeitsblatt einer .xlsx als Liste von Zeilen (Liste von Zellwerten als Text)."""
+    import zipfile
+    import xml.etree.ElementTree as ET
+    ns = {"m": "http://schemas.openxmlformats.org/spreadsheetml/2006/main",
+          "r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships"}
+    try:
+        z = zipfile.ZipFile(io.BytesIO(inhalt))
+    except zipfile.BadZipFile:
+        raise Fehler(400, "Das ist keine Excel-Datei (.xlsx).")
+    texte = []
+    if "xl/sharedStrings.xml" in z.namelist():
+        for si in ET.fromstring(z.read("xl/sharedStrings.xml")).findall("m:si", ns):
+            texte.append("".join(t.text or "" for t in si.iter("{%s}t" % ns["m"])))
+    wb = ET.fromstring(z.read("xl/workbook.xml"))
+    rels = ET.fromstring(z.read("xl/_rels/workbook.xml.rels"))
+    ziele = {r.get("Id"): r.get("Target") for r in rels}
+    blatt = None
+    for sh in wb.find("m:sheets", ns):
+        if sh.get("state") in ("hidden", "veryHidden"):
+            continue
+        blatt = ziele.get(sh.get("{%s}id" % ns["r"]))
+        break
+    if not blatt:
+        raise Fehler(400, "In der Excel-Datei ist kein sichtbares Blatt.")
+    blatt = blatt.lstrip("/")
+    if not blatt.startswith("xl/"):
+        blatt = "xl/" + blatt
+    stile_datum = set()
+    if "xl/styles.xml" in z.namelist():
+        st = ET.fromstring(z.read("xl/styles.xml"))
+        eigene = {int(n.get("numFmtId")): (n.get("formatCode") or "").lower() for n in st.iter("{%s}numFmt" % ns["m"])}
+        xfs = st.find("m:cellXfs", ns)
+        for i, xf in enumerate(xfs if xfs is not None else []):
+            fid = int(xf.get("numFmtId") or 0)
+            if 14 <= fid <= 22 or (fid in eigene and any(c in eigene[fid] for c in ("yy", "dd", "mm/", "m.d"))):
+                stile_datum.add(i)
+    zeilen = []
+    for row in ET.fromstring(z.read(blatt)).iter("{%s}row" % ns["m"]):
+        werte = {}
+        for c in row.findall("m:c", ns):
+            ref = c.get("r") or ""
+            spalte = 0
+            for ch in re.match(r"[A-Z]+", ref).group(0) if re.match(r"[A-Z]+", ref) else "":
+                spalte = spalte * 26 + ord(ch) - 64
+            v = c.find("m:v", ns)
+            t = c.get("t")
+            if t == "s" and v is not None:
+                wert = texte[int(v.text)]
+            elif t == "inlineStr":
+                wert = "".join(x.text or "" for x in c.iter("{%s}t" % ns["m"]))
+            elif v is not None:
+                wert = v.text or ""
+                if int(c.get("s") or 0) in stile_datum and re.match(r"^\d+(\.\d+)?$", wert):
+                    wert = (dt.date(1899, 12, 30) + dt.timedelta(days=int(float(wert)))).isoformat()
+            else:
+                wert = ""
+            werte[spalte - 1] = str(wert).strip()
+        if werte:
+            zeilen.append([werte.get(i, "") for i in range(max(werte) + 1)])
+    return zeilen
+
+
+def _datum_frei(text: str):
+    text = (text or "").strip()
+    if re.match(r"^\d{4}-\d{2}-\d{2}$", text):
+        return text
+    m = re.match(r"^(\d{1,2})\.(\d{1,2})\.(\d{2,4})$", text)
+    if m:
+        j = int(m.group(3))
+        j = j + 2000 if j < 100 else j
+        try:
+            return dt.date(j, int(m.group(2)), int(m.group(1))).isoformat()
+        except ValueError:
+            return None
+    return None
+
+
+def _intervall_monate(text: str):
+    m = re.search(r"(\d+(?:[.,]\d+)?)\s*(j|m)", (text or "").lower())
+    if not m:
+        return None
+    n = float(m.group(1).replace(",", "."))
+    return int(n * 12) if m.group(2) == "j" else int(n)
+
+
+SV_GRUNDLAGE_ERKENNEN = [
+    (r"tpr", "Prüfverordnung des Landes (z. B. TPrüfVO Hessen)"), (r"§\s*16", "BetrSichV §16 (wiederkehrende Prüfung, Aufzüge)"),
+    (r"§\s*15", "BetrSichV §15 (Prüfung vor Inbetriebnahme / wiederkehrend)"), (r"42", "42. BImSchV (Verdunstungskühlanlagen)"),
+    (r"1\.\s*bimsch", "1. BImSchV (Feuerstätten, Schornsteinfeger)"), (r"dguv", "DGUV Vorschrift 3"),
+    (r"vds", "Versicherer (z. B. VdS)"),
+]
+SV_GEGENSTAND_ERKENNEN = [
+    (r"\brlt\b|raumluft|büro- und gewerbe", "Raumlufttechnische Anlage (RLT)"), (r"brandschutzklappe|\bbsk\b", "Brandschutzklappen (BSK)"),
+    (r"abgas|schornstein", "Abgasanlage / Feuerstätte"), (r"starkstrom", "Starkstromanlage"),
+    (r"sicherheitsbeleucht", "Sicherheitsbeleuchtung"), (r"sicherheitsstrom|notstrom|\bssv\b", "Sicherheitsstromversorgung / Notstrom"),
+    (r"blitz", "Blitzschutzanlage"), (r"brandmelde|\bbma\b", "Brandmelde- und Alarmierungsanlage"),
+    (r"\bmra\b|maschinelle", "Maschinelle Rauchabzugsanlage (MRA)"), (r"\bnra\b|natürliche", "Natürliche Rauchabzugsanlage (NRA)"),
+    (r"\brwa\b|rauchabzug", "Rauchabzugsanlage (RWA)"), (r"\brda\b|druckbelüft", "Druckbelüftungsanlage (RDA)"),
+    (r"wandhydrant|steigleitung", "Wandhydranten / Steigleitungen"), (r"sprinkler", "Sprinkleranlage"),
+    (r"gaslösch", "Gaslöschanlage"), (r"co-warn|co warn", "CO-Warnanlage"), (r"aufzug|aufzüge", "Aufzug"),
+    (r"fassadenbefahr|befahranlage", "Fassadenbefahranlage"), (r"verdunstung|kühlturm", "Verdunstungskühlanlage"),
+    (r"feststell", "Feststellanlage (Brandschutztür)"), (r"druckbehälter", "Druckbehälter"),
+]
+SV_BEREICH_GEWERK = {"Raumlufttechnik": "Lüftung/Klima", "Heiztechnik": "Heizung", "Sanitärtechnik": "Sanitär",
+                     "Elektrotechnik": "Elektro", "MSR-Technik und Gebäudeautomation": "Gebäudeautomation",
+                     "Brandschutztechnische Geräte und Anlagen": "Brandschutz", "Förderanlagen": "Aufzug",
+                     "Kältetechnik": "Kälte", "Dach und Fach (Gebäudehülle)": "Dach/Fassade", "Außenanlagen": "Außenanlagen"}
+
+
+def _bereich_erkennen(text: str):
+    t = text.lower().replace("aussen", "außen")
+    return next((b for b in SV_BEREICHE if t[:6] == b.lower()[:6]), None)
+
+
+def sv_pruefplan_importieren(con, benutzer, d: dict) -> dict:
+    try:
+        oid = int(d.get("objekt_id"))
+    except (TypeError, ValueError):
+        raise Fehler(400, "Bitte ein Objekt wählen.")
+    if not con.execute("SELECT 1 FROM objekte WHERE id=?", (oid,)).fetchone():
+        raise Fehler(400, "Objekt nicht gefunden.")
+    try:
+        inhalt = base64.b64decode(d.get("inhalt") or "", validate=True)
+    except (ValueError, binascii.Error):
+        raise Fehler(400, "Die Datei konnte nicht gelesen werden.")
+    zeilen = xlsx_zeilen(inhalt)
+    kopf_i = next((i for i, z in enumerate(zeilen) if any("prüfgrundlage" in c.lower() for c in z)
+                   and any("intervall" in c.lower() for c in z)), None)
+    if kopf_i is None:
+        raise Fehler(400, "In der Excel-Datei wurde keine Kopfzeile mit „Prüfgrundlage“ und „Intervall“ gefunden.")
+    kopf = [c.lower() for c in zeilen[kopf_i]]
+    def spalte(*worte):
+        return next((i for i, c in enumerate(kopf) if any(w in c for w in worte)), None)
+    s_nr, s_grund, s_int = spalte("nr"), spalte("prüfgrundlage"), spalte("intervall")
+    s_pruefer, s_letzte, s_mangel, s_komm = spalte("prüfer"), spalte("letzte"), spalte("mängel"), spalte("kommentar")
+    jahre = {i: int(c) for i, c in enumerate(kopf) if re.match(r"^(19|20)\d\d$", c.strip())}
+    s_name = 0
+    wert = lambda z, i: (z[i] if i is not None and i < len(z) else "").strip()  # noqa: E731
+    bereich = None
+    eintraege = []
+    for z in zeilen[kopf_i + 1:]:
+        name = wert(z, s_name)
+        rest = [wert(z, i) for i in (s_nr, s_grund, s_int, s_pruefer, s_letzte) if i is not None]
+        if name and not any(rest) and not any(wert(z, i) for i in jahre):
+            bereich = _bereich_erkennen(name) or bereich
+            continue
+        if not name:
+            continue
+        raster = {str(j): wert(z, i).upper() for i, j in jahre.items() if wert(z, i)}
+        eintraege.append({"name": name, "nr": wert(z, s_nr), "grundlage": wert(z, s_grund), "intervall": wert(z, s_int),
+                          "pruefer": wert(z, s_pruefer), "letzte": _datum_frei(wert(z, s_letzte)),
+                          "mangel": wert(z, s_mangel).lower(), "kommentar": wert(z, s_komm), "raster": raster, "bereich": bereich})
+    if not eintraege:
+        raise Fehler(400, "In der Excel-Datei wurden keine Anlagen gefunden.")
+    anlagen_neu = pruefungen_neu = uebersprungen = 0
+    for e in eintraege:
+        grund = next((g for muster, g in SV_GRUNDLAGE_ERKENNEN if re.search(muster, e["grundlage"].lower())), None)
+        gegenstand = next((g for muster, g in SV_GEGENSTAND_ERKENNEN if re.search(muster, e["name"].lower())), "Sonstiges")
+        a = con.execute("SELECT * FROM anlagen WHERE objekt_id=? AND bezeichnung=? COLLATE NOCASE", (oid, e["name"])).fetchone()
+        if not a:
+            aid = einfuegen(con, "anlagen", daten_pruefen(RESSOURCEN["anlagen"], {
+                "objekt_id": oid, "bezeichnung": e["name"], "gewerk": SV_BEREICH_GEWERK.get(e["bereich"]),
+                "status": "In Betrieb", "sv_relevant": 1, "pruefung_pflicht": 1, "sv_gegenstand": gegenstand,
+                "sv_grundlage": grund, "sv_bereich": e["bereich"],
+                "notiz": "Aus dem SV-Prüfplan (Excel) übernommen" + (": " + ", ".join(x for x in (e["grundlage"], e["intervall"], e["pruefer"], e["kommentar"]) if x) if not e["letzte"] else ".")}, neu=True))
+            anlagen_neu += 1
+        else:
+            aid = a["id"]
+            con.execute("UPDATE anlagen SET sv_relevant=1, sv_gegenstand=COALESCE(sv_gegenstand, ?), sv_grundlage=COALESCE(sv_grundlage, ?), "
+                        "sv_bereich=COALESCE(sv_bereich, ?), geaendert=? WHERE id=?", (gegenstand, grund, e["bereich"], jetzt(), aid))
+        if not e["letzte"]:
+            continue  # ohne letzte Prüfung kein Termin, die Anlage steht dann mit „kein Termin“ im Plan
+        if con.execute("SELECT 1 FROM wartungen WHERE anlage_id=? AND art='SV-Prüfung' AND COALESCE(pruefnummer,'')=? AND letzte=?",
+                       (aid, e["nr"], e["letzte"])).fetchone():
+            uebersprungen += 1
+            continue
+        iv = _intervall_monate(e["intervall"]) or 36
+        naechste = plus_monate(dt.date.fromisoformat(e["letzte"]), iv).isoformat()
+        wid = einfuegen(con, "wartungen", {
+            "objekt_id": oid, "anlage_id": aid, "titel": f'SV-Prüfung {e["name"]}' + (f' ({e["pruefer"]})' if e["pruefer"] else ""),
+            "art": "SV-Prüfung", "rechtsgrundlage": e["grundlage"] or None, "intervall_monate": iv, "letzte": e["letzte"],
+            "naechste": naechste, "aktiv": 1, "pruefer": e["pruefer"] or None, "pruefnummer": e["nr"] or None,
+            "notiz": e["kommentar"] or None, "raster": json.dumps(e["raster"], ensure_ascii=False) if e["raster"] else None,
+            "taetigkeiten": "Prüfung durch Sachverständige\nPrüfbericht erhalten und abgelegt\nMängel aus dem Bericht erfasst"})
+        ergebnis = "Mängel offen" if e["mangel"].startswith("j") else "Ohne Mängel" if e["mangel"].startswith("n") else "Ohne Mängel"
+        con.execute("INSERT INTO wartung_historie (wartung_id, datum, ergebnis, bemerkung, erfasst_von, pruefart) VALUES (?,?,?,?,?,?)",
+                    (wid, e["letzte"], ergebnis, "Aus dem SV-Prüfplan (Excel) übernommen" +
+                     ("" if e["mangel"] else ", Angabe zu erheblichen Mängeln fehlt"), benutzer["name"], "Prüfung"))
+        pruefungen_neu += 1
+    # Mehrere Zeilen derselben Anlage mit unterschiedlichem Prüfdatum (etwa TÜV 2023, danach anderer SV 2024):
+    # die jüngste bleibt der aktive Prüftermin, ältere werden zu ihrer Vorgeschichte.
+    for (aid,) in con.execute("SELECT anlage_id FROM wartungen WHERE objekt_id=? AND art='SV-Prüfung' AND aktiv=1 "
+                              "GROUP BY anlage_id HAVING COUNT(DISTINCT letzte) > 1", (oid,)).fetchall():
+        reihe = [dict(r) for r in con.execute("SELECT * FROM wartungen WHERE anlage_id=? AND art='SV-Prüfung' AND aktiv=1 "
+                                              "ORDER BY letzte DESC, id DESC", (aid,))]
+        haupt = reihe[0]
+        raster = json.loads(haupt["raster"]) if haupt.get("raster") else {}
+        for alt in reihe[1:]:
+            if alt["letzte"] == haupt["letzte"]:
+                continue  # gleiche Prüfung mit eigener Prüfnummer (z. B. mehrere Befahranlagen): bleibt eigener Termin
+            for jahr, code in (json.loads(alt["raster"]) if alt.get("raster") else {}).items():
+                vorhanden = set(str(raster.get(jahr, "")).split("/")) - {""}
+                raster[jahr] = "/".join(sorted(vorhanden | set(str(code).split("/")), key=lambda t: {"A": 0, "NP": 1, "P": 2}.get(t, 3)))
+            hinweis = " · damals " + " ".join(x for x in (alt["pruefer"], alt["pruefnummer"]) if x)
+            con.execute("UPDATE wartung_historie SET wartung_id=?, bemerkung=COALESCE(bemerkung, '') || ? WHERE wartung_id=?",
+                        (haupt["id"], hinweis, alt["id"]))
+            con.execute("UPDATE wartungen SET aktiv=0, notiz=COALESCE(notiz || ' · ', '') || ? WHERE id=?",
+                        ("Abgelöst durch die spätere Prüfung, Vorgeschichte steht beim aktuellen Prüftermin.", alt["id"]))
+        con.execute("UPDATE wartungen SET raster=? WHERE id=?", (json.dumps(raster, ensure_ascii=False) if raster else None, haupt["id"]))
+    protokollieren(con, benutzer, "SV-Prüfplan importiert", "anlagen", None,
+                   f"{len(eintraege)} Zeilen, {anlagen_neu} Anlagen neu, {pruefungen_neu} Prüfungen neu")
+    return {"zeilen": len(eintraege), "anlagen_neu": anlagen_neu, "pruefungen_neu": pruefungen_neu, "uebersprungen": uebersprungen,
+            "ohne_termin": sum(1 for e in eintraege if not e["letzte"])}
+
+
 def sv_pruefplan(con, q: dict) -> dict:
     """Alle sicherheitsrelevanten Anlagen mit ihren SV-Prüfungen."""
     bed, werte = ["a.sv_relevant=1"], []
@@ -1956,26 +2207,38 @@ def sv_pruefplan(con, q: dict) -> dict:
     tickets = {r[0]: r[1] for r in con.execute(
         "SELECT anlage_id, COUNT(*) FROM tickets WHERE anlage_id IS NOT NULL "
         "AND status NOT IN ('Erledigt','Abgeschlossen') GROUP BY anlage_id")}
+    sv_erheblich = {r[0]: r[1] for r in con.execute(
+        "SELECT anlage_id, COUNT(*) FROM sv_maengel WHERE anlage_id IS NOT NULL AND status IN ('offen','in Arbeit') "
+        "AND einstufung IN ('erheblich','gefährlich') GROUP BY anlage_id")}
     sv_offen = {r[0]: r[1] for r in con.execute(
         "SELECT anlage_id, COUNT(*) FROM sv_maengel WHERE anlage_id IS NOT NULL "
         "AND status IN ('offen','in Arbeit') GROUP BY anlage_id")}
     zeilen = []
     for r in con.execute(
             "SELECT a.id, a.nummer, a.bezeichnung, a.objekt_id, a.standort, a.gewerk, a.planzeichen, a.symbol_id, "
-            "a.sv_gegenstand, a.sv_grundlage, a.status, a.gps_pflicht, o.kuerzel AS o_kuerzel, o.name AS o_name "
+            "a.sv_gegenstand, a.sv_grundlage, a.sv_bereich, a.status, a.gps_pflicht, a.notiz, o.kuerzel AS o_kuerzel, o.name AS o_name "
             "FROM anlagen a LEFT JOIN objekte o ON o.id=a.objekt_id "
             f"WHERE {' AND '.join(bed)} ORDER BY o.kuerzel COLLATE NOCASE, a.nummer COLLATE NOCASE, a.bezeichnung COLLATE NOCASE",
             werte):
         z = dict(r)
         z["tickets_offen"] = tickets.get(z["id"], 0)
         z["sv_maengel_offen"] = sv_offen.get(z["id"], 0)
+        z["sv_erheblich_offen"] = sv_erheblich.get(z["id"], 0)
         z["pruefungen"] = []
         for w in con.execute("SELECT * FROM wartungen WHERE anlage_id=? AND aktiv=1 AND art='SV-Prüfung' "
                              "ORDER BY naechste", (z["id"],)):
             w = dict(w)
-            h = con.execute("SELECT datum, ergebnis, bemerkung, erfasst_von, ticket_id FROM wartung_historie "
-                            "WHERE wartung_id=? ORDER BY datum DESC, id DESC LIMIT 1", (w["id"],)).fetchone()
-            w["letztes"] = dict(h) if h else None
+            hist = [dict(h) for h in con.execute(
+                "SELECT datum, ergebnis, bemerkung, erfasst_von, ticket_id, pruefart FROM wartung_historie "
+                "WHERE wartung_id=? ORDER BY datum DESC, id DESC", (w["id"],))]
+            w["historie"] = [{"datum": h["datum"], "pruefart": h["pruefart"], "ergebnis": h["ergebnis"],
+                              "importiert": (h["bemerkung"] or "").startswith("Aus dem SV-Prüfplan")} for h in hist[:40]]
+            haupt = [h for h in hist if h["pruefart"] != "Nachprüfung"]
+            w["letztes"] = haupt[0] if haupt else (hist[0] if hist else None)
+            try:
+                w["raster"] = json.loads(w["raster"]) if w.get("raster") else {}
+            except ValueError:
+                w["raster"] = {}
             w["dl_name"] = None
             if w["dienstleister_id"]:
                 d = con.execute("SELECT firma FROM dienstleister WHERE id=?", (w["dienstleister_id"],)).fetchone()
@@ -2879,6 +3142,10 @@ class Handler(BaseHTTPRequestHandler):
             return self.json({"text": ki.vorlage()})
         if erstes == "svberichte" and len(teile) == 3 and teile[2] == "uebernehmen" and m == "POST":
             return self.json(sv_uebernehmen(con, self.benutzer, self.rechte, self.id(teile[1]), self.body()))
+        if erstes == "svpruefplan" and len(teile) == 2 and teile[1] == "import" and m == "POST":
+            if not (self.rechte.get("anlagen_bearbeiten") and self.rechte.get("wartung_planen")):
+                raise Fehler(403, "Dafür braucht es die Rechte für Anlagen und Wartungsplan.")
+            return self.json(sv_pruefplan_importieren(con, b, self.body()))
         if erstes == "svpruefplan" and m == "GET":
             return self.json(sv_pruefplan(con, q))
         if erstes == "wartungsplan" and m == "GET":

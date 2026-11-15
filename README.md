@@ -88,6 +88,22 @@ einen Leser aus dem Internet.
   und rechnet den nächsten Termin aus. Bei offenen Mängeln entsteht auf Wunsch gleich eine Störmeldung.
 - Filter (überfällig, 90 Tage, ohne Termin, offene Mängel), Excel-Liste und Druckansicht im Casa-Design (als PDF speichern).
 
+### SV-Prüfplan im Aufbau der Excel-Übersicht
+
+- Der Prüfplan ist wie die Übersicht der SV-Prüfungen aufgebaut: nach Bereichen gruppiert (Raumlufttechnik,
+  Heiztechnik, Sanitär, Elektro, MSR, Brandschutz, Förderanlagen, Kälte, Gebäudehülle, Außenanlagen), je Anlage
+  Nr., Prüfgrundlage, Intervall, Prüfer, letzte Prüfung, erhebliche Mängel ja/nein, **Jahresraster** mit
+  A (Prüfung), NP (Nachprüfung), P (geplant), nächste Prüfung und Kommentar.
+- **„Excel übernehmen“** liest eine solche Übersicht (.xlsx) ein: legt fehlende Anlagen an, übernimmt Nr., Prüfer,
+  Prüfgrundlage, Intervall, letzte Prüfung, Jahresraster und Kommentar und berechnet die nächste Prüfung. Löst eine
+  spätere Prüfung derselben Anlage eine ältere ab (anderer Sachverständiger), wird die ältere zur Vorgeschichte.
+- Beim Eintragen einer SV-Prüfung wählt man **Prüfung** (neuer Zyklus) oder **Nachprüfung** (Zyklus bleibt).
+  Zu jedem Prüftermin gibt es Prüfer, Prüf-/Bericht-Nr., Termin Nachprüfung und Frist Mängelbeseitigung.
+- Der **SV-Mängelplan** folgt der Mängelübersicht: je Anlage gruppiert mit Prüfer, Bericht-Nr. und Nachprüfung,
+  Spalten Lfd. Nr., Feststellung, Bewertung (Einstufung und Wortlaut laut Bericht, z. B. M(B)), Frist, Kosten netto,
+  Firma, Angebot, Sachstand, Beauftragt, geplante Ausführung, Fertigstellung, Rechnung, Kommentar.
+  Die Einstufung heißt jetzt geringfügig, erheblich, gefährlich (früher „wesentlich“, wird umgestellt).
+
 ## SV-Berichte mit KI auswerten, SV-Mängelplan
 
 - Auf jeder Anlage im SV-Prüfplan gibt es die Karte **SV-Berichte**: Prüfbericht als PDF oder Foto hochladen.

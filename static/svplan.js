@@ -50,38 +50,100 @@ async function svTerminAnlegen(a) {
   return neu;
 }
 
+/* ---------- Jahresraster und Kennwerte wie im Excel-Prüfplan ---------- */
+const svJahre = () => { const j = new Date().getFullYear(); return [j - 5, j - 4, j - 3, j - 2, j - 1, j, j + 1]; };
+const svIntervall = (m) => !m ? "" : Number(m) % 12 === 0 ? `${Number(m) / 12} J` : `${zahl(m)} M`;
+function svCodes(w) {
+  const c = {};
+  const dazu = (jahr, text, geplant = false) => {
+    if (!jahr) return;
+    const alt = c[jahr];
+    if (!alt) c[jahr] = { text, geplant };
+    else if (!alt.text.split("/").includes(text)) c[jahr] = { text: `${alt.text}/${text}`, geplant: alt.geplant && geplant };
+  };
+  if (!w) return c;
+  const raster = w.raster || {};
+  for (const [jahr, text] of Object.entries(raster)) String(text).split("/").forEach((t) => t.trim() && dazu(jahr, t.trim().toUpperCase(), t.trim().toUpperCase() === "P"));
+  // Aus der Excel übernommene Prüfungen stecken schon im Raster; neu eingetragene kommen dazu
+  for (const h of w.historie || []) if (!(h.importiert && raster[h.datum.slice(0, 4)])) dazu(h.datum.slice(0, 4), h.pruefart === "Nachprüfung" ? "NP" : "A");
+  if (w.nachpruefung && !c[w.nachpruefung.slice(0, 4)]) dazu(w.nachpruefung.slice(0, 4), "NP", true);
+  if (w.naechste && !c[w.naechste.slice(0, 4)]) dazu(w.naechste.slice(0, 4), "P", true);
+  return c;
+}
+function svErheblich(a, w) {
+  if (a.sv_erheblich_offen > 0) return "ja";
+  const e = w && w.letztes && w.letztes.ergebnis;
+  return e === "Mängel offen" ? "ja" : e === "Ohne Mängel" || e === "Mängel behoben" ? "nein" : "";
+}
+const svPruefer = (w) => (w && (w.pruefer || w.dl_name)) || "";
+const svKommentar = (w, a) => !w ? ((a && a.notiz) || "") : [w.notiz, w.nachpruefung ? `Nachprüfung am ${datum(w.nachpruefung)}` : "", w.maengelfrist ? `Mängelfrist ${datum(w.maengelfrist)}` : ""].filter(Boolean).join(" · ");
+const svBereiche = () => [...(S.schema.anlagen.felder.find((f) => f.name === "sv_bereich") || { optionen: [] }).optionen, ""];
+function svGruppiert(zeilen) {
+  const gruppen = new Map(svBereiche().map((b) => [b, []]));
+  for (const z of zeilen) { const b = z.a.sv_bereich || ""; if (!gruppen.has(b)) gruppen.set(b, []); gruppen.get(b).push(z); }
+  return [...gruppen].filter(([, l]) => l.length);
+}
+
 function svDrucken(zeilen, objektText) {
-  const html = `<!doctype html><html lang="de"><head><meta charset="utf-8"><title>SV-Prüfplan</title><style>
+  const jahre = svJahre();
+  const zelle = (w, j) => { const c = svCodes(w)[j]; return c ? `<span class="c ${c.geplant ? "g" : ""}">${esc(c.text)}</span>` : ""; };
+  const html = `<!doctype html><html lang="de"><head><meta charset="utf-8"><title>SV-Prüfplan ${esc(objektText || "")}</title><style>
     @font-face { font-family: Carlito; src: url("${location.origin}/schrift/Carlito-Regular.ttf"); }
     @font-face { font-family: Carlito; src: url("${location.origin}/schrift/Carlito-Bold.ttf"); font-weight: 700; }
-    @page { size: A4 landscape; margin: 14mm 12mm; }
-    body { font-family: Calibri, Carlito, sans-serif; color: #3C3C3B; font-size: 9.5pt; }
-    .kopf { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: .6mm solid #E63713; padding-bottom: 3mm; margin-bottom: 5mm; }
-    .kopf img { width: 48mm; }
-    h1 { font-size: 19pt; margin: 4mm 0 1mm; }
-    .k { font-size: 8.5pt; letter-spacing: .12em; color: #E63713; font-weight: 700; text-transform: uppercase; }
-    table { width: 100%; border-collapse: collapse; }
-    th { background: #3C3C3B; color: #fff; text-align: left; padding: 1.8mm 2.5mm; font-size: 8.5pt; }
-    td { padding: 1.8mm 2.5mm; border-bottom: .2mm solid #D9DADB; vertical-align: top; }
-    tr.u td { background: #F5DDE2; } tr.b td { background: #FBEEE5; } tr.o td { color: #B82C0F; }
-    small { color: #626366; }
-    .fuss { position: fixed; bottom: 0; left: 0; right: 0; font-size: 7.5pt; color: #939598; text-align: center; }
+    @page { size: A4 landscape; margin: 12mm 10mm; }
+    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    body { font-family: Calibri, Carlito, sans-serif; color: #3C3C3B; font-size: 8.6pt; }
+    .kopf { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: .6mm solid #E63713; padding-bottom: 3mm; margin-bottom: 4mm; }
+    .kopf img { width: 44mm; } h1 { font-size: 17pt; margin: 3mm 0 1mm; }
+    .k { font-size: 8pt; letter-spacing: .12em; color: #E63713; font-weight: 700; text-transform: uppercase; }
+    table { width: 100%; border-collapse: collapse; } thead { display: table-header-group; } tr { break-inside: avoid; }
+    th { background: #3C3C3B; color: #fff; text-align: left; padding: 1.5mm 1.8mm; font-size: 7.8pt; }
+    th.j, td.j { text-align: center; width: 9mm; }
+    td { padding: 1.4mm 1.8mm; border-bottom: .2mm solid #D9DADB; vertical-align: top; }
+    tr.g td { background: #FBEEE5; color: #B82C0F; font-weight: 700; padding-top: 2mm; }
+    tr.u td.n { color: #B42318; font-weight: 700; }
+    .c { display: inline-block; min-width: 6mm; padding: .2mm 1mm; border-radius: 1mm; background: #3C3C3B; color: #fff; font-weight: 700; font-size: 7.4pt; }
+    .c.g { background: #fff; color: #E63713; border: .3mm solid #E63713; }
+    .ja { color: #B42318; font-weight: 700; } small { color: #626366; }
+    .leg { margin-top: 3mm; font-size: 7.6pt; color: #626366; }
+    .fuss { position: fixed; bottom: 0; left: 0; right: 0; font-size: 7pt; color: #939598; text-align: center; }
   </style></head><body>
-    <div class="kopf"><div><div class="k">Sicherheitsrelevante Anlagen · Stand ${datum(heute())}</div><h1>SV-Prüfplan${objektText ? " " + esc(objektText) : ""}</h1></div><img src="${location.origin}/logo.png" alt=""></div>
-    <table><thead><tr><th>Objekt</th><th>Anlage</th><th>Prüfgegenstand</th><th>Grundlage</th><th>Sachverständige</th><th>Intervall</th><th>Letzte Prüfung</th><th>Nächste Prüfung</th><th>Mängel offen</th></tr></thead><tbody>
-    ${zeilen.map((z) => {
-      const w = z.w, t = w && w.naechste ? tageBis(w.naechste) : null;
-      return `<tr class="${!w ? "o" : t < 0 ? "u" : t <= 90 ? "b" : ""}"><td>${esc(z.a.o_kuerzel || "")}</td><td><b>${esc(z.a.bezeichnung)}</b>${z.a.nummer ? `<br><small>${esc(z.a.nummer)}</small>` : ""}${z.a.standort ? `<br><small>${esc(z.a.standort)}</small>` : ""}</td>
-        <td>${esc(z.a.sv_gegenstand || "")}</td><td>${esc((w && w.rechtsgrundlage) || z.a.sv_grundlage || "")}</td><td>${esc((w && w.dl_name) || "")}</td>
-        <td>${w && w.intervall_monate ? `${zahl(w.intervall_monate)} Monate` : ""}</td>
-        <td>${w && w.letztes ? `${datum(w.letztes.datum)}<br><small>${esc(w.letztes.ergebnis)}</small>` : w && w.letzte ? datum(w.letzte) : ""}</td>
-        <td><b>${w ? datum(w.naechste) : "kein Termin"}</b>${t != null && t < 0 ? "<br><small>überfällig</small>" : ""}</td><td>${z.a.tickets_offen || ""}</td></tr>`;
-    }).join("")}</tbody></table>
+    <div class="kopf"><div><div class="k">SV-Prüfplan${objektText ? " · " + esc(objektText) : ""} · Stand ${datum(heute())}</div><h1>Prüfpflichtige technische Anlagen und Einrichtungen</h1></div><img src="${location.origin}/logo.png" alt=""></div>
+    <table><thead><tr><th>Anlage</th><th>Nr.</th><th>Prüfgrundlage</th><th>Intervall</th><th>Prüfer</th><th>Letzte Prüfung</th><th>Erhebl. Mängel</th>${jahre.map((j) => `<th class="j">${j}</th>`).join("")}<th>Nächste</th><th>Kommentar</th></tr></thead><tbody>
+    ${svGruppiert(zeilen).map(([b, l]) => `<tr class="g"><td colspan="${10 + jahre.length}">${esc(b || "Ohne Bereich")}</td></tr>` + l.map(({ a, w }) => {
+      const t = w && w.naechste ? tageBis(w.naechste) : null, e = svErheblich(a, w);
+      return `<tr class="${t != null && t < 0 ? "u" : ""}"><td><b>${esc(a.bezeichnung)}</b>${objektText ? "" : `<br><small>${esc(a.o_kuerzel || "")}</small>`}</td><td>${esc((w && w.pruefnummer) || "")}</td>
+        <td>${esc((w && w.rechtsgrundlage) || a.sv_grundlage || "")}</td><td>${svIntervall(w && w.intervall_monate)}</td><td>${esc(svPruefer(w))}</td>
+        <td>${w && w.letztes ? datum(w.letztes.datum) : w && w.letzte ? datum(w.letzte) : ""}</td><td class="${e === "ja" ? "ja" : ""}">${e}</td>
+        ${jahre.map((j) => `<td class="j">${zelle(w, j)}</td>`).join("")}
+        <td class="n">${w ? datum(w.naechste) : "kein Termin"}</td><td><small>${esc(svKommentar(w, a))}</small></td></tr>`;
+    }).join("")).join("")}</tbody></table>
+    <div class="leg">A = Prüfung durchgeführt · NP = Nachprüfung · P = geplante Prüfung (umrandet = noch offen)</div>
     <div class="fuss">Casa Concept Consulting GmbH &amp; Co. KG · www.ccc-frankfurt.com</div>
     <script>window.onload = () => setTimeout(() => print(), 300);<\/script></body></html>`;
   const f = window.open("", "_blank");
   if (!f) { melde("Das Druckfenster wurde blockiert. Bitte Pop-ups für diese Seite erlauben.", true); return; }
   f.document.open(); f.document.write(html); f.document.close();
+}
+
+async function svExcelImport(objektId) {
+  await lade("objekte");
+  const html = `<div class="dfehler"></div><form class="formular" onsubmit="return false">
+    <label class="breit"><span class="pflicht">Objekt</span><select name="objekt_id"><option value="">Bitte wählen</option>${(S.cache.objekte || []).map((o) => `<option value="${o.id}" ${String(o.id) === String(objektId) ? "selected" : ""}>${esc(anzeige("objekte", o))}</option>`).join("")}</select></label>
+    <label class="breit"><span class="pflicht">Excel-Datei (.xlsx)</span><input type="file" name="datei" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"></label>
+    <p class="klein breit">Aufbau wie die Übersicht der SV-Prüfungen: Bereichszeilen (z. B. Raumlufttechnik), darunter je Anlage Nr., Prüfgrundlage, Intervall, Prüfer, letzte Prüfung, erhebliche Mängel ja/nein, Jahresspalten mit A, NP, P und Kommentar. Fehlende Anlagen werden angelegt, die Prüftermine aus letzter Prüfung und Intervall berechnet. Schon übernommene Zeilen werden übersprungen.</p></form>`;
+  return dialog("SV-Prüfplan aus Excel übernehmen", html, [{ text: "Abbrechen" }, {
+    text: "Übernehmen", klasse: "haupt-k", aktion: async (hg) => {
+      const fm = hg.querySelector("form"), datei = fm.datei.files[0];
+      if (!fm.objekt_id.value) throw new Error("Bitte ein Objekt wählen.");
+      if (!datei) throw new Error("Bitte die Excel-Datei auswählen.");
+      const inhalt = await new Promise((ok, nein) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(",")[1] || ""); r.onerror = nein; r.readAsDataURL(datei); });
+      const r = await api("POST", "svpruefplan/import", { objekt_id: Number(fm.objekt_id.value), inhalt });
+      melde(`${r.zeilen} Zeilen gelesen: ${r.anlagen_neu} Anlagen neu, ${r.pruefungen_neu} Prüftermine angelegt${r.uebersprungen ? `, ${r.uebersprungen} schon vorhanden` : ""}${r.ohne_termin ? `, ${r.ohne_termin} ohne letzte Prüfung (kein Termin)` : ""}.`);
+      cacheLeeren();
+      return r;
+    },
+  }]);
 }
 
 SEITEN.svpruefplan = async (el, _, q) => {
@@ -94,7 +156,7 @@ SEITEN.svpruefplan = async (el, _, q) => {
       <select id="svs"></select><span id="svk"></span><span class="anzahl" id="sva"></span></div><div id="svinhalt"></div>`;
 
   let plan = [], anlagen = [];
-  const passt = (a) => !z.q || [a.bezeichnung, a.nummer, a.standort, a.sv_gegenstand].some((x) => String(x || "").toLowerCase().includes(z.q.toLowerCase()));
+  const passt = (a) => !z.q || [a.bezeichnung, a.nummer, a.standort, a.sv_gegenstand, a.sv_bereich, ...(a.pruefungen || []).flatMap((w) => [w.pruefer, w.pruefnummer])].some((x) => String(x || "").toLowerCase().includes(z.q.toLowerCase()));
   const zeilenPlan = () => {
     const out = [];
     for (const a of plan.filter(passt)) {
@@ -106,7 +168,7 @@ SEITEN.svpruefplan = async (el, _, q) => {
       if (z.status === "ueber") return t != null && t < 0;
       if (z.status === "90") return t != null && t <= 90;
       if (z.status === "ohne") return !w;
-      if (z.status === "maengel") return a.tickets_offen > 0 || a.sv_maengel_offen > 0 || (w && w.letztes && w.letztes.ergebnis === "Mängel offen");
+      if (z.status === "maengel") return svErheblich(a, w) === "ja" || a.sv_maengel_offen > 0 || a.tickets_offen > 0;
       return true;
     });
   };
@@ -115,42 +177,53 @@ SEITEN.svpruefplan = async (el, _, q) => {
     const alle = [];
     for (const a of plan) { if (!a.pruefungen.length) alle.push({ a, w: null }); for (const w of a.pruefungen) alle.push({ a, w }); }
     const ueber = alle.filter((x) => x.w && tageBis(x.w.naechste) < 0).length, bald = alle.filter((x) => x.w && tageBis(x.w.naechste) >= 0 && tageBis(x.w.naechste) <= 90).length;
-    const ohne = alle.filter((x) => !x.w).length, maengel = plan.filter((a) => a.tickets_offen > 0 || a.sv_maengel_offen > 0).length;
-    const zeilen = zeilenPlan();
+    const ohne = alle.filter((x) => !x.w).length, erheblich = alle.filter((x) => svErheblich(x.a, x.w) === "ja").length;
+    const zeilen = zeilenPlan(), jahre = svJahre(), mitObjekt = !z.objekt;
     el.querySelector("#sva").textContent = `${zeilen.length} Einträge`;
-    el.querySelector("#svk").innerHTML = `${darf("export") ? `<button class="knopf" id="svcsv">${icon("export")} Excel</button>` : ""}<button class="knopf" id="svdruck">Drucken / PDF</button>`;
-    el.querySelector("#svinhalt").innerHTML = `<div class="raster k4">
+    el.querySelector("#svk").innerHTML = `${darf("anlagen_bearbeiten") && darf("wartung_planen") ? `<button class="knopf" id="svimp">Excel übernehmen</button>` : ""}${darf("export") ? `<button class="knopf" id="svcsv">${icon("export")} Excel</button>` : ""}<button class="knopf" id="svdruck">Drucken / PDF</button>`;
+    const code = (w, j) => { const c = svCodes(w)[j]; return c ? `<span class="sv-code ${c.geplant ? "geplant" : ""} ${c.text.includes("NP") ? "np" : ""}">${esc(c.text)}</span>` : ""; };
+    el.querySelector("#svinhalt").innerHTML = `<div class="raster k4 sv-kz5">
       <div class="karte kennzahl"><div class="wert">${plan.length}</div><div class="text">Anlagen im SV-Prüfplan</div></div>
       <div class="karte kennzahl ${ueber ? "rot" : ""}"><div class="wert">${ueber}</div><div class="text">Prüfungen überfällig</div></div>
       <div class="karte kennzahl ${bald ? "gelb" : ""}"><div class="wert">${bald}</div><div class="text">fällig in 90 Tagen</div></div>
-      <div class="karte kennzahl ${ohne ? "gelb" : ""}"><div class="wert">${ohne}</div><div class="text">ohne Prüftermin${maengel ? ` · ${maengel} mit offenen Mängeln` : ""}</div></div></div>
+      <div class="karte kennzahl ${erheblich ? "rot" : ""}"><div class="wert">${erheblich}</div><div class="text">mit erheblichen Mängeln</div></div>
+      <div class="karte kennzahl ${ohne ? "gelb" : ""}"><div class="wert">${ohne}</div><div class="text">ohne Prüftermin</div></div></div>
       <div class="abstand"></div>
-      ${plan.length ? `<div class="tabelle-wrap"><table><thead><tr><th>Objekt</th><th>Anlage</th><th>Prüfgegenstand</th><th>Sachverständige</th><th>Letzte Prüfung</th><th>Nächste Prüfung</th><th>Mängel</th><th></th></tr></thead><tbody>
-        ${zeilen.map(({ a, w }) => `<tr class="klickbar" data-a="${a.id}" ${w ? `data-w="${w.id}"` : ""}>
-          <td>${esc(a.o_kuerzel || "")}</td>
-          <td><span class="sv-anl">${symbolVon(a, 26)}<span><b>${esc(a.bezeichnung)}</b>${a.nummer ? `<br><span class="klein">${esc(a.nummer)}</span>` : ""}${a.standort ? `<br><span class="klein">${esc(a.standort)}</span>` : ""}</span></span></td>
-          <td>${esc(a.sv_gegenstand || "")}${a.sv_gegenstand ? "" : '<span class="klein">nicht angegeben</span>'}<br><span class="klein">${esc((w && w.rechtsgrundlage) || a.sv_grundlage || "")}</span></td>
-          <td>${esc((w && w.dl_name) || "")}${w && w.intervall_monate ? `<br><span class="klein">alle ${zahl(w.intervall_monate)} Monate</span>` : ""}</td>
-          <td>${w ? svErgebnisMarke(w.letztes || (w.letzte ? { datum: w.letzte, ergebnis: "erledigt" } : null)) : ""}</td>
+      ${plan.length ? `<div class="tabelle-wrap"><table class="sv-plan"><thead><tr><th>Anlage</th><th>Nr.</th><th>Prüfgrundlage</th><th>Intervall</th><th>Prüfer</th><th>Letzte Prüfung</th><th title="erhebliche Mängel">Erhebl. Mängel</th>
+          ${jahre.map((j) => `<th class="sv-j ${j === new Date().getFullYear() ? "jetzt" : ""}">${j}</th>`).join("")}<th>Nächste Prüfung</th><th>Kommentar</th><th></th></tr></thead><tbody>
+        ${svGruppiert(zeilen).map(([b, l]) => `<tr class="sv-gruppe"><td colspan="${11 + jahre.length}">${esc(b || "Ohne Bereich")} <span class="klein">${l.length}</span></td></tr>` + l.map(({ a, w }) => {
+          const e = svErheblich(a, w);
+          return `<tr class="klickbar" data-a="${a.id}" ${w ? `data-w="${w.id}"` : ""}>
+          <td><span class="sv-anl">${symbolVon(a, 24)}<span><b>${esc(a.bezeichnung)}</b>${mitObjekt ? `<br><span class="klein">${esc(a.o_kuerzel || "")}</span>` : ""}${a.sv_gegenstand && a.sv_gegenstand !== a.bezeichnung ? `<br><span class="klein">${esc(a.sv_gegenstand)}</span>` : ""}</span></span></td>
+          <td class="klein">${esc((w && w.pruefnummer) || "")}</td>
+          <td class="klein">${esc((w && w.rechtsgrundlage) || a.sv_grundlage || "")}</td>
+          <td>${svIntervall(w && w.intervall_monate)}</td>
+          <td>${esc(svPruefer(w))}</td>
+          <td>${w ? (w.letztes ? datum(w.letztes.datum) : datum(w.letzte)) : ""}</td>
+          <td>${e === "ja" ? `<span class="marke m-ueber">ja</span>${a.sv_maengel_offen ? `<br><span class="klein">${a.sv_maengel_offen} offen</span>` : ""}` : e === "nein" ? '<span class="marke m-ok">nein</span>' : ""}</td>
+          ${jahre.map((j) => `<td class="sv-j ${j === new Date().getFullYear() ? "jetzt" : ""}">${code(w, j)}</td>`).join("")}
           <td>${w ? `<b>${datum(w.naechste)}</b><br>${faelligMarke(w.naechste)}` : '<span class="marke m-bald">kein Termin</span>'}</td>
-          <td>${a.sv_maengel_offen ? `<span class="marke m-ueber">${a.sv_maengel_offen} SV-Mängel</span><br>` : ""}${a.tickets_offen ? `<span class="marke m-bald">${a.tickets_offen} Störmeldung${a.tickets_offen > 1 ? "en" : ""}</span>` : ""}</td>
+          <td class="klein sv-komm">${esc(svKommentar(w, a))}</td>
           <td class="sv-akt">${w ? (darf("wartung_erledigen") ? `<button class="knopf haupt-k klein" data-erl="${w.id}">Prüfung eintragen</button>` : "")
-            : (darf("wartung_planen") ? `<button class="knopf haupt-k klein" data-termin="${a.id}">${icon("plus")} Termin</button>` : "")}</td></tr>`).join("")
-          || `<tr><td class="leer" colspan="8">Keine Einträge für diese Auswahl.</td></tr>`}</tbody></table></div>`
-      : `<div class="karte leer">Noch keine Anlage im SV-Prüfplan. Wechsle oben zu „Anlagen auswählen“ und hake die sicherheitsrelevanten Anlagen an.</div>`}`;
+            : (darf("wartung_planen") ? `<button class="knopf haupt-k klein" data-termin="${a.id}">${icon("plus")} Termin</button>` : "")}</td></tr>`;
+        }).join("")).join("") || `<tr><td class="leer" colspan="${11 + jahre.length}">Keine Einträge für diese Auswahl.</td></tr>`}</tbody></table></div>
+        <div class="legende sv-legende"><span><span class="sv-code">A</span> Prüfung durchgeführt</span><span><span class="sv-code np">NP</span> Nachprüfung</span><span><span class="sv-code geplant">P</span> geplante Prüfung (umrandet = noch offen)</span></div>`
+      : `<div class="karte leer">Noch keine Anlage im SV-Prüfplan. Übernimm einen Prüfplan mit „Excel übernehmen“ oder wechsle zu „Anlagen auswählen“ und hake die sicherheitsrelevanten Anlagen an.</div>`}`;
+    const im = el.querySelector("#svimp");
+    if (im) im.onclick = async () => { if (await svExcelImport(z.objekt)) laden(); };
     const cs = el.querySelector("#svcsv");
     if (cs) cs.onclick = () => {
-      const kopf = ["Objekt", "Anlagennummer", "Anlage", "Standort", "Prüfgegenstand", "Grundlage", "Sachverständige", "Intervall (Monate)", "Letzte Prüfung", "Ergebnis", "Nächste Prüfung", "Mängel offen"];
-      const rows = zeilen.map(({ a, w }) => [`${a.o_kuerzel || ""} ${a.o_name || ""}`.trim(), a.nummer, a.bezeichnung, a.standort, a.sv_gegenstand, (w && w.rechtsgrundlage) || a.sv_grundlage,
-        w && w.dl_name, w && w.intervall_monate, w && (w.letztes ? datum(w.letztes.datum) : datum(w.letzte)), w && w.letztes && w.letztes.ergebnis, w ? datum(w.naechste) : "kein Termin", a.tickets_offen || ""]);
-      const csv = "﻿" + [kopf, ...rows].map((r) => r.map((x) => `"${String(x ?? "").replace(/"/g, '""')}"`).join(";")).join("\r\n");
+      const kopf = ["Bereich", "Objekt", "Anlage", "Nr.", "Prüfgrundlage", "Intervall", "Prüfer", "Letzte Prüfung", "erhebliche Mängel ja/nein", ...jahre.map(String), "Nächste Prüfung", "Kommentar"];
+      const rows = svGruppiert(zeilen).flatMap(([b, l]) => l.map(({ a, w }) => { const c = svCodes(w); return [b, a.o_kuerzel, a.bezeichnung, w && w.pruefnummer, (w && w.rechtsgrundlage) || a.sv_grundlage, svIntervall(w && w.intervall_monate), svPruefer(w),
+        w ? (w.letztes ? datum(w.letztes.datum) : datum(w.letzte)) : "", svErheblich(a, w), ...jahre.map((j) => (c[j] ? c[j].text : "")), w ? datum(w.naechste) : "kein Termin", svKommentar(w, a)]; }));
+      const csv = "\ufeff" + [kopf, ...rows].map((r) => r.map((x) => `"${String(x ?? "").replace(/"/g, '""')}"`).join(";")).join("\r\n");
       const l = document.createElement("a");
       l.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
       l.download = `${heute().replace(/-/g, "")}_SV-Pruefplan.csv`;
       l.click();
       setTimeout(() => URL.revokeObjectURL(l.href), 2000);
     };
-    el.querySelector("#svdruck").onclick = () => svDrucken(zeilen, z.objekt ? refText("objekte", z.objekt) : "");
+    el.querySelector("#svdruck").onclick = () => { const a0 = zeilen[0] && zeilen[0].a; svDrucken(zeilen, z.objekt && a0 ? [a0.o_kuerzel, a0.o_name].filter(Boolean).join(" · ") : ""); };
   };
 
   const zeichnenAuswahl = () => {
@@ -204,7 +277,7 @@ SEITEN.svpruefplan = async (el, _, q) => {
   };
 
   const statusOptionen = () => z.ansicht === "plan"
-    ? [["", "Alle Prüfungen"], ["ueber", "Überfällig"], ["90", "Fällig in 90 Tagen"], ["ohne", "Ohne Prüftermin"], ["maengel", "Mit offenen Mängeln"]]
+    ? [["", "Alle Prüfungen"], ["ueber", "Überfällig"], ["90", "Fällig in 90 Tagen"], ["ohne", "Ohne Prüftermin"], ["maengel", "Mit erheblichen oder offenen Mängeln"]]
     : [["", "Alle Anlagen"], ["an", "Ausgewählt"], ["aus", "Nicht ausgewählt"], ["vorschlag", "Nur Vorschläge"]];
   const laden = async () => {
     el.querySelectorAll("[data-ans]").forEach((b) => b.classList.toggle("an", b.dataset.ans === z.ansicht));

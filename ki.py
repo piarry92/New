@@ -11,8 +11,8 @@ import json
 import os
 
 MODELL = "claude-opus-5-5"
-EINSTUFUNGEN = ["geringfügig", "wesentlich", "gefährlich", "unklar"]
-GESAMT = ["ohne Mängel", "geringfügige Mängel", "wesentliche Mängel", "gefährliche Mängel", "unklar"]
+EINSTUFUNGEN = ["geringfügig", "erheblich", "gefährlich", "unklar"]
+GESAMT = ["ohne Mängel", "geringfügige Mängel", "erhebliche Mängel", "gefährliche Mängel", "unklar"]
 MEDIEN = {"pdf": "application/pdf", "png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "webp": "image/webp"}
 
 _t = lambda: {"type": ["string", "null"]}  # noqa: E731
@@ -38,11 +38,12 @@ SCHEMA = {
                     "beschreibung": {"type": "string"},
                     "ort": _t(),
                     "einstufung": {"type": "string", "enum": EINSTUFUNGEN},
+                    "bewertung": _t(),
                     "frist": _t(),
                     "frist_text": _t(),
                     "seite": {"type": ["integer", "null"]},
                 },
-                "required": ["nummer", "beschreibung", "ort", "einstufung", "frist", "frist_text", "seite"],
+                "required": ["nummer", "beschreibung", "ort", "einstufung", "bewertung", "frist", "frist_text", "seite"],
                 "additionalProperties": False,
             },
         },
@@ -59,9 +60,10 @@ Regeln:
 - Übernimm nur, was wirklich im Dokument steht. Erfinde nichts. Fehlt eine Angabe, setze null.
 - Jeder Mangel, jede Beanstandung und jeder Hinweis mit Handlungsbedarf aus dem Bericht wird ein eigener Eintrag \
 in "maengel". Beschreibung kurz, sachlich, auf Deutsch, aber inhaltlich vollständig; Nummer so wie im Bericht.
-- "einstufung": geringfügig, wesentlich oder gefährlich so, wie der Bericht es einstuft (auch bei anderen \
-Wörtern wie „geringer Mangel“, „erheblicher Mangel“, „gefährlicher Mangel“, „Mängelklasse A/B/C“ sinngemäß). \
-Steht keine Einstufung dabei, setze "unklar".
+- "einstufung": geringfügig, erheblich oder gefährlich so, wie der Bericht es einstuft (auch bei anderen \
+Wörtern wie „geringer Mangel“, „wesentlicher Mangel“, „sicherheitserheblich“, „gefährlicher Mangel“ sinngemäß). \
+Steht keine Einstufung dabei oder ist die Skala nicht eindeutig (etwa M(B), M(C), Mängelklasse 1/2), setze "unklar".
+- "bewertung": die Bewertung genau im Wortlaut bzw. Kürzel des Berichts (etwa „M(B)“, „2“, „Erheblicher Mangel“), sonst null.
 - Datumsangaben immer als JJJJ-MM-TT. "frist" nur, wenn ein Datum genannt ist oder sich eindeutig aus Prüfdatum \
 und Frist ergibt (z. B. „innerhalb von 4 Wochen“ ab Prüfdatum). Den Wortlaut der Frist schreibst du in "frist_text".
 - "seite": Seitenzahl im Dokument, auf der der Mangel steht, sonst null.
@@ -137,6 +139,7 @@ def vorlage() -> str:
         "pruefart": "…", "pruefgegenstand": "…", "gesamtergebnis": "|".join(GESAMT), "naechste_pruefung": "JJJJ-MM-TT oder null",
         "zusammenfassung": "…", "hinweis_anweisung": False,
         "maengel": [{"nummer": "1", "beschreibung": "…", "ort": "… oder null", "einstufung": "|".join(EINSTUFUNGEN),
+                     "bewertung": "Bewertung im Wortlaut des Berichts oder null",
                      "frist": "JJJJ-MM-TT oder null", "frist_text": "Wortlaut der Frist oder null", "seite": 1}],
     }
     return (SYSTEM + "\n\nAntworte nur mit einem JSON-Block genau in diesem Aufbau, ohne weiteren Text:\n"
@@ -173,7 +176,8 @@ def ergebnis_saeubern(d) -> dict:
         "pruefdatum": _datum(d.get("pruefdatum")), "sachverstaendiger": _text(d.get("sachverstaendiger"), 200),
         "pruefstelle": _text(d.get("pruefstelle"), 200), "pruefart": _text(d.get("pruefart"), 200),
         "pruefgegenstand": _text(d.get("pruefgegenstand"), 200),
-        "gesamtergebnis": d.get("gesamtergebnis") if d.get("gesamtergebnis") in GESAMT else "unklar",
+        "gesamtergebnis": (d.get("gesamtergebnis") or "").replace("wesentliche", "erhebliche") if
+        (d.get("gesamtergebnis") or "").replace("wesentliche", "erhebliche") in GESAMT else "unklar",
         "naechste_pruefung": _datum(d.get("naechste_pruefung")), "zusammenfassung": _text(d.get("zusammenfassung"), 2000) or "",
         "hinweis_anweisung": bool(d.get("hinweis_anweisung")), "maengel": [],
     }
@@ -186,7 +190,9 @@ def ergebnis_saeubern(d) -> dict:
             seite = None
         aus["maengel"].append({
             "nummer": _text(m.get("nummer"), 40), "beschreibung": _text(m.get("beschreibung")), "ort": _text(m.get("ort"), 300),
-            "einstufung": m.get("einstufung") if m.get("einstufung") in EINSTUFUNGEN else "unklar",
+            "einstufung": ("erheblich" if m.get("einstufung") == "wesentlich" else m.get("einstufung"))
+            if m.get("einstufung") in EINSTUFUNGEN + ["wesentlich"] else "unklar",
+            "bewertung": _text(m.get("bewertung"), 60),
             "frist": _datum(m.get("frist")), "frist_text": _text(m.get("frist_text"), 300), "seite": seite,
         })
     return aus

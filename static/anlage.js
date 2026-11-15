@@ -127,17 +127,19 @@ async function erledigtMelden(w, anlage) {
   const liste = (w.taetigkeiten || "").split("\n").map((x) => x.trim()).filter(Boolean);
   const gps = anlage && anlage.gps_pflicht;
   const p = dialog(`Erledigt: ${w.titel}`, `<div class="dfehler"></div><form class="formular" onsubmit="return false">
-    <label><span class="pflicht">Erledigt am</span><input type="date" name="datum" value="${heute()}" required></label>
+    <label><span class="pflicht">${w.art === "SV-Prüfung" ? "Geprüft am" : "Erledigt am"}</span><input type="date" name="datum" value="${heute()}" required></label>
+    ${w.art === "SV-Prüfung" ? `<label><span>Prüfart</span><select name="pruefart"><option value="Prüfung">Prüfung (A)</option><option value="Nachprüfung" ${w.nachpruefung ? "selected" : ""}>Nachprüfung (NP)</option></select></label>` : ""}
     <label><span>Ergebnis</span><select name="ergebnis"><option>Ohne Mängel</option><option>Mängel behoben</option><option>Mängel offen</option><option>Nicht durchgeführt</option></select></label>
     ${liste.length ? `<div class="breit checkliste"><div class="klein">Checkliste</div>${liste.map((t, i) => `<label class="check"><input type="checkbox" data-c="${i}" checked> ${esc(t)}</label>`).join("")}</div>` : ""}
     <label class="breit"><span>Bemerkung</span><textarea name="bemerkung"></textarea></label>
     <label class="check breit"><input type="checkbox" name="ticket_anlegen" checked> Bei offenen Mängeln gleich eine Störmeldung anlegen</label>
     <label class="check breit"><input type="checkbox" name="gps" ${gps ? "checked disabled" : ""}> Standort (GPS) mitspeichern${gps ? " <b>(Pflicht für diese Anlage)</b>" : ""}</label>
-    <p class="klein breit">Die nächste Fälligkeit rechnet das Programm aus dem Intervall (${zahl(w.intervall_monate)} Monate) neu aus.</p></form>`,
+    <p class="klein breit">${w.art === "SV-Prüfung" ? "Bei einer Prüfung rechnet das Programm die nächste Fälligkeit aus dem Intervall neu aus. Eine Nachprüfung lässt den Prüfzyklus unverändert." : `Die nächste Fälligkeit rechnet das Programm aus dem Intervall (${zahl(w.intervall_monate)} Monate) neu aus.`}</p></form>`,
     [{ text: "Abbrechen" }, {
       text: "Speichern", klasse: "haupt-k", aktion: async (hg) => {
         const fm = hg.querySelector("form");
         const d = { datum: fm.datum.value, ergebnis: fm.ergebnis.value, bemerkung: fm.bemerkung.value, ticket_anlegen: fm.ticket_anlegen.checked };
+        if (fm.pruefart) d.pruefart = fm.pruefart.value;
         if (liste.length) d.checkliste = liste.map((t, i) => ({ text: t, ok: fm.querySelector(`[data-c="${i}"]`).checked }));
         if (fm.gps.checked) Object.assign(d, await standortHolen());
         const r = await api("POST", `wartungen/${w.id}/erledigt`, d);
