@@ -1,7 +1,7 @@
 /* Casa CAFM – Oberfläche (ohne Fremdbibliotheken) */
 "use strict";
 
-const VERSION = "2026.11.15-33"; // muss zu VERSION in app.py passen
+const VERSION = "2026.11.15-34"; // muss zu VERSION in app.py passen
 /* Hell- und Dunkelmodus: gemerkte Wahl, sonst wie das Gerät */
 const THEMA = (() => {
   let t = null;

@@ -48,7 +48,7 @@ WD_PFAD = DATEN / "winterdienstfotos"
 PROFIL_PFAD = DATEN / "profilbilder"
 MAX_SYMBOL = 2 * 1024 * 1024
 MAX_UPLOAD = 25 * 1024 * 1024
-VERSION = "2026.11.15-33"  # muss zu VERSION in static/app.js passen
+VERSION = "2026.11.15-34"  # muss zu VERSION in static/app.js passen
 SITZUNG_TAGE = 7
 
 GEWERKE = [
@@ -444,28 +444,29 @@ RESSOURCEN: dict[str, dict] = {
         "label": "Vorgangsliste", "einzahl": "Vorgang", "anzeige": ["angebot_nr", "beschreibung"], "sort": "-datum",
         "felder": [
             {"name": "objekt_id", "label": "Liegenschaft", "typ": "ref", "ref": "objekte", "pflicht": True, "liste": True},
-            {"name": "angebot_nr", "label": "Angebots-Nr.", "typ": "text", "liste": True},
+            {"name": "angebot_nr", "label": "Angebots Nr.", "typ": "text", "liste": True},
             {"name": "bearbeiter", "label": "Bearbeiter Kürzel", "typ": "text", "liste": True},
             {"name": "datum", "label": "Datum", "typ": "date", "liste": True},
             {"name": "summe_netto", "label": "Angebotssumme netto, inkl. Fee", "typ": "money", "liste": True},
             {"name": "fee", "label": "Fee J/N", "typ": "select", "optionen": ["ja", "nein"], "liste": True},
-            {"name": "fee_prozent", "label": "Fee %", "typ": "number"},
+            {"name": "fee_wert", "label": "Fee", "typ": "text"},
             {"name": "beschreibung", "label": "Beschreibung", "typ": "textarea", "pflicht": True, "liste": True},
             {"name": "firma", "label": "(Sub-)Firma", "typ": "text", "liste": True},
             {"name": "dienstleister_id", "label": "Dienstleister", "typ": "ref", "ref": "dienstleister"},
-            {"name": "sub_angebot_nr", "label": "(Sub-)Angebots-Nr.", "typ": "text"},
-            {"name": "auftrag_nr", "label": "(extern) Auftrags-Nr.", "typ": "text"},
+            {"name": "sub_angebot_nr", "label": "(Sub-)Angebots Nr.", "typ": "text"},
+            {"name": "auftrag_nr", "label": "(extern) Auftrags Nr.", "typ": "text"},
             {"name": "beauftragt_am", "label": "beauftragt am", "typ": "date"},
             {"name": "fertiggestellt_am", "label": "fertiggestellt am", "typ": "date"},
             {"name": "versendet_am", "label": "versendet am", "typ": "date"},
             {"name": "bemerkung", "label": "Bemerkung", "typ": "textarea"},
-            {"name": "rg_nr", "label": "RG-Nr.", "typ": "text"},
-            {"name": "rg_datum", "label": "RG-Datum", "typ": "date"},
+            {"name": "rg_nr", "label": "RG- Nr.", "typ": "text"},
+            {"name": "rg_datum", "label": "RG- Datum", "typ": "date"},
             {"name": "rg_betrag", "label": "Betrag netto", "typ": "money"},
             {"name": "status", "label": "Angebotsstatus", "typ": "select", "optionen": VG_STATUS, "standard": "offen", "liste": True},
-            {"name": "ab_nr", "label": "AB-Nr.", "typ": "text"},
+            {"name": "cockpit_id", "label": "Cockpit-ID", "typ": "text"},
+            {"name": "ab_nr", "label": "AB Nr.", "typ": "text"},
             {"name": "ab_am", "label": "AB am", "typ": "date"},
-            {"name": "casa_auftrag_nr", "label": "Casa-Auftrag-Nr.", "typ": "text"},
+            {"name": "casa_auftrag_nr", "label": "Casa-Auftrag Nr.", "typ": "text"},
             {"name": "nu_beauftragt", "label": "NU beauftragt am", "typ": "date"},
             {"name": "wowflow_ticket", "label": "Wowflow-Ticket", "typ": "text"},
             {"name": "quelle", "label": "Erfasst über", "typ": "text", "nurlesen": True},
@@ -1395,7 +1396,7 @@ def vorgang_status_nachziehen(con, vid: int) -> None:
     if not v or v["status"] in ("abgelehnt", "storniert"):
         return
     neu = vorgang_status_aus(dict(v))
-    if VG_RANG.get(neu, 0) > VG_RANG.get(v["status"] or "offen", 0):
+    if not v["status"] or VG_RANG.get(neu, 0) > VG_RANG.get(v["status"], 0):
         con.execute("UPDATE vorgaenge SET status=? WHERE id=?", (neu, vid))
 
 
@@ -1518,8 +1519,8 @@ def vg_uebernehmen(con, b, d: dict) -> dict:
 
 VG_SPALTEN_ERKENNEN = [  # (Suchtext im Spaltenkopf, Feld) – erste passende Regel gewinnt
     ("sub", "sub"), ("angebotsstatus", "status"), ("angebotssumme", "summe_netto"), ("angebots", "angebot_nr"),
-    ("bearbeiter", "bearbeiter"), ("fee %", "fee_prozent"), ("fee", "fee"), ("liegenschaft", "liegenschaft"),
-    ("beschreibung", "beschreibung"), ("auftrags", "auftrag_nr"), ("beauftragt am", "beauftragt_am"), ("nu beauftragt", "nu_beauftragt"),
+    ("bearbeiter", "bearbeiter"), ("fee j", "fee"), ("fee", "fee_wert"), ("liegenschaft", "liegenschaft"), ("cockpit", "cockpit_id"),
+    ("beschreibung", "beschreibung"), ("auftrags", "auftrag_nr"), ("nu beauftragt", "nu_beauftragt"), ("beauftragt am", "beauftragt_am"),
     ("fertiggestellt", "fertiggestellt_am"), ("versendet", "versendet_am"), ("bemerkung", "bemerkung"), ("rg- n", "rg_nr"),
     ("rg-n", "rg_nr"), ("rg n", "rg_nr"), ("rg- d", "rg_datum"), ("rg-d", "rg_datum"), ("rg d", "rg_datum"), ("betrag", "rg_betrag"),
     ("ab nr", "ab_nr"), ("ab-nr", "ab_nr"), ("ab am", "ab_am"), ("casa-auftrag", "casa_auftrag_nr"), ("casa auftrag", "casa_auftrag_nr"),
@@ -1538,7 +1539,7 @@ def vg_importieren(con, b, d: dict) -> dict:
         inhalt = base64.b64decode(d.get("inhalt") or "", validate=True)
     except (ValueError, binascii.Error):
         raise Fehler(400, "Die Datei konnte nicht gelesen werden.")
-    zeilen = xlsx_zeilen(inhalt)
+    zeilen = xlsx_zeilen(inhalt, "Vorgangsliste")
     kopf_i = next((i for i, z in enumerate(zeilen[:30]) if any("angebots" in str(c).lower() for c in z)
                    and any("beschreibung" in str(c).lower() for c in z)), None)
     if kopf_i is None:
@@ -2825,8 +2826,9 @@ def sv_uebernehmen(con, benutzer, rechte, did: int, d: dict) -> dict:
 
 
 # ---------- Excel lesen (ohne Zusatzpakete) und SV-Prüfplan importieren ----------
-def xlsx_zeilen(inhalt: bytes) -> list:
-    """Erstes sichtbares Arbeitsblatt einer .xlsx als Liste von Zeilen (Liste von Zellwerten als Text)."""
+def xlsx_zeilen(inhalt: bytes, reiter: str | None = None) -> list:
+    """Arbeitsblatt einer .xlsx als Liste von Zeilen (Liste von Zellwerten als Text).
+    Ohne reiter: erstes sichtbares Blatt. Mit reiter: das Blatt mit diesem Namen (falls vorhanden)."""
     import zipfile
     import xml.etree.ElementTree as ET
     ns = {"m": "http://schemas.openxmlformats.org/spreadsheetml/2006/main",
@@ -2843,7 +2845,12 @@ def xlsx_zeilen(inhalt: bytes) -> list:
     rels = ET.fromstring(z.read("xl/_rels/workbook.xml.rels"))
     ziele = {r.get("Id"): r.get("Target") for r in rels}
     blatt = None
-    for sh in wb.find("m:sheets", ns):
+    blaetter = list(wb.find("m:sheets", ns))
+    if reiter:
+        treffer = next((sh for sh in blaetter if (sh.get("name") or "").strip().lower() == reiter.lower()), None)
+        if treffer is not None:
+            blatt = ziele.get(treffer.get("{%s}id" % ns["r"]))
+    for sh in ([] if blatt else blaetter):
         if sh.get("state") in ("hidden", "veryHidden"):
             continue
         blatt = ziele.get(sh.get("{%s}id" % ns["r"]))

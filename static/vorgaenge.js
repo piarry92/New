@@ -2,14 +2,12 @@
 "use strict";
 
 const VG_GRUPPEN = [
-  { titel: "Angebotserfasser/in", felder: ["angebot_nr", "bearbeiter", "datum", "summe_netto", "fee", "fee_prozent", "objekt_id", "beschreibung"] },
+  { titel: "Angebotserfasser/in", felder: ["angebot_nr", "bearbeiter", "datum", "summe_netto", "fee", "fee_wert", "objekt_id", "beschreibung"] },
   { titel: "Objektleiter/in", felder: ["firma", "sub_angebot_nr", "auftrag_nr", "beauftragt_am", "fertiggestellt_am", "versendet_am", "bemerkung"] },
   { titel: "Buchhaltung CCC", felder: ["rg_nr", "rg_datum", "rg_betrag", "status"] },
-  { titel: "Auftrag", felder: ["ab_nr", "ab_am", "casa_auftrag_nr", "nu_beauftragt", "wowflow_ticket"], rand: true },
+  { titel: "Auftrag", felder: ["cockpit_id", "ab_nr", "ab_am", "casa_auftrag_nr", "nu_beauftragt", "wowflow_ticket"], rand: true },
 ];
-const VG_KURZ = { angebot_nr: "Angebots-Nr.", bearbeiter: "Bearbeiter Kürzel", summe_netto: "Angebotssumme netto, inkl. Fee", fee: "Fee J/N", fee_prozent: "Fee %",
-  objekt_id: "Liegenschaft", sub_angebot_nr: "(Sub-)Angebots-Nr.", auftrag_nr: "(extern) Auftrags-Nr.", rg_betrag: "Betrag netto", status: "Angebotsstatus",
-  casa_auftrag_nr: "Casa-Auftrag-Nr.", nu_beauftragt: "NU beauftragt", wowflow_ticket: "Wowflow-Ticket" };
+const VG_KURZ = {};
 const VG_STATUS_FARBE = { offen: "m-geplant", beauftragt: "m-bald", fertiggestellt: "m-arbeit", abgerechnet: "m-ok", abgelehnt: "m-ueber", storniert: "m-ueber" };
 const vgFeld = (n) => S.schema.vorgaenge.felder.find((f) => f.name === n);
 const vgLabel = (n) => VG_KURZ[n] || vgFeld(n).label;
@@ -26,7 +24,7 @@ function vgZelle(v, n, dokumente) {
   const f = vgFeld(n);
   if (f.typ === "money") return vgEuro(w);
   if (f.typ === "date") return datum(w);
-  if (f.typ === "number") return w == null ? "" : zahl(w, 0) + (n === "fee_prozent" ? " %" : "");
+  if (f.typ === "number") return w == null ? "" : zahl(w, 0);
   return esc(w ?? "");
 }
 
@@ -71,7 +69,7 @@ SEITEN.vorgaenge = async (el, _, q) => {
   const zeichnen = () => {
     const rows = sichtbar();
     el.querySelector("#vgBody").innerHTML = rows.length ? rows.map((v) => `<tr data-id="${v.id}" class="${v.status === "abgelehnt" || v.status === "storniert" ? "vg-ab" : ""}">${VG_GRUPPEN.map((g) => g.felder.map((n, i) =>
-      `<td data-f="${n}" class="${["summe_netto", "rg_betrag", "fee_prozent"].includes(n) ? "rechts" : ""} ${g.rand && i === 0 ? "vg-rand-l" : ""} ${bearbeitbar && n !== "objekt_id" ? "vg-edit" : ""}">${vgZelle(v, n, dokumente)}</td>`).join("")).join("")}
+      `<td data-f="${n}" class="${["summe_netto", "rg_betrag"].includes(n) ? "rechts" : ""} ${g.rand && i === 0 ? "vg-rand-l" : ""} ${bearbeitbar && n !== "objekt_id" ? "vg-edit" : ""}">${vgZelle(v, n, dokumente)}</td>`).join("")).join("")}
       <td class="vg-akt"><button class="knopf klein" data-mehr="${v.id}" title="Alle Angaben und Unterlagen">…</button></td></tr>`).join("")
       : `<tr><td colspan="${alleFelder.length + 1}" class="klein vg-leer">${liste.length ? "Keine Vorgänge für diesen Filter." : "Noch keine Vorgänge. Leg ein Angebot von Claude auswerten oder übernimm die bisherige Excel-Liste."}</td></tr>`;
     el.querySelectorAll("th[data-sort]").forEach((th) => { th.querySelector(".vg-pfeil").textContent = th.dataset.sort === sortFeld ? (sortAb ? " ▼" : " ▲") : ""; });
@@ -269,8 +267,8 @@ async function vgImport(oid) {
   const objekte = S.cache.objekte || [];
   const r = await dialog("Excel-Vorgangsliste übernehmen", `<div class="dfehler"></div><form class="formular" style="grid-template-columns:1fr" onsubmit="return false">
     <label><span class="pflicht">Objekt</span><select name="objekt_id"><option value="">Bitte wählen</option>${objekte.map((o) => `<option value="${o.id}" ${String(o.id) === String(oid) ? "selected" : ""}>${esc(anzeige("objekte", o))}</option>`).join("")}</select></label>
-    <label><span class="pflicht">Vorgangsliste (.xlsx)</span><input type="file" name="datei" accept=".xlsx"></label>
-    <p class="klein">Die Spalten werden an der Kopfzeile erkannt (Angebots-Nr., Bearbeiter, Datum, Angebotssumme, Fee, Beschreibung, (Sub-)Firma, Auftrags-Nr., beauftragt am, RG-Nr., Angebotsstatus, AB-Nr. …). Angebotsnummern, die es beim Objekt schon gibt, werden übersprungen.</p></form>`,
+    <label><span class="pflicht">Objektliste oder Vorgangsliste (.xlsx)</span><input type="file" name="datei" accept=".xlsx"></label>
+    <p class="klein">Die Spalten werden an der Kopfzeile erkannt (Angebots Nr., Bearbeiter, Datum, Angebotssumme, Fee, Beschreibung, (Sub-)Firma, Auftrags Nr., beauftragt am, RG- Nr., Angebotsstatus, Cockpit-ID, AB Nr. …). Du kannst die ganze Objektliste nehmen: Der Reiter „Vorgangsliste“ wird automatisch gefunden. Angebotsnummern, die es beim Objekt schon gibt, werden übersprungen.</p></form>`,
     [{ text: "Abbrechen" }, { text: "Übernehmen", klasse: "haupt-k", aktion: async (hg) => {
       const f = hg.querySelector("form"), d = f.datei.files[0];
       if (!f.objekt_id.value) throw new Error("Bitte das Objekt wählen.");
@@ -301,7 +299,7 @@ function vgDrucken(rows, o, dokumente) {
     <div class="kopf"><div><h1>Vorgangsliste · ${esc(o ? o.name : "alle Objekte")}</h1><div class="h">Angebote und Aufträge · Stand ${new Date().toLocaleDateString("de-DE")}</div></div><img src="${location.origin}/logo.png" alt=""></div>
     <table><thead><tr class="g">${VG_GRUPPEN.map((g) => `<th colspan="${g.felder.length}">${esc(g.titel)}</th>`).join("")}</tr>
       <tr>${felder.map((n) => `<th>${esc(vgLabel(n))}</th>`).join("")}</tr></thead>
-      <tbody>${rows.map((v) => `<tr class="${v.status === "abgelehnt" || v.status === "storniert" ? "ab" : ""}">${felder.map((n) => `<td class="${["summe_netto", "rg_betrag", "fee_prozent"].includes(n) ? "r" : ""}">${n === "status" ? esc(v.status || "") : vgZelle(v, n, dokumente).replace(/href="\//g, `href="${location.origin}/`)}</td>`).join("")}</tr>`).join("")}</tbody></table>
+      <tbody>${rows.map((v) => `<tr class="${v.status === "abgelehnt" || v.status === "storniert" ? "ab" : ""}">${felder.map((n) => `<td class="${["summe_netto", "rg_betrag"].includes(n) ? "r" : ""}">${n === "status" ? esc(v.status || "") : vgZelle(v, n, dokumente).replace(/href="\//g, `href="${location.origin}/`)}</td>`).join("")}</tr>`).join("")}</tbody></table>
     <div class="fuss">Casa Concept Consulting GmbH &amp; Co. KG · ${rows.length} Vorgänge</div>
     <script>window.onload = () => setTimeout(() => print(), 400);<\/script></body></html>`;
   const f = window.open("", "_blank");
