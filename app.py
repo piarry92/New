@@ -46,7 +46,7 @@ SCHL_PFAD = DATEN / "schluesselfotos"
 PROFIL_PFAD = DATEN / "profilbilder"
 MAX_SYMBOL = 2 * 1024 * 1024
 MAX_UPLOAD = 25 * 1024 * 1024
-VERSION = "2026.11.15-27"  # muss zu VERSION in static/app.js passen
+VERSION = "2026.11.15-28"  # muss zu VERSION in static/app.js passen
 SITZUNG_TAGE = 7
 
 GEWERKE = [
@@ -933,9 +933,9 @@ EINSTELLUNGEN_STANDARD = {"basis_url": "", "oeffentlich_melden": "0", "oeffentli
                           "smtp_host": "", "smtp_port": "587", "smtp_tls": "starttls", "smtp_user": "", "smtp_pass": "",
                           "smtp_absender": "", "vapid_privat": "", "vapid_public": "",
                           "ki_aktiv": "0", "ki_schluessel": "", "feierabend": "17:00", "schluessel_vorlauf": "60",
-                          "weihnachten": "auto"}
+                          "weihnachten": "auto", "motto": ""}
 EINSTELLUNGEN_OEFFENTLICH = ("basis_url", "oeffentlich_melden", "oeffentlich_objekt", "mail_aktiv", "ki_aktiv", "feierabend",
-                             "schluessel_vorlauf", "weihnachten")
+                             "schluessel_vorlauf", "weihnachten", "motto")
 EINSTELLUNGEN_SMTP = ("smtp_host", "smtp_port", "smtp_tls", "smtp_user", "smtp_absender")
 VERSAND: "versand.Versand | None" = None
 MIETER_THEMEN = {
@@ -3139,6 +3139,11 @@ class Handler(BaseHTTPRequestHandler):
                     if not 0 <= wert <= 720:
                         raise Fehler(400, "Die Vorlaufzeit muss zwischen 0 und 720 Minuten liegen.")
                     con.execute("INSERT OR REPLACE INTO einstellungen VALUES ('schluessel_vorlauf', ?)", (str(wert),))
+                if "motto" in d:
+                    if d["motto"] not in ("auto", "aus", "weihnachten", "silvester", "neujahr", "winter", "ostern", "fruehling",
+                                          "sommer", "herbst"):
+                        raise Fehler(400, "Jahresmotto ist ungültig.")
+                    con.execute("INSERT OR REPLACE INTO einstellungen VALUES ('motto', ?)", (d["motto"],))
                 if "weihnachten" in d:
                     if d["weihnachten"] not in ("auto", "an", "aus"):
                         raise Fehler(400, "Weihnachtsmotto: bitte automatisch, an oder aus wählen.")

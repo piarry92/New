@@ -1165,67 +1165,123 @@ html[data-theme="dark"] .sv-plan tr.sv-gruppe td { background: rgba(230,55,19,.1
 html[data-theme="dark"] .sv-mtab tr.sv-gruppe td { background: rgba(230,55,19,.14); }
 .sv-mtab td:nth-child(6), .sv-mtab td:nth-child(7) { min-width: 120px; }
 
-/* ---------- Weihnachtsmotto ---------- */
-#schnee { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 5; }
-#schnee i { position: absolute; top: -12px; border-radius: 50%; background: #fff; box-shadow: 0 0 3px rgba(60,60,59,.25);
-  animation-name: flocke; animation-timing-function: linear; animation-iteration-count: infinite; }
-@keyframes flocke { from { transform: translate(0, -12px); } to { transform: translate(var(--drift, 0), 105vh); } }
-@media (prefers-reduced-motion: reduce) { #schnee { display: none; } .weihnacht-karte .flamme { animation: none !important; } }
+/* ---------- Jahresmotto ---------- */
+#effekte { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 5; }
+#effekte i { position: absolute; top: -24px; animation-name: fallen; animation-timing-function: linear; animation-iteration-count: infinite; }
+#effekte b { display: block; width: var(--g); height: var(--g); background: var(--f); animation: drehen-eff ease-in-out infinite alternate; }
+@keyframes fallen { from { transform: translate(0, -24px); } to { transform: translate(var(--drift, 0), 105vh); } }
+@keyframes drehen-eff { from { transform: rotate(-35deg); } to { transform: rotate(35deg); } }
+#effekte[data-art="schnee"] b { border-radius: 50%; box-shadow: 0 0 3px rgba(60,60,59,.25); animation: none; }
+#effekte[data-art="blueten"] b { border-radius: 80% 0 80% 0; }
+#effekte[data-art="blaetter"] b { border-radius: 0 90% 0 90%; height: calc(var(--g) * .7); animation-name: blatt-drehen; }
+@keyframes blatt-drehen { from { transform: rotate(-70deg) rotateX(0); } to { transform: rotate(80deg) rotateX(60deg); } }
+#effekte[data-art="konfetti"] b { height: calc(var(--g) * .45); border-radius: 1px; animation-name: konfetti-drehen; animation-timing-function: linear; animation-direction: normal; }
+@keyframes konfetti-drehen { from { transform: rotate(0) rotateY(0); } to { transform: rotate(360deg) rotateY(720deg); } }
+html[data-theme="dark"] #effekte[data-art="schnee"] b { background: #F4F7FB; box-shadow: none; }
+
 .seite .logo { position: relative; }
 .seite .logo span.logo-stern { position: absolute; display: block; top: 12px; right: 18px; margin: 0; font-size: 18px; letter-spacing: 0;
   color: #E0A500; text-shadow: 0 0 8px rgba(224,165,0,.55); }
-.weihnacht-karte { display: flex; align-items: center; gap: 18px; margin-bottom: 18px; padding: 14px 20px;
-  background: linear-gradient(100deg, var(--orange-zart), #fff 70%); border-left: 4px solid var(--orange); }
-.weihnacht-karte .kranz { width: 128px; height: auto; flex: none; }
-.weihnacht-karte .flamme { transform-origin: center bottom; transform-box: fill-box; animation: flackern 1.6s ease-in-out infinite alternate; }
-@keyframes flackern { from { transform: scale(1, 1); } to { transform: scale(.9, 1.08); } }
-.weihnacht-karte .wk-text { display: flex; flex-direction: column; gap: 2px; }
-.weihnacht-karte .wk-text .kicker { font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--orange); font-weight: 700; }
-.weihnacht-karte .wk-text b { font-size: 20px; color: var(--anthrazit); }
-.weihnacht-karte .wk-text span { color: var(--dunkelgrau); }
-.weihnacht-karte .wk-rechts { margin-left: auto; display: flex; align-items: center; gap: 14px; }
-.wn-haken { display: flex; align-items: center; gap: 10px; cursor: pointer; }
-html[data-theme="dark"] .weihnacht-karte { background: linear-gradient(100deg, rgba(230,55,19,.16), transparent 70%); }
-html[data-theme="dark"] .weihnacht-karte .wk-text b { color: #fff; }
-html[data-theme="dark"] .weihnacht-karte .wk-text span { color: #C9CBD0; }
-@media (max-width: 640px) { .weihnacht-karte { flex-wrap: wrap; } .weihnacht-karte .kranz { width: 96px; } .weihnacht-karte .wk-rechts { margin-left: 0; width: 100%; justify-content: flex-start; } .weihnacht-karte .wk-rechts .baum { position: absolute; bottom: 10px; right: 16px; width: 50px; } }
-.formular label.wn-haken { flex-direction: row; align-items: center; display: flex; gap: 10px; font-weight: 400; text-align: left; justify-content: flex-start; }
-.formular label.wn-haken input { width: auto; margin: 0; }
-html[data-theme="dark"] #schnee i { background: #F4F7FB; box-shadow: none; }
+.seite .logo span.logo-stern[data-motto="winter"] { color: #6FA8DC; text-shadow: 0 0 8px rgba(111,168,220,.6); }
+.seite .logo span.logo-stern[data-motto="ostern"], .seite .logo span.logo-stern[data-motto="fruehling"] { color: #E86A92; text-shadow: none; }
+.seite .logo span.logo-stern[data-motto="herbst"] { color: #C8561E; text-shadow: none; }
 
-/* Festlicher: Sterne am Gruß, Baum, Lichterkette */
-.weihnacht-karte { position: relative; overflow: hidden; }
-.weihnacht-karte .baum { width: 78px; height: auto; flex: none; }
-.weihnacht-karte .kugel { animation: funkeln 2.4s ease-in-out infinite; }
-.weihnacht-karte .baum-stern { transform-origin: center; transform-box: fill-box; animation: sternglanz 3s ease-in-out infinite; filter: drop-shadow(0 0 3px rgba(224,165,0,.7)); }
-@keyframes funkeln { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
-@keyframes sternglanz { 0%, 100% { transform: scale(1) rotate(0); } 50% { transform: scale(1.12) rotate(8deg); } }
 .gruss-sterne { display: inline-flex; gap: 6px; margin-left: 10px; vertical-align: middle; font-size: 18px; }
 .gruss-sterne i { font-style: normal; color: #E0A500; text-shadow: 0 0 6px rgba(224,165,0,.6); animation: funkeln 2s ease-in-out infinite; }
 .gruss-sterne i:nth-child(2) { color: var(--orange); font-size: 13px; animation-delay: .4s; }
 .gruss-sterne i:nth-child(3) { font-size: 22px; animation-delay: .8s; }
 .gruss-sterne i:nth-child(4) { color: var(--orange); font-size: 12px; animation-delay: 1.2s; }
 .gruss-sterne i:nth-child(5) { font-size: 15px; animation-delay: 1.6s; }
-@media (prefers-reduced-motion: reduce) { .gruss-sterne i, .weihnacht-karte .kugel, .weihnacht-karte .baum-stern { animation: none !important; } }
+.gruss-sterne[data-motto="winter"] i { color: #6FA8DC; text-shadow: 0 0 6px rgba(111,168,220,.5); }
+.gruss-sterne[data-motto="ostern"] i, .gruss-sterne[data-motto="fruehling"] i { color: #E86A92; text-shadow: none; }
+.gruss-sterne[data-motto="ostern"] i:nth-child(even), .gruss-sterne[data-motto="fruehling"] i:nth-child(even) { color: #E0A500; }
+.gruss-sterne[data-motto="sommer"] i { color: #F0A500; }
+.gruss-sterne[data-motto="herbst"] i { color: #C8561E; text-shadow: none; }
+.gruss-sterne[data-motto="herbst"] i:nth-child(even) { color: #E0A500; }
+@keyframes funkeln { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
 
-/* Neues Kartenbild: tannengrün mit Gold, hängende Sterne */
-.weihnacht-karte { background: radial-gradient(120% 140% at 0% 0%, #2F6B3A 0%, #1E4A29 55%, #173A20 100%) !important;
-  border-left: 0 !important; color: #F6EFE3; box-shadow: 0 6px 18px rgba(23,58,32,.25); padding: 18px 22px; min-height: 118px; }
-.weihnacht-karte::before { content: ""; position: absolute; inset: 6px; border: 1px solid rgba(224,165,0,.45); border-radius: calc(var(--radius) + 2px); pointer-events: none; }
-.weihnacht-karte .wk-text .kicker { color: #E8B931 !important; }
-.weihnacht-karte .wk-text b { color: #FFFFFF !important; font-size: 22px; letter-spacing: .01em; }
-.weihnacht-karte .wk-text span { color: #D9E4D6 !important; }
-.weihnacht-karte .kranz ellipse:first-child { fill: #4C9A5A; }
-.weihnacht-karte #schneeK { background: rgba(255,255,255,.1); color: #F6EFE3; border-color: rgba(246,239,227,.45); }
-.weihnacht-karte #schneeK:hover { background: rgba(255,255,255,.2); }
-.weihnacht-karte .haenger { position: absolute; top: 0; right: 230px; display: flex; gap: 26px; pointer-events: none; }
-.weihnacht-karte .haenger span { display: flex; flex-direction: column; align-items: center; transform-origin: top center; animation: pendeln 4s ease-in-out infinite; }
-.weihnacht-karte .haenger span::before { content: ""; width: 1px; background: rgba(232,185,49,.7); height: var(--l, 26px); }
-.weihnacht-karte .haenger span b { color: #E8B931; font-size: 15px; line-height: 1; text-shadow: 0 0 6px rgba(232,185,49,.7); }
-.weihnacht-karte .haenger span:nth-child(2) { --l: 14px; animation-delay: .7s; } .weihnacht-karte .haenger span:nth-child(2) b { font-size: 11px; color: #F6EFE3; }
-.weihnacht-karte .haenger span:nth-child(3) { --l: 36px; animation-delay: 1.4s; }
-.weihnacht-karte .haenger span:nth-child(4) { --l: 20px; animation-delay: 2.1s; } .weihnacht-karte .haenger span:nth-child(4) b { font-size: 11px; color: #F6EFE3; }
+/* Karte: Grundaufbau, Farben je Motto */
+.motto-karte { --mk-bg: #fff; --mk-rand: rgba(224,165,0,.45); --mk-titel: #fff; --mk-text: #D9E4D6; --mk-kicker: #E8B931;
+  position: relative; overflow: hidden; display: flex; align-items: center; gap: 18px; margin-bottom: 18px; padding: 18px 22px; min-height: 118px;
+  background: var(--mk-bg) !important; color: var(--mk-text); border: 0 !important; box-shadow: 0 6px 18px rgba(0,0,0,.14); }
+.motto-karte::before { content: ""; position: absolute; inset: 6px; border: 1px solid var(--mk-rand); border-radius: calc(var(--radius) + 2px); pointer-events: none; }
+.motto-karte[data-motto="weihnachten"] { --mk-bg: radial-gradient(120% 140% at 0% 0%, #2F6B3A 0%, #1E4A29 55%, #173A20 100%); }
+.motto-karte[data-motto="silvester"], .motto-karte[data-motto="neujahr"] { --mk-bg: radial-gradient(120% 160% at 10% 0%, #23345E 0%, #141E3C 55%, #0C1328 100%);
+  --mk-rand: rgba(232,185,49,.5); --mk-text: #D6DCEB; }
+.motto-karte[data-motto="winter"] { --mk-bg: linear-gradient(120deg, #5C8FC4 0%, #3E6EA3 60%, #2F5786 100%); --mk-rand: rgba(255,255,255,.5); --mk-text: #E6F0FA; --mk-kicker: #FFFFFF; }
+.motto-karte[data-motto="ostern"] { --mk-bg: linear-gradient(120deg, #EAF5E2 0%, #FBEFF3 55%, #FFF6DA 100%); --mk-rand: rgba(232,106,146,.45);
+  --mk-titel: #3C3C3B; --mk-text: #626366; --mk-kicker: #D24C78; }
+.motto-karte[data-motto="fruehling"] { --mk-bg: linear-gradient(120deg, #EAF6E4 0%, #F4FAEF 50%, #FDEEF2 100%); --mk-rand: rgba(111,174,92,.5);
+  --mk-titel: #2F5E2A; --mk-text: #4E5C4A; --mk-kicker: #D24C78; }
+.motto-karte[data-motto="sommer"] { --mk-bg: linear-gradient(120deg, #FFE7A3 0%, #FFD07A 45%, #8FD3EA 100%); --mk-rand: rgba(255,255,255,.7);
+  --mk-titel: #3C3C3B; --mk-text: #4A4A49; --mk-kicker: #B8420E; }
+.motto-karte[data-motto="herbst"] { --mk-bg: linear-gradient(120deg, #8C3A16 0%, #B5531F 55%, #C9792E 100%); --mk-rand: rgba(240,200,120,.55);
+  --mk-text: #F6E6D3; --mk-kicker: #FFD27A; }
+.motto-karte .wk-text { display: flex; flex-direction: column; gap: 2px; position: relative; z-index: 1; }
+.motto-karte .wk-text .kicker { font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--mk-kicker); font-weight: 700; }
+.motto-karte .wk-text b { font-size: 22px; color: var(--mk-titel); letter-spacing: .01em; }
+.motto-karte .wk-text span { color: var(--mk-text); }
+.motto-karte .bild-l { width: 128px; height: auto; flex: none; position: relative; z-index: 1; }
+.motto-karte .bild-r { width: 78px; height: auto; flex: none; }
+.motto-karte .wk-rechts { margin-left: auto; display: flex; align-items: center; gap: 14px; position: relative; z-index: 1; }
+.motto-karte #effektK { background: rgba(255,255,255,.14); color: var(--mk-titel); border-color: color-mix(in srgb, var(--mk-titel) 45%, transparent); white-space: nowrap; }
+.motto-karte #effektK:hover { background: rgba(255,255,255,.26); }
+.motto-karte .flamme { transform-origin: center bottom; transform-box: fill-box; animation: flackern 1.6s ease-in-out infinite alternate; }
+@keyframes flackern { from { transform: scale(1, 1); } to { transform: scale(.9, 1.08); } }
+.motto-karte .blink { animation: funkeln 2.4s ease-in-out infinite; }
+.motto-karte .glanz { transform-origin: center; transform-box: fill-box; animation: sternglanz 3s ease-in-out infinite; filter: drop-shadow(0 0 3px rgba(224,165,0,.7)); }
+@keyframes sternglanz { 0%, 100% { transform: scale(1) rotate(0); } 50% { transform: scale(1.12) rotate(8deg); } }
+.motto-karte .drehen { transform-origin: center; transform-box: fill-box; animation: dreh 24s linear infinite; }
+.motto-karte .drehen.langsam { animation-duration: 40s; }
+@keyframes dreh { to { transform: rotate(360deg); } }
+.motto-karte .wippen { transform-origin: 50px 50px; animation: wipp 2.6s ease-in-out infinite; }
+@keyframes wipp { 0%, 100% { transform: rotate(-3deg); } 50% { transform: rotate(3deg); } }
+.motto-karte .welle { animation: welle 3s linear infinite; }
+.motto-karte .welle.w2 { animation-duration: 4.2s; }
+@keyframes welle { from { transform: translateX(0); } to { transform: translateX(-64px); } }
+
+/* Weihnachten: hängende Sterne */
+.motto-karte .haenger { position: absolute; top: 0; right: 230px; display: flex; gap: 26px; pointer-events: none; }
+.motto-karte .haenger span { display: flex; flex-direction: column; align-items: center; transform-origin: top center; animation: pendeln 4s ease-in-out infinite; }
+.motto-karte .haenger span::before { content: ""; width: 1px; background: rgba(232,185,49,.7); height: var(--l, 26px); }
+.motto-karte .haenger span b { color: #E8B931; font-size: 15px; line-height: 1; text-shadow: 0 0 6px rgba(232,185,49,.7); }
+.motto-karte .haenger span:nth-child(2) { --l: 14px; animation-delay: .7s; } .motto-karte .haenger span:nth-child(2) b { font-size: 11px; color: #F6EFE3; }
+.motto-karte .haenger span:nth-child(3) { --l: 36px; animation-delay: 1.4s; }
+.motto-karte .haenger span:nth-child(4) { --l: 20px; animation-delay: 2.1s; } .motto-karte .haenger span:nth-child(4) b { font-size: 11px; color: #F6EFE3; }
 @keyframes pendeln { 0%, 100% { transform: rotate(-6deg); } 50% { transform: rotate(6deg); } }
-html[data-theme="dark"] .weihnacht-karte { box-shadow: none; }
-@media (max-width: 640px) { .weihnacht-karte .haenger { display: none; } }
-@media (prefers-reduced-motion: reduce) { .weihnacht-karte .haenger span { animation: none; } }
+
+/* Silvester und Neujahr: Feuerwerk und Jahreszahl */
+.motto-karte .jahreszahl { width: auto; font-size: 46px; font-weight: 700; letter-spacing: .04em; line-height: 1;
+  background: linear-gradient(180deg, #FFF3C4 0%, #E8B931 55%, #B8860B 100%); -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(0 0 10px rgba(232,185,49,.35)); }
+.motto-karte .feuerwerk { position: absolute; top: 0; bottom: 0; left: 36%; right: 170px; pointer-events: none; }
+.motto-karte .fw { position: absolute; width: 0; height: 0; }
+.motto-karte .fw i { position: absolute; left: -1px; top: 0; width: 2.5px; height: 22px; border-radius: 2px; transform-origin: top center;
+  background: linear-gradient(var(--fc), transparent); opacity: 0;
+  transform: rotate(var(--r)) translateY(2px) scaleY(.1); animation: strahl 2.8s ease-out infinite; animation-delay: var(--fv); }
+@keyframes strahl {
+  0% { opacity: 0; transform: rotate(var(--r)) translateY(2px) scaleY(.1); }
+  10% { opacity: 1; }
+  45% { opacity: 1; transform: rotate(var(--r)) translateY(16px) scaleY(1); }
+  80%, 100% { opacity: 0; transform: rotate(var(--r)) translateY(34px) scaleY(.25); } }
+
+.wn-haken { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+.formular label.wn-haken { flex-direction: row; align-items: center; display: flex; gap: 10px; font-weight: 400; text-align: left; justify-content: flex-start; }
+.formular label.wn-haken input { width: auto; margin: 0; }
+html[data-theme="dark"] .motto-karte { box-shadow: none; }
+html[data-theme="dark"] .motto-karte[data-motto="ostern"], html[data-theme="dark"] .motto-karte[data-motto="fruehling"], html[data-theme="dark"] .motto-karte[data-motto="sommer"] { filter: brightness(.88); }
+
+@media (max-width: 640px) {
+  .motto-karte { flex-wrap: wrap; }
+  .motto-karte .bild-l { width: 96px; }
+  .motto-karte .wk-rechts { margin-left: 0; width: 100%; justify-content: space-between; flex-direction: row-reverse; }
+  .motto-karte .wk-rechts .bild-r { width: 54px; }
+  .motto-karte .wk-rechts .jahreszahl { width: auto; font-size: 32px; }
+  .motto-karte .haenger { display: none; }
+  .motto-karte .feuerwerk { left: 40%; right: 0; bottom: 50%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #effekte { display: none; }
+  .gruss-sterne i, .motto-karte *, .motto-karte .fw i { animation: none !important; }
+  .motto-karte .fw i { opacity: .8; transform: rotate(var(--r)) translateY(10px) scaleY(.8); }
+}
