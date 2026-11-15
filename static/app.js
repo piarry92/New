@@ -1,7 +1,7 @@
 /* Casa CAFM – Oberfläche (ohne Fremdbibliotheken) */
 "use strict";
 
-const VERSION = "2026.11.15-35"; // muss zu VERSION in app.py passen
+const VERSION = "2026.11.15-36"; // muss zu VERSION in app.py passen
 /* Hell- und Dunkelmodus: gemerkte Wahl, sonst wie das Gerät */
 const THEMA = (() => {
   let t = null;
@@ -824,6 +824,7 @@ DETAIL.objekte = async (el, id, q) => {
     { titel: "Checklisten & Rundgänge", zeigen: (x) => checklistenReiter(x, { objekt_id: o.id }) },
     { titel: "SV-Mängelplan", zahl: svOffenZahl, zeigen: (x) => svMaengelReiter(x, { objekt_id: String(o.id) }) },
     { titel: "Störmeldungen", zahl: tick.length, zeigen: (x) => tabelle(x, "tickets", { filter: f, extraFilter: ticketFilter, extraStart: "offen" }) },
+    ...(S.ich.rolle !== "eigentuemer" ? [{ titel: "Vorgangsliste", zeigen: (x) => vgBereich(x, o.id, true) }] : []),
     { titel: "Schlüssel", zeigen: (x) => schluesselBereich(x, o.id, "aus") },
     { titel: "Verträge", zahl: vert.length, zeigen: (x) => tabelle(x, "vertraege", { filter: f }) },
     { titel: "Zähler", zahl: zae.length, zeigen: (x) => tabelle(x, "zaehler", { filter: f }) },

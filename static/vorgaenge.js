@@ -165,22 +165,7 @@ SEITEN.vorgaenge = async (el) => {
 };
 DETAIL.vorgaenge = async (el, id) => vgBereich(el, id, false);
 
-/* Reiter „Vorgangsliste“ auf der Objektseite */
-(() => {
-  const alt = DETAIL.objekte;
-  DETAIL.objekte = async (el, id, q) => {
-    await alt(el, id, q);
-    if (S.ich.rolle === "eigentuemer") return;
-    const leiste = el.querySelector("#r");
-    if (!leiste) return;
-    const box = document.createElement("div");
-    box.className = "karte vg-reiter-karte";
-    box.innerHTML = `<div class="vg-ganz"><a class="knopf klein" href="#/vorgaenge/${id}">Als ganze Seite öffnen</a></div><div id="vgHier"></div>`;
-    leiste.parentNode.insertBefore(box, leiste);
-    leiste.insertAdjacentHTML("beforebegin", '<div class="abstand"></div>');
-    vgBereich(box.querySelector("#vgHier"), id, true);
-  };
-})();
+
 
 
 /* ---------- Alle Angaben und Unterlagen eines Vorgangs ---------- */
