@@ -46,7 +46,7 @@ SCHL_PFAD = DATEN / "schluesselfotos"
 PROFIL_PFAD = DATEN / "profilbilder"
 MAX_SYMBOL = 2 * 1024 * 1024
 MAX_UPLOAD = 25 * 1024 * 1024
-VERSION = "2026.11.15-23"  # muss zu VERSION in static/app.js passen
+VERSION = "2026.11.15-24"  # muss zu VERSION in static/app.js passen
 SITZUNG_TAGE = 7
 
 GEWERKE = [
@@ -628,6 +628,18 @@ def db_anlegen() -> None:
             con.execute("UPDATE anlagen SET qr_token=? WHERE id=?", (neuer_qr_token(), r["id"]))
         con.execute('CREATE UNIQUE INDEX IF NOT EXISTS "ux_anlagen_qr" ON anlagen(qr_token)')
         con.execute("UPDATE sv_maengel SET einstufung='erheblich' WHERE einstufung='wesentlich'")
+        # Rollen 2026-11: Objektleiter neu, Benutzer eingeschränkt. Alte gespeicherte Benutzer-Rechte einmal zurücksetzen.
+        if not con.execute("SELECT 1 FROM einstellungen WHERE schluessel='rechte_rollen_v2'").fetchone():
+            r = con.execute("SELECT wert FROM einstellungen WHERE schluessel='rechte_rollen'").fetchone()
+            if r and r["wert"]:
+                try:
+                    alt = json.loads(r["wert"])
+                except ValueError:
+                    alt = {}
+                if isinstance(alt, dict):
+                    alt.pop("benutzer", None)
+                    con.execute("UPDATE einstellungen SET wert=? WHERE schluessel='rechte_rollen'", (json.dumps(alt),))
+            con.execute("INSERT OR REPLACE INTO einstellungen VALUES ('rechte_rollen_v2', '1')")
         for r in con.execute("SELECT id FROM objekte WHERE qr_token IS NULL OR qr_token=''").fetchall():
             con.execute("UPDATE objekte SET qr_token=? WHERE id=?", (neuer_qr_token(), r["id"]))
         con.execute('CREATE UNIQUE INDEX IF NOT EXISTS "ux_objekte_qr" ON objekte(qr_token)')
@@ -1013,7 +1025,7 @@ def plan_anlagen(con, pid: int) -> dict:
 # ---------------------------------------------------------------------------
 # Rollen und Rechte
 # ---------------------------------------------------------------------------
-ROLLEN = {"admin": "Administrator", "benutzer": "Benutzer", "zuschauer": "Zuschauer"}
+ROLLEN = {"admin": "Administrator", "objektleiter": "Objektleiter", "benutzer": "Benutzer", "zuschauer": "Zuschauer"}
 RECHTE = [
     ("anlagen_bearbeiten", "Objekte und Anlagen anlegen und ändern", "Bestand"),
     ("plaene_bearbeiten", "Grundrisse hochladen, Symbole setzen und verschieben", "Bestand"),
@@ -1033,7 +1045,11 @@ RECHTE = [
 ]
 RECHTE_KEYS = [r[0] for r in RECHTE]
 RECHTE_STANDARD = {
-    "benutzer": {k: k not in ("loeschen", "benutzer_verwalten", "einstellungen", "katalog_bearbeiten") for k in RECHTE_KEYS},
+    # Objektleiter: alles im Objekt, aber keine Zugänge und keine Einstellungen
+    "objektleiter": {k: k not in ("benutzer_verwalten", "einstellungen") for k in RECHTE_KEYS},
+    # Benutzer: Tagesgeschäft melden und erledigen, aber keine Pläne, Anlagen, Verträge oder Wartungsplanung ändern
+    "benutzer": {k: k in ("tickets_anlegen", "tickets_bearbeiten", "wartung_erledigen", "zaehler_erfassen",
+                          "dokumente_hochladen", "schluessel_verwalten", "export") for k in RECHTE_KEYS},
     "zuschauer": {k: k == "export" for k in RECHTE_KEYS},
 }
 
@@ -2313,7 +2329,8 @@ def benutzer_importieren(con, admin, d: dict) -> dict:
     s_name = next(i for i, c in enumerate(kopf) if "name" in c)
     s_mail = next(i for i, c in enumerate(kopf) if "mail" in c)
     s_rolle = next((i for i, c in enumerate(kopf) if "rolle" in c), None)
-    rollen = {"admin": "admin", "administrator": "admin", "benutzer": "benutzer", "zuschauer": "zuschauer", "": "benutzer"}
+    rollen = {"admin": "admin", "administrator": "admin", "objektleiter": "objektleiter", "objektleitung": "objektleiter",
+              "benutzer": "benutzer", "zuschauer": "zuschauer", "": "benutzer"}
     neu = vorhanden = 0
     for z in zeilen[kopf_i + 1:]:
         name = (z[s_name] if s_name < len(z) else "").strip()[:200]

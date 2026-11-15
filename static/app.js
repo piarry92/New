@@ -1,7 +1,7 @@
 /* Casa CAFM – Oberfläche (ohne Fremdbibliotheken) */
 "use strict";
 
-const VERSION = "2026.11.15-23"; // muss zu VERSION in app.py passen
+const VERSION = "2026.11.15-24"; // muss zu VERSION in app.py passen
 /* Hell- und Dunkelmodus: gemerkte Wahl, sonst wie das Gerät */
 const THEMA = (() => {
   let t = null;
@@ -31,7 +31,7 @@ const datum = (iso) => (iso ? iso.slice(0, 10).split("-").reverse().join(".") : 
 const zahl = (v, st = 0) => (v == null || v === "" ? "" : Number(v).toLocaleString("de-DE", { minimumFractionDigits: st, maximumFractionDigits: st || 3 }));
 const geld = (v) => (v == null || v === "" ? "" : Number(v).toLocaleString("de-DE", { style: "currency", currency: "EUR" }));
 const groesse = (b) => (b > 1048576 ? zahl(b / 1048576, 1) + " MB" : zahl(Math.ceil(b / 1024)) + " KB");
-const ROLLENNAMEN = { admin: "Administrator", benutzer: "Benutzer", zuschauer: "Zuschauer" };
+const ROLLENNAMEN = { admin: "Administrator", objektleiter: "Objektleiter", benutzer: "Benutzer", zuschauer: "Zuschauer" };
 const darf = (r) => !!(S.ich && S.ich.rechte && S.ich.rechte[r]);
 const RECHT_RES = { objekte: "anlagen_bearbeiten", anlagen: "anlagen_bearbeiten", plaene: "plaene_bearbeiten", symbole: "plaene_bearbeiten",
   wartungen: "wartung_planen", vertraege: "vertraege_bearbeiten", dienstleister: "vertraege_bearbeiten", zaehler: "zaehler_erfassen",

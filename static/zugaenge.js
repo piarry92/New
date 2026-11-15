@@ -7,8 +7,12 @@ SEITEN.zugaenge = async (el) => {
   const gruppen = [...new Set(info.liste.map((r) => r.gruppe))];
 
   el.innerHTML = seitenkopf("Zugänge & Rechte", "Wer darf was",
-    `<button class="knopf" id="impB">Liste übernehmen (Excel/CSV)</button><button class="knopf haupt-k" id="neuB">${icon("plus")} Zugang anlegen</button>`) + `
-    <div class="karte"><h3>Zugänge</h3><div id="bl"></div></div>
+    `<button class="knopf" id="impB">Benutzer aus Datei importieren</button><button class="knopf haupt-k" id="neuB">${icon("plus")} Zugang anlegen</button>`) + `
+    <div class="karte"><h3>Zugänge</h3>
+      <p class="klein">Mehrere Benutzer auf einmal: <button class="knopf klein" id="impB2">Benutzer aus Datei importieren (Excel/CSV)</button></p>
+      <p class="klein"><b>Administrator:</b> alles. <b>Objektleiter:</b> alles im Objekt, auch Pläne, Anlagen, Wartungsplan und Verträge, aber keine Zugänge und Einstellungen.
+      <b>Benutzer:</b> Störungen melden und bearbeiten, Wartungen erledigen, Zähler, Dokumente, Schlüssel. Pläne und Anlagen nur ansehen. <b>Zuschauer:</b> nur ansehen.</p>
+      <div id="bl"></div></div>
     <div class="abstand"></div>
     <div class="karte"><h3>Rollen und Rechte</h3>
       <p class="klein">Häkchen setzen oder entfernen. Das gilt sofort für alle Zugänge mit dieser Rolle, außer bei Zugängen mit eigenen Rechten.
@@ -20,10 +24,10 @@ SEITEN.zugaenge = async (el) => {
 
   /* Rollen-Matrix */
   const matrix = () => {
-    el.querySelector("#rm").innerHTML = gruppen.map((g) => `<tr class="gruppe"><td colspan="4">${esc(g)}</td></tr>` + info.liste.filter((r) => r.gruppe === g).map((r) => `<tr>
+    el.querySelector("#rm").innerHTML = gruppen.map((g) => `<tr class="gruppe"><td colspan="5">${esc(g)}</td></tr>` + info.liste.filter((r) => r.gruppe === g).map((r) => `<tr>
       <td>${esc(r.text)}</td>
       <td class="mitte"><input type="checkbox" class="haken" checked disabled title="Administratoren haben immer alle Rechte"></td>
-      ${["benutzer", "zuschauer"].map((rolle) => `<td class="mitte"><input type="checkbox" class="haken" data-rolle="${rolle}" data-recht="${r.key}" ${info.rollen[rolle][r.key] ? "checked" : ""} aria-label="${esc(info.rollennamen[rolle])}: ${esc(r.text)}"></td>`).join("")}
+      ${["objektleiter", "benutzer", "zuschauer"].map((rolle) => `<td class="mitte"><input type="checkbox" class="haken" data-rolle="${rolle}" data-recht="${r.key}" ${info.rollen[rolle][r.key] ? "checked" : ""} aria-label="${esc(info.rollennamen[rolle])}: ${esc(r.text)}"></td>`).join("")}
     </tr>`).join("")).join("");
   };
   matrix();
@@ -54,6 +58,7 @@ SEITEN.zugaenge = async (el) => {
     }).join("")}</tbody></table></div>`;
   };
   await ladeB();
+  el.querySelector("#impB2").onclick = () => el.querySelector("#impB").click();
   el.querySelector("#impB").onclick = async () => {
     const r = await dialog("Zugänge übernehmen", `<div class="dfehler"></div><form class="formular" onsubmit="return false">
       <label class="breit"><span class="pflicht">Datei (.xlsx oder .csv)</span><input type="file" name="datei" accept=".xlsx,.csv,text/csv"></label>
