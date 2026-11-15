@@ -8,7 +8,7 @@ Es läuft im Browser und braucht nur Python, sonst nichts.
 | Bereich | Was du damit machst |
 | --- | --- |
 | Übersicht | Offene Störmeldungen, überfällige und bald fällige Wartungen und Prüfungen, Kündigungsfristen auf einen Blick |
-| Standorte & Pläne | Einstieg ist die Gebäude-Übersicht: alle Gebäude nebeneinander, die Etagen gestapelt wie im Haus, Farbe und Zahl zeigen Zustand und Anlagen je Etage (siehe unten). Im Plan: Links der Standortbaum wie bei Kevox: Objekt › Gebäude › Etage, darunter die Bauteil-Liste der gewählten Etage mit Suche und Kategoriefilter. Klick auf ein Bauteil zeigt es im Plan. Etagen werden von UG über EG bis DG sortiert. Grundriss hochladen (PNG, JPG oder PDF). Geräte und Anlagen aus der Seitenleiste auf den Plan ziehen, verschieben, anklicken. Farbiger Ring zeigt den Zustand: grün in Ordnung, gelb bald fällig, rot Störung oder überfällig |
+| Standorte & Pläne | Einstieg ist die Gebäude-Übersicht: alle Gebäude nebeneinander, die Etagen gestapelt wie im Haus, Farbe und Zahl zeigen Zustand und Anlagen je Etage (siehe unten). Im Plan: großer Grundriss mit Etagenleiste am Plan und den Gebäuden als Umschalter darüber, die Liste der Anlagen klappt bei Bedarf auf. Erst nach Klick auf „Bearbeiten“ erscheint die Symbolliste: Geräte und Anlagen auf den Plan ziehen, verschieben, vom Plan nehmen. Grundriss hochladen (PNG, JPG oder PDF). Farbiger Ring zeigt den Zustand: grün in Ordnung, gelb bald fällig, rot Störung oder überfällig |
 | Objekte | Kacheln mit großem Bild, darunter Kürzel, Name, Adresse, Anzahl Anlagen, offene Meldungen. Umschaltbar auf Liste. Bild per Kamera-Knopf auf der Kachel oder auf der Objektseite. Liegenschaften mit Stammdaten. Je Objekt alle Anlagen, Termine, Meldungen, Verträge, Zähler und Dokumente |
 | Anlagen | Eigene Akte je Anlage, auch hinter jedem Symbol im Plan: Fotos, Anlagennummer, Beschreibung, Gruppe, Gewerk, Hersteller, Modell, Daten, Manager, Beauftragter, Schalter für GPS-Pflicht und gesetzliche Prüf- und Wartungspflicht, Meldungen, Wartungsplan, Dokumente und Aktivität |
 | Wartungsplan | Je Anlage Aufgaben mit Intervall, Grundlage und Checkliste. Vorschläge je Anlagentyp zum Übernehmen. Gesamtübersicht als Jahresplan (Monate als Spalten) oder Liste, Filter nach Objekt, Gewerk, Art und gesetzlicher Pflicht, Export nach Excel, Drucken quer. „Als erledigt melden“ mit Checkliste und Standort rechnet den nächsten Termin selbst aus |
@@ -33,22 +33,22 @@ Jede Liste lässt sich mit einem Klick als Excel-Liste (CSV) speichern. Die Such
 
 ## So arbeitest du mit Plänen
 
-1. Unter **Pläne** auf „Grundriss hochladen“ klicken, Objekt, Titel und Etage eintragen.
-2. Links ein Symbol (etwa „Feuerlöscher“) auf die richtige Stelle im Plan ziehen. Am Handy: Symbol antippen, dann die Stelle im Plan antippen.
-3. Das Programm legt die Anlage an und setzt sie auf den Plan. Anklicken zeigt Zustand, offene Störmeldungen und nächsten Termin.
+1. Unter **Standorte & Pläne** oben rechts auf „+ Grundriss“ klicken, Objekt, Titel, Gebäude und Etage eintragen.
+2. Im Plan auf **„Bearbeiten“** klicken. Rechts erscheint die Symbolliste. Ein Symbol (etwa „Feuerlöscher“) auf die richtige Stelle im Plan ziehen. Am Handy: Symbol antippen, dann die Stelle im Plan antippen.
+3. Das Programm legt die Anlage an und setzt sie auf den Plan. Mit **„Fertig“** endet das Bearbeiten. Anklicken zeigt Zustand, offene Störmeldungen und nächsten Termin.
 
 Für Brandschutz sowie Flucht und Rettung gibt es die Sicherheitszeichen nach DIN EN ISO 7010 (etwa F001 Feuerlöscher,
 F002 Wandhydrant, F005 Handfeuermelder, E001/E002 Notausgang, E003 Erste Hilfe, E010 Defibrillator) und Kürzel wie im
 Feuerwehrplan (BMZ, FAT, FBF, FSD, RWA). Das Zeichen lässt sich bei jeder Anlage unter „Planzeichen“ ändern. Die Zeichen
 sind nachgezeichnet. Für amtliche Flucht- und Rettungspläne nach DIN ISO 23601 bitte die geprüften Originalzeichen verwenden.
 
-**Eigene Symbole:** Im Plan links unter „Eigene Symbole“ oder in den Einstellungen auf „Eigenes Symbol aus Bild“
+**Eigene Symbole:** Im Plan beim Bearbeiten rechts unter „Eigene Symbole“ oder in den Einstellungen auf „Eigenes Symbol aus Bild“
 klicken und ein Bild wählen (PNG, JPG, WEBP oder SVG). Das Programm macht daraus ein quadratisches Symbol. Danach steht
-es links zum Ziehen bereit, genau wie die offiziellen Zeichen. Bei jeder Anlage lässt es sich unter „Eigenes Symbol“
+es in der Symbolliste zum Ziehen bereit, genau wie die offiziellen Zeichen. Bei jeder Anlage lässt es sich unter „Eigenes Symbol“
 auswählen. Ein Symbol, das noch auf Anlagen benutzt wird, lässt sich nicht löschen.
 
-Vorhandene Anlagen ohne Platz stehen links unter „Noch nicht im Plan“. Verschieben geht durch Ziehen. Mausrad oder zwei
-Finger zoomen. Oben lassen sich einzelne Gewerke aus- und einblenden. Für PDF-Grundrisse lädt der Browser einmalig
+Vorhandene Anlagen ohne Platz stehen beim Bearbeiten rechts unter „Noch nicht im Plan“. Verschieben geht im Bearbeiten
+durch Ziehen. Mausrad oder zwei Finger zoomen. Oben lassen sich einzelne Gewerke aus- und einblenden. Für PDF-Grundrisse lädt der Browser einmalig
 einen Leser aus dem Internet.
 
 ## Checklisten und Rundgänge
@@ -158,7 +158,7 @@ einen Leser aus dem Internet.
   PNG, JPG oder SVG. Gebäude, Etage und Titel kommen aus einer Datei `plaene.json`
   (`[{"datei": "...png", "gebaeude": "Finger 1", "etage": "2. OG", "titel": "Finger 1 2. OG"}]`) oder aus dem
   Dateinamen `Gebäude__Etage__Titel.png`. Vorhandene Pläne mit gleichem Gebäude, Etage und Titel werden übersprungen.
-- Im Standortbaum erscheinen sie als Objekt › Gebäude (z. B. Finger 1) › Etage.
+- In der Gebäude-Übersicht erscheinen sie je Gebäude (z. B. Finger 1) und Etage, im Plan in der Etagenleiste.
 - Flucht- und Rettungspläne als PDF lassen sich mit `python3 werkzeuge/frp_grundrisse.py <pläne.pdf> <ordner>`
   in saubere Grundrisse samt `plaene.json` umwandeln (braucht `pip install pymupdf numpy pillow`).
   Viele Rettungspläne zeigen denselben Bereich mehrfach (Teil a, b, c). Mit `--ohne=<Plannummern>` bleiben die
@@ -211,23 +211,36 @@ einen Leser aus dem Internet.
 - Die Übersicht ändert nichts an den Plänen. Sie liest nur, was im Programm steht (Abfrage
   `GET /api/plaene/uebersicht?objekt_id=…`, mit denselben Sichtregeln wie die Pläne selbst).
 
-### Von Plan zu Plan wechseln
+## Plan-Ansicht: großer Plan mit Etagenleiste
 
-- Beim Wechsel auf einen anderen Plan bleiben der Standortbaum links und die Symbolliste rechts an ihrer Stelle.
-  Sie springen nicht mehr an den Anfang. Die gewählte Etage ist im Baum immer zu sehen, auch wenn man aus der
-  Gebäude-Übersicht oder über die Suche kommt.
-- Kopfzeile und Suchfeld des Baums bleiben stehen, nur die Liste rollt. Das Suchwort bleibt beim Planwechsel
-  erhalten und filtert jetzt auch die Etagen: „Finger 2“ zeigt nur Finger 2, „3. OG“ das 3. OG aller Gebäude.
-- Im Katalog bleiben die aufgeklappten Kategorien und Gruppen offen, auch nach dem Setzen einer Anlage und auf
-  dem nächsten Plan. So lässt sich dasselbe Gerät zügig auf mehreren Etagen setzen.
-- Am Handy steht der Plan oben, Baum und Bauteil-Liste folgen darunter.
+- **Aufbau:** Der Grundriss füllt die Seite. Links am Plan steht die **Etagenleiste** des Gebäudes von oben nach
+  unten, die Untergeschosse unter einer gestrichelten Linie, Pläne ohne erkennbare Etage ganz unten. Über dem Plan
+  stehen die **Gebäude als Umschalter** (bei Options die fünf Finger). Farbpunkte zeigen, wo etwas zu tun ist.
+  Einen Baum gibt es nicht mehr. Hat ein Objekt nur einen Plan, fallen Leiste und Umschalter weg.
+- **Etage wechseln:** Klick in der Leiste, die Pfeile ▲ ▼ darunter oder die Tasten **Bild auf** und **Bild ab**.
+  Hat eine Etage mehrere Teilpläne, stehen unter ihr die Buchstaben (a, b, c). Beim Wechsel des Gebäudes bleibt
+  die Etage, beim Wechsel der Etage oder des Gebäudes bleibt der Teil (b bleibt b), wenn es ihn dort gibt.
+- **Ansehen:** Oben rechts „Bearbeiten“, „QR-Etiketten“, „Drucken“. Der Knopf **„Anlagen“** auf dem Plan klappt
+  rechts die Liste „Auf dieser Etage“ auf: Auffälliges zuerst mit dem Grund, ein Klick zeigt die Anlage im Plan.
+  Die Suche „Auf dieser Etage suchen“ filtert Plan und Liste. Ob die Liste offen ist, merkt sich der Browser.
+- **Bearbeiten:** Erst jetzt erscheint rechts die Symbolliste („Noch nicht im Plan“, eigene Symbole, Katalog).
+  Symbole lassen sich setzen, verschieben und vom Plan nehmen, dazu „Angaben“ und „Grundriss ersetzen“. Im
+  Ansehen verschiebt Ziehen auf einem Symbol nur den Plan, damit nichts versehentlich verrutscht.
+  Aus „Einordnen“ in der Gebäude-Übersicht öffnet sich der Plan gleich im Bearbeiten.
+- **Von Plan zu Plan:** Bearbeiten bleibt an, die Symbolliste behält ihren Rollstand, aufgeklappte Kategorien und
+  Gruppen des Katalogs bleiben offen, die Seite springt nicht. So lässt sich dasselbe Gerät zügig auf mehreren
+  Etagen setzen.
+- **Werkzeuge auf dem Plan:** unten rechts Vergrößern, Verkleinern, „Ganzen Plan zeigen“ und Vollbild, unten links
+  die Farben. Wird der Plan schmaler oder breiter (Liste auf oder zu), bleibt ein gewählter Ausschnitt in der Mitte.
+- **Handy:** Der Plan steht oben. Darüber liegt ein Band mit dem Gebäude als Auswahl und den Etagen zum Wischen.
+  Die Liste „Auf dieser Etage“ steht unter dem Plan, die Knöpfe hinter den drei Punkten neben dem Titel.
 
 ## Grundriss im Vollbild
 
-- Im Plan rechts über dem Grundriss auf **„Vollbild“** klicken (oder Taste **F**). Plan und Symbolliste füllen dann
-  den ganzen Bildschirm, alles funktioniert wie gewohnt (Symbole ziehen, Anlagen öffnen, Mängel melden).
-- **„Liste“** blendet die Symbolliste aus, damit der Grundriss noch größer wird. Am Handy ist sie im Vollbild aus.
-- Beenden mit „Vollbild beenden“, Esc oder F. Beim Drehen des Handys passt sich der Plan an.
+- Auf dem Plan unten rechts auf das Vollbild-Zeichen klicken (oder Taste **F**). Plan, Etagenleiste und die offene
+  Liste füllen dann den ganzen Bildschirm, alles funktioniert wie gewohnt (Symbole ziehen, Anlagen öffnen, Mängel melden).
+- Das Vollbild bleibt beim Wechsel der Etage an. Am Handy sind Liste und Suche im Vollbild aus.
+- Beenden mit demselben Knopf, Esc oder F. Beim Drehen des Handys passt sich der Plan an.
 
 ## Dienstleister übernehmen (Excel/CSV)
 

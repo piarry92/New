@@ -1,4 +1,4 @@
-/* Casa CAFM – Standortbaum: Objekt › Gebäude › Etage, Bauteil-Liste und Plan */
+/* Casa CAFM – Standorte & Pläne: Gebäude-Übersicht, Wegweiser der Plan-Ansicht (Gebäude, Etagen) */
 "use strict";
 
 const ETAGE_RANG = (e) => {
@@ -11,7 +11,7 @@ const ETAGE_RANG = (e) => {
   if (/^(DG|DACH)/.test(t)) return 90;
   return 400;
 };
-/* Etage im Baum; mehrere Teilpläne derselben Etage zeigen ihren Zusatz (z. B. „2. OG Teil a“) */
+/* Name einer Etage; mehrere Teilpläne derselben Etage zeigen ihren Zusatz (z. B. „2. OG Teil a“) */
 const etagenName = (p) => {
   if (!p.etage) return p.titel;
   const vorne = [p.gebaeude, p.etage].filter(Boolean).join(" ");
@@ -20,138 +20,126 @@ const etagenName = (p) => {
 };
 const etagenSort = (a, b) => ETAGE_RANG(a.etage) - ETAGE_RANG(b.etage) || String(a.etage || a.titel).localeCompare(String(b.etage || b.titel), "de");
 
-function baumOffen(neu) {
-  let s = [];
-  try { s = JSON.parse(localStorage.getItem("cafm-baum") || "[]"); } catch (e) { s = []; }
-  if (neu) {
-    s = s.includes(neu) ? s.filter((x) => x !== neu) : [...s, neu];
-    try { localStorage.setItem("cafm-baum", JSON.stringify(s)); } catch (e) { /* egal */ }
-  }
-  return new Set(s);
-}
+let PLAN_LAUF = 0;   // zählt die Aufrufe: Ein älterer, langsamerer Aufruf zeichnet nicht mehr über einen neueren
 
 async function standortAnsicht(el, planId, q) {
-  const [objekte] = await Promise.all([lade("objekte"), katLaden(), lade("symbole")]);   // eigene Liste: Der Zwischenspeicher wird beim Setzen geleert
+  const lauf = ++PLAN_LAUF, aktuell = () => lauf === PLAN_LAUF;
+  const [objekte] = await Promise.all([lade("objekte"), katLaden(), lade("symbole")]);
   const plaene = await api("GET", "plaene");
+  if (!aktuell()) return "rollen-bleibt";
   const plan = planId ? plaene.find((p) => p.id === planId) : null;
   let objektId = plan ? plan.objekt_id : Number(q.get("o")) || null;
   if (!plan && !objekte.some((o) => o.id === objektId)) objektId = objekte.length === 1 ? objekte[0].id : null;
-  if (!plan) return objektId ? gebaeudeUebersicht(el, objektId, q) : objektePlaene(el, plaene);
-  /* Ab hier: ein Plan ist gewählt. Links der Baum und die Bauteile der Etage, rechts die Plan-Arbeitsfläche. */
-  let offen = baumOffen();
-  if (!offen.has("o" + objektId)) offen = baumOffen("o" + objektId);
-  /* Wechsel von Plan zu Plan: Der Baum bleibt, wo er war (Rollstand und Suchwort), ebenso die Symbolliste rechts. */
-  const vorher = el.querySelector(":scope > .standort-ansicht");
-  const merk = vorher ? { baum: vorher.querySelector("#baumRoll").scrollTop, suche: vorher.querySelector("#bsuche").value, liste: (vorher.querySelector("#palette") || {}).scrollTop || 0, fenster: window.scrollY } : null;
+  if (!plan) { planVerlassen(); return objektId ? gebaeudeUebersicht(el, objektId, q) : objektePlaene(el, plaene); }
+
+  /* Ab hier: ein Plan ist gewählt. Beim Wechsel von Plan zu Plan bleibt alles an seiner Stelle:
+     Bearbeiten bleibt an, die Listen rechts behalten ihren Rollstand, die Seite springt nicht. */
+  const vorher = el.querySelector(":scope > .plan-seite");
+  const roll = (sel) => (vorher.querySelector(sel) || {}).scrollTop || 0;
+  const merk = vorher ? { symbole: roll("#palette"), anlagen: roll("#pll"), etagen: roll("#pel"), fenster: window.scrollY } : null;
+  if (!merk) { PLAN_MODUS.bearbeiten = false; PLAN_MODUS.voll = false; }
   if (merk) el.style.minHeight = el.offsetHeight + "px";      // die Seite behält ihre Höhe, bis der neue Plan steht, sonst springt sie nach oben
-
-  el.innerHTML = `<div class="standort-ansicht">
-    <aside class="baum-spalte">
-      <div class="karte baum-karte">
-        <div class="baum-kopf"><h3>Standorte</h3>${darf("plaene_bearbeiten") ? `<button class="knopf klein" id="bgr" title="Grundriss hochladen">${icon("plus")} Grundriss</button>` : ""}</div>
-        <input type="search" id="bsuche" placeholder="Objekt oder Etage suchen">
-        <div class="baum-roll" id="baumRoll"><ul class="baum" id="baum"></ul></div>
-      </div>
-      <div class="karte bauteile-karte">
-        <div class="baum-kopf"><h3>Bauteile</h3><span class="klein" id="banz"></span></div>
-        <div class="bt-filter"><input type="search" id="btsuche" placeholder="Inv.-Nr., Bezeichnung …"><select id="btkat"><option value="">Alle Kategorien</option>${S.kat.k.map((k) => `<option value="${k.id}">${esc(k.name)}</option>`).join("")}</select></div>
-        <div class="bt-liste" id="btl"></div>
-      </div>
-    </aside>
-    <section class="standort-rechts" id="sr"></section>
-  </div>`;
-  const baum = el.querySelector("#baum"), sr = el.querySelector("#sr"), baumRoll = el.querySelector("#baumRoll");
-  if (merk) el.querySelector("#bsuche").value = merk.suche;
-
-  /* Baum zeichnen */
-  const zeichneBaum = () => {
-    const w = el.querySelector("#bsuche").value.trim().toLowerCase();
-    baum.innerHTML = objekte.map((o) => {
-      const alle = plaene.filter((p) => p.objekt_id === o.id).sort(etagenSort);
-      const ganz = !w || anzeige("objekte", o).toLowerCase().includes(w);          // Suchwort trifft das Objekt: alle Etagen zeigen
-      const eigene = ganz ? alle : alle.filter((p) => [p.gebaeude, p.etage, p.titel].join(" ").toLowerCase().includes(w));
-      if (!ganz && !eigene.length) return "";
-      const auf = offen.has("o" + o.id) || !!w;
-      const gebaeude = [...new Set(eigene.map((p) => p.gebaeude || ""))];
-      const mitGebaeude = gebaeude.some(Boolean);
-      const etage = (p) => `<li><a class="b-knoten b-etage ${plan && plan.id === p.id ? "an" : ""}" href="#/plaene/${p.id}">${icon("plaene")}<span>${esc(etagenName(p))}</span><span class="b-zahl">${p.anlagen_anzahl || 0}</span></a></li>`;
-      const kinder = !mitGebaeude ? eigene.map(etage).join("") : gebaeude.map((g) => {
-        const key = `g${o.id}|${g}`, gAuf = !offen.has("zu" + key) || !!w;
-        return `<li><span class="b-knoten b-gebaeude" data-gtoggle="${esc(key)}"><span class="b-pfeil">${gAuf ? "▾" : "▸"}</span>${icon("objekte")}<span>${esc(g || "Ohne Gebäudeangabe")}</span></span>
-          ${gAuf ? `<ul>${eigene.filter((p) => (p.gebaeude || "") === g).map(etage).join("")}</ul>` : ""}</li>`;
-      }).join("");
-      return `<li><span class="b-knoten b-objekt"><span class="b-pfeil" data-otoggle="${o.id}">${auf ? "▾" : "▸"}</span>
-          <a href="#/plaene?o=${o.id}">${icon("start")}<span>${esc(o.kuerzel)} · ${esc(o.name)}</span></a></span>
-        ${auf ? `<ul>${kinder || '<li class="klein b-leer">Noch kein Grundriss</li>'}
-          <li><a class="b-knoten b-ohne" href="#/plaene?o=${o.id}&ohne=1"><span>Ohne Plan</span></a></li></ul>` : ""}</li>`;
-    }).join("") || '<li class="klein">Nichts gefunden.</li>';
-  };
-  zeichneBaum();
-  /* Die gewählte Etage im Baum zeigen: beim Wechsel von Plan zu Plan nur nachrücken, wenn sie nicht zu sehen ist, sonst in die Mitte holen */
-  const aktivZeigen = (mitte) => {
-    const an = baum.querySelector(".b-etage.an");
-    if (!an) return;
-    const k = baumRoll.getBoundingClientRect(), a = an.getBoundingClientRect();
-    if (mitte) baumRoll.scrollTop += a.top - k.top - (k.height - a.height) / 2;
-    else if (a.top < k.top) baumRoll.scrollTop += a.top - k.top - 8;
-    else if (a.bottom > k.bottom) baumRoll.scrollTop += a.bottom - k.bottom + 8;
-  };
-  if (merk) baumRoll.scrollTop = merk.baum;
-  aktivZeigen(!merk);
-  baum.addEventListener("click", (e) => {
-    const ot = e.target.closest("[data-otoggle]"), gt = e.target.closest("[data-gtoggle]");
-    if (ot) { e.preventDefault(); offen = baumOffen("o" + ot.dataset.otoggle); zeichneBaum(); }
-    if (gt) { offen = baumOffen("zu" + gt.dataset.gtoggle); zeichneBaum(); }
-  });
-  el.querySelector("#bsuche").addEventListener("input", zeichneBaum);
-  const bgr = el.querySelector("#bgr");
-  if (bgr) bgr.onclick = async () => { const e = await planHochladen({ objekt_id: objektId }); if (e) location.hash = `#/plaene/${e.id}`; };
-
-  /* Bauteil-Liste */
-  let anlagen = [];
-  const ladeBauteile = async () => {
-    anlagen = await api("GET", `anlagen?objekt_id=${objektId}`);
-    zeichneBauteile();
-  };
-  const zeichneBauteile = () => {
-    const box = el.querySelector("#btl");
-    const w = el.querySelector("#btsuche").value.trim().toLowerCase(), k = Number(el.querySelector("#btkat").value) || null;
-    let liste = anlagen.filter((a) => a.plan_id === plan.id);
-    if (k) liste = liste.filter((a) => a.kategorie_id === k);
-    if (w) liste = liste.filter((a) => [a.nummer, a.bezeichnung, a.standort, refText("kat_typen", a.typ_id)].join(" ").toLowerCase().includes(w));
-    el.querySelector("#banz").textContent = `${liste.length}`;
-    const frei = anlagen.filter((a) => !a.plan_id);
-    box.innerHTML = (liste.length ? `<table class="bauteile"><thead><tr><th></th><th>Inv.-Nr.</th><th>Bezeichnung</th></tr></thead><tbody>${liste.map((a) => `
-      <tr data-a="${a.id}" title="Klick: im Plan zeigen · Doppelklick: Anlage öffnen"><td>${symbolVon(a, 22)}</td><td class="nowrap">${esc(a.nummer || "")}</td>
-        <td><b>${esc(a.bezeichnung)}</b><br><span class="klein">${esc([katVon(a.kategorie_id)?.name || a.gewerk, a.typ_id ? S.kat.tMap[a.typ_id]?.name : ""].filter(Boolean).join(" · "))}</span></td></tr>`).join("")}</tbody></table>`
-      : '<p class="klein">Keine Bauteile.</p>')
-      + (frei.length && darf("plaene_bearbeiten") ? `<p class="klein">${frei.length} Bauteile dieses Objekts sind noch auf keinem Plan. Sie stehen im Plan rechts unter „Noch nicht im Plan“.</p>` : "");
-  };
-  el.querySelector("#btsuche").addEventListener("input", zeichneBauteile);
-  el.querySelector("#btkat").addEventListener("change", zeichneBauteile);
-  el.querySelector("#btl").addEventListener("click", (e) => {
-    const tr = e.target.closest("tr[data-a]");
-    if (!tr) return;
-    el.querySelectorAll("#btl tr.an").forEach((x) => x.classList.remove("an"));
-    tr.classList.add("an");
-    if (sr.planApi) sr.planApi.zeige(Number(tr.dataset.a));
-  });
-  el.querySelector("#btl").addEventListener("dblclick", (e) => { const tr = e.target.closest("tr[data-a]"); if (tr) location.hash = `#/anlagen/${tr.dataset.a}`; });
-  sr.addEventListener("plangeaendert", async () => {
-    const neu = await api("GET", "plaene");
-    plaene.splice(0, plaene.length, ...neu);
-    zeichneBaum(); ladeBauteile();
-  });
-
-  /* Rechte Seite */
+  el.innerHTML = '<section class="plan-seite" id="sr"></section>';
   const breit = !matchMedia("(max-width: 900px)").matches;
   try {
-    await planEditor(sr, plan.id, q, { listeRoll: merk ? merk.liste : 0 });
-    await ladeBauteile();
+    const navi = planNavi(plan);
+    await navi.laden();
+    if (!aktuell()) return "rollen-bleibt";
+    await planEditor(el.querySelector("#sr"), plan.id, q, { navi, aktuell, merk });
   } finally { el.style.minHeight = ""; }
-  if (!merk || !breit) return undefined;                       // erster Aufruf und schmale Ansicht: Die Seite beginnt oben beim Plan
+  if (!aktuell() || !merk || !breit) return aktuell() ? undefined : "rollen-bleibt";   // erster Aufruf und schmale Ansicht: Die Seite beginnt oben beim Plan
   if (Math.abs(window.scrollY - merk.fenster) > 1) window.scrollTo(0, merk.fenster);
   return "rollen-bleibt";                                      // breite Ansicht: Die Seite bleibt beim Planwechsel stehen
+}
+
+/* ---------- Wegweiser der Plan-Ansicht: Gebäude als Umschalter, Etagen als Leiste am Plan, am Handy als Band ---------- */
+function planNavi(plan) {
+  const g0 = plan.gebaeude || "";
+  let d = { plaene: [], anlagen: [], heute: "" }, geb = [], eintraege = [], hier = -1;
+  const teilVon = (p, i) => guTeil(p, i);
+  const zustand = (liste) => {
+    const auff = liste.filter((a) => a.ampel !== "gruen");
+    return { anzahl: liste.length, auff: auff.length, farbe: auff.some((a) => a.ampel === "rot") ? "rot" : auff.length ? "gelb" : null };
+  };
+  const aufbereiten = () => {
+    const proPlan = new Map();
+    for (const a of d.anlagen) if (a.plan_id) { if (!proPlan.has(a.plan_id)) proPlan.set(a.plan_id, []); proPlan.get(a.plan_id).push(a); }
+    const nachTitel = (a, b) => a.titel.localeCompare(b.titel, "de", { numeric: true });
+    geb = [...new Set(d.plaene.map((p) => p.gebaeude || ""))].sort((a, b) => a.localeCompare(b, "de", { numeric: true })).map((g) => {
+      const pl = d.plaene.filter((p) => (p.gebaeude || "") === g).sort(nachTitel);
+      return { g, plaene: pl, ...zustand(pl.flatMap((p) => proPlan.get(p.id) || [])) };
+    });
+    /* Etagen des Gebäudes von oben nach unten. Pläne ohne erkennbare Etage stehen einzeln am Ende. */
+    const eigene = d.plaene.filter((p) => (p.gebaeude || "") === g0).sort(nachTitel);
+    const gruppen = new Map();
+    for (const p of eigene) {
+      const bekannt = guRang(p.etage) > -1000;
+      const k = bekannt ? `e|${p.etage}` : `p|${p.id}`;
+      if (!gruppen.has(k)) gruppen.set(k, { name: bekannt ? p.etage : (p.etage ? etagenName(p) : p.titel), rang: guRang(p.etage), plaene: [] });
+      p.z = zustand(proPlan.get(p.id) || []);                  // Zustand des einzelnen Plans, für die Teilpläne im Band
+      gruppen.get(k).plaene.push(p);
+    }
+    eintraege = [...gruppen.values()].sort((a, b) => b.rang - a.rang || a.name.localeCompare(b.name, "de", { numeric: true }))
+      .map((e) => ({ ...e, ...zustand(e.plaene.flatMap((p) => proPlan.get(p.id) || [])) }));
+    hier = eintraege.findIndex((e) => e.plaene.some((p) => p.id === plan.id));
+  };
+  /* Zielplan: derselbe Teil wie jetzt (Teil b bleibt Teil b), sonst der erste */
+  const teilName = (p) => { const m = etagenName(p).match(/Teil\s+(\S{1,3})$/i); return m ? m[1].toLowerCase() : ""; };
+  const gleicherTeil = (liste) => { const t = teilName(plan); return (t && liste.find((p) => teilName(p) === t)) || liste[0]; };
+  const planIn = (e) => gleicherTeil(e.plaene).id;
+  /* Gebäude wechseln: dieselbe Etage, sonst die nächstgelegene */
+  const zielGebaeude = (x) => {
+    const gleiche = x.plaene.filter((p) => (p.etage || "") === (plan.etage || ""));
+    if (gleiche.length) return gleicherTeil(gleiche).id;
+    const r0 = guRang(plan.etage);
+    return [...x.plaene].sort((a, b) => Math.abs(guRang(a.etage) - r0) - Math.abs(guRang(b.etage) - r0))[0].id;
+  };
+  const nachbar = (schritt) => { const e = eintraege[hier + schritt]; return hier >= 0 && e ? planIn(e) : null; };
+  const punkt = (z) => z.farbe ? `<i style="--c:${GU_FARBE[z.farbe]}"></i>` : "";
+  const tipp = (name, z) => `${name}: ${z.anzahl} ${z.anzahl === 1 ? "Anlage" : "Anlagen"}${z.auff ? `, ${z.auff} auffällig` : ""}`;
+  const gebName = (g) => g || "Ohne Gebäudeangabe";
+
+  return {
+    laden: async () => { d = await api("GET", `plaene/uebersicht?objekt_id=${plan.objekt_id}`); aufbereiten(); },
+    heute: () => d.heute,
+    hoch: () => nachbar(-1),
+    runter: () => nachbar(1),
+    zeichnen(el, merkRoll = 0) {
+      const mehrGeb = geb.length > 1, mehrEtagen = eintraege.length > 1 || (eintraege[0] && eintraege[0].plaene.length > 1);
+      /* Gebäude als Umschalter über dem Plan */
+      const pg = el.querySelector("#pgeb");
+      pg.hidden = !mehrGeb;
+      pg.innerHTML = mehrGeb ? geb.map((x) => `<a class="${x.g === g0 ? "an" : ""}" ${x.g === g0 ? 'aria-current="true"' : ""} href="#/plaene/${x.g === g0 ? plan.id : zielGebaeude(x)}" title="${esc(tipp(gebName(x.g), x))}">${esc(gebName(x.g))}${punkt(x)}</a>`).join("") : "";
+      /* Etagenleiste links am Plan */
+      const oben = eintraege.filter((e) => e.rang >= 0).length, unten = eintraege.filter((e) => e.rang < 0 && e.rang > -1000).length;
+      const hochZiel = nachbar(-1), runterZiel = nachbar(1);
+      const pe = el.querySelector("#petagen");
+      pe.hidden = !mehrEtagen;
+      pe.innerHTML = mehrEtagen ? `<h4>Etage</h4><div class="pv-el" id="pel">${eintraege.map((e, i) => {
+        const an = i === hier;
+        return `${(i === oben && oben) || (i === oben + unten && unten && i) ? '<div class="pv-et-linie"></div>' : ""}
+          <a class="pv-et ${an ? "an" : ""}" ${an ? 'aria-current="true"' : ""} href="#/plaene/${an ? plan.id : planIn(e)}" title="${esc(tipp(e.name, e))}"><span>${esc(e.name)}</span>${punkt(e)}</a>
+          ${an && e.plaene.length > 1 ? `<div class="pv-teile">${e.plaene.map((p, n) => `<a class="${p.id === plan.id ? "an" : ""}" href="#/plaene/${p.id}" title="${esc(p.titel)}">${esc(teilVon(p, n))}</a>`).join("")}</div>` : ""}`;
+      }).join("")}</div>
+        <div class="pv-auf">${hochZiel ? `<a href="#/plaene/${hochZiel}" title="Eine Etage höher (Taste Bild auf)" aria-label="Eine Etage höher">▲</a>` : "<span>▲</span>"}${runterZiel ? `<a href="#/plaene/${runterZiel}" title="Eine Etage tiefer (Taste Bild ab)" aria-label="Eine Etage tiefer">▼</a>` : "<span>▼</span>"}</div>` : "";
+      /* Band für das Handy: Gebäude als Auswahl, dahinter die Etagen (Teilpläne einzeln) */
+      const pb = el.querySelector("#pband");
+      pb.hidden = !(mehrGeb || mehrEtagen);
+      pb.innerHTML = pb.hidden ? "" : `${mehrGeb ? `<select id="pgebWahl" aria-label="Gebäude wählen">${geb.map((x) => `<option value="${x.g === g0 ? plan.id : zielGebaeude(x)}" ${x.g === g0 ? "selected" : ""}>${esc(gebName(x.g))}</option>`).join("")}</select>` : ""}
+        <div class="pv-br" id="pbr">${eintraege.flatMap((e) => e.plaene.map((p, n) => `<a class="${p.id === plan.id ? "an" : ""}" href="#/plaene/${p.id}">${esc(e.name)}${e.plaene.length > 1 ? ` ${esc(teilVon(p, n))}` : ""}${p.id !== plan.id ? punkt(p.z) : ""}</a>`)).join("")}</div>`;
+      const wahl = pb.querySelector("#pgebWahl");
+      if (wahl) wahl.onchange = () => { location.hash = `#/plaene/${wahl.value}`; };
+      /* Die gewählte Etage ist immer zu sehen: Leiste und Band behalten ihren Stand oder rücken nach */
+      const pel = pe.querySelector("#pel"), an = pel && pel.querySelector(".pv-et.an");
+      if (pel && an) {
+        pel.scrollTop = merkRoll;
+        const k = pel.getBoundingClientRect(), r = an.getBoundingClientRect();
+        if (r.top < k.top) pel.scrollTop += r.top - k.top - 6; else if (r.bottom > k.bottom) pel.scrollTop += r.bottom - k.bottom + 6;
+      }
+      const br = pb.querySelector("#pbr"), ban = br && br.querySelector("a.an");
+      if (ban) br.scrollLeft = ban.offsetLeft - br.offsetLeft - (br.clientWidth - ban.offsetWidth) / 2;
+    },
+  };
 }
 
 /* ---------- Ohne gewähltes Objekt: erst das Objekt wählen ---------- */

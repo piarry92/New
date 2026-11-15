@@ -248,7 +248,7 @@ td.zahl, th.zahl { text-align: right; white-space: nowrap; }
 .plan-karte .pk-text { padding: 12px 14px; position: relative; }
 .plan-karte .pk-zahl { position: absolute; right: 14px; top: 12px; font-size: 12.5px; color: var(--orange-dunkel); font-weight: 700; }
 
-.plan-layout { display: grid; grid-template-columns: 270px 1fr; gap: 16px; align-items: start; }
+.plan-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start; }
 .palette { background: #fff; border-radius: var(--radius); box-shadow: var(--schatten); padding: 14px; max-height: calc(100vh - 190px); overflow-y: auto; position: sticky; top: 80px; }
 .palette input[type=search] { width: 100%; padding: 7px 10px; border: 1px solid var(--hellgrau); border-radius: var(--radius); margin-bottom: 10px; }
 .palette h3 { margin: 14px 0 6px; }
@@ -269,8 +269,6 @@ td.zahl, th.zahl { text-align: right; white-space: nowrap; }
 .chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--hellgrau); background: #fff; border-radius: 16px; padding: 3px 10px 3px 3px; cursor: pointer; font-size: 13px; }
 .chip .sym { width: 20px; height: 20px; font-size: 9px; }
 .chip.aus { opacity: .45; text-decoration: line-through; }
-.zoom { display: flex; gap: 4px; margin-left: auto; }
-.zoom .knopf { font-weight: 700; min-width: 34px; justify-content: center; }
 .buehne { position: relative; height: calc(100vh - 250px); min-height: 420px; overflow: hidden; background: repeating-conic-gradient(#ECECED 0% 25%, #F6F6F7 0% 50%) 0 0 / 24px 24px; border-radius: var(--radius); box-shadow: var(--schatten); touch-action: none; cursor: grab; outline: none; }
 .buehne.zieht { cursor: grabbing; }
 .buehne.ziel, .buehne.setzmodus { box-shadow: 0 0 0 3px var(--orange); cursor: crosshair; }
@@ -302,24 +300,24 @@ td.zahl, th.zahl { text-align: right; white-space: nowrap; }
 .pp-zeilen > div { display: flex; justify-content: space-between; gap: 8px; align-items: center; flex-wrap: wrap; }
 .pp-knoepfe { display: flex; gap: 6px; flex-wrap: wrap; }
 .modus { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); z-index: 9; background: var(--anthrazit); color: #fff; padding: 8px 10px 8px 16px; border-radius: 20px; display: flex; gap: 10px; align-items: center; box-shadow: 0 4px 16px rgba(0,0,0,.25); white-space: nowrap; }
-.plan-legende { margin-top: 8px; }
+.plan-legende { margin-top: 8px; display: none; }
 .mini-plan { position: relative; display: block; background: var(--zartgrau); border-radius: var(--radius); overflow: hidden; --inv: 1; }
 .mini-plan img { display: block; width: 100%; }
 .mini-plan.weit { aspect-ratio: 16 / 9; background: #fff; }
 .mini-plan.weit .mp-welt { position: absolute; display: block; }
 
 @media (max-width: 900px) {
-  .plan-layout { grid-template-columns: 1fr; }
-  .palette { position: static; max-height: 240px; order: 2; }
-  .buehne { height: 62vh; min-height: 320px; }
   .modus { white-space: normal; width: 90%; }
   .mk { width: 24px; height: 24px; font-size: 9px; }
   .mk.zeichen { width: 26px; height: 26px; }
 }
 @media print {
-  .palette, .plan-leiste, .popup, .modus { display: none !important; }
+  .palette, .plan-leiste, .popup, .modus, .pv-etagen, .pv-ecke, .pv-pille, .pv-leg, .pv-dock, .pv-band, .pv-mehr, .plan-seite .zurueck { display: none !important; }
   .plan-layout { display: block; }
-  .buehne { height: 180mm; box-shadow: none; background: #fff; }
+  .pv .plan-bereich { display: block; height: auto; min-height: 0; }
+  .pv-plan { display: block; border: 0; box-shadow: none; }
+  .pv-plan .buehne { height: 180mm; min-height: 0; background: #fff; }
+  .plan-legende { display: flex; }
   .mk { animation: none; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
 
@@ -513,43 +511,6 @@ table.jplan.gross td:last-child { white-space: nowrap; }
 .foto-vorschau img { width: 80px; height: 80px; object-fit: cover; border-radius: 6px; border: 1px solid var(--hellgrau); }
 @media (max-width: 900px) { .mangel-fenster { grid-template-columns: 1fr; } .typ-detail { grid-template-columns: 1fr; } }
 
-/* Standortbaum */
-.standort-ansicht { display: grid; grid-template-columns: 330px minmax(0, 1fr); gap: 16px; align-items: start; }
-.baum-spalte { display: flex; flex-direction: column; gap: 14px; position: sticky; top: 80px; max-height: calc(100vh - 100px); }
-.baum-karte { padding: 12px 10px; max-height: 42vh; overflow: hidden; flex: none; display: flex; flex-direction: column; }
-.baum-roll { overflow-y: auto; flex: 1; min-height: 0; overscroll-behavior: contain; }
-.bauteile-karte { padding: 12px 10px; flex: 1; min-height: 200px; overflow: hidden; display: flex; flex-direction: column; }
-.baum-kopf { display: flex; align-items: center; gap: 8px; margin: 0 4px 8px; }
-.baum-kopf h3 { margin: 0; flex: 1; }
-.baum-karte input[type=search], .bt-filter input, .bt-filter select { width: 100%; padding: 6px 9px; border: 1px solid var(--hellgrau); border-radius: var(--radius); margin-bottom: 8px; background: #fff; }
-.bt-filter { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-.bt-liste { overflow-y: auto; flex: 1; }
-.baum, .baum ul { list-style: none; margin: 0; padding: 0; }
-.baum ul { padding-left: 18px; border-left: 1px dotted var(--hellgrau); margin-left: 12px; }
-.b-knoten { display: flex; align-items: center; gap: 6px; padding: 5px 6px; border-radius: 5px; color: var(--anthrazit); text-decoration: none; cursor: pointer; font-size: 14.5px; }
-.b-knoten a { display: flex; align-items: center; gap: 6px; color: inherit; text-decoration: none; flex: 1; min-width: 0; }
-.b-knoten span:not(.b-pfeil):not(.b-zahl) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.b-knoten:hover { background: var(--orange-zart); }
-.b-knoten.an { background: var(--orange); color: #fff; }
-.b-knoten.an .icon { stroke: #fff; }
-.b-knoten .icon { width: 16px; height: 16px; color: var(--dunkelgrau); }
-.b-objekt { font-weight: 700; }
-.b-pfeil { width: 14px; text-align: center; color: var(--grau); flex: none; }
-.b-zahl { margin-left: auto; font-size: 12px; color: var(--grau); }
-.b-knoten.an .b-zahl { color: #fff; }
-.b-ohne { color: var(--dunkelgrau); font-style: italic; }
-.b-leer { padding: 4px 6px; }
-table.bauteile { font-size: 13.5px; }
-table.bauteile th { padding: 6px; font-size: 12px; }
-table.bauteile td { padding: 6px; cursor: pointer; }
-table.bauteile tr:hover td { background: var(--orange-zart); }
-table.bauteile tr.an td { background: var(--orange-hell); }
-@media print { .standort-rechts .zurueck { display: none !important; } }
-.standort-rechts .plan-layout { grid-template-columns: minmax(0, 1fr) 250px; }
-.standort-rechts .palette { order: 2; }
-@media (max-width: 1200px) { .standort-rechts .plan-layout { grid-template-columns: 1fr; } .standort-rechts .palette { order: 2; position: static; max-height: 260px; } }
-@media (max-width: 900px) { .standort-ansicht { grid-template-columns: 1fr; } .baum-spalte { position: static; max-height: none; order: 2; } .baum-karte { max-height: 260px; } .bauteile-karte { max-height: 300px; } }
-@media print { .baum-spalte { display: none !important; } .standort-ansicht { display: block; } }
 
 /* Objekt-Kacheln */
 .objekt-kacheln { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 18px; }
@@ -661,11 +622,11 @@ a.kennzahl:hover { box-shadow: var(--schatten-hoch); transform: translateY(-1px)
 /* Eingaben */
 .werkzeug { gap: 10px; margin-bottom: 14px; }
 .werkzeug input[type=search], .werkzeug select, .sv-auswahl select, .formular input, .formular select, .formular textarea, .palette input[type=search],
-.baum-karte input[type=search], .bt-filter input, .bt-filter select, .anmeldung input {
+.anmeldung input {
   border: 1px solid var(--rand-stark); border-radius: 9px; background: #fff; min-height: 40px; transition: border-color .12s, box-shadow .12s;
 }
 .werkzeug input[type=search]:focus, .werkzeug select:focus, .formular input:focus, .formular select:focus, .formular textarea:focus,
-.palette input[type=search]:focus, .baum-karte input:focus, .bt-filter input:focus, .bt-filter select:focus, .anmeldung input:focus {
+.palette input[type=search]:focus, .anmeldung input:focus {
   outline: none; border-color: var(--orange); box-shadow: var(--fokus);
 }
 .formular label { font-size: 13px; font-weight: 600; color: #4B4E55; gap: 6px; }
@@ -716,13 +677,8 @@ table.jplan th.mzelle { border-left-color: var(--rand); }
 .feldliste { border-radius: var(--radius-gross); }
 .fz { padding: 14px 20px; }
 .fz:hover:not(:disabled) { background: #FFF8F4; }
-.palette, .baum-karte, .bauteile-karte { border-radius: var(--radius-gross); }
+.palette { border-radius: var(--radius-gross); }
 .p-item { border-radius: 8px; }
-.b-knoten { border-radius: 8px; }
-.b-knoten.an { background: var(--orange-zart); color: var(--orange-dunkel); font-weight: 700; }
-.b-knoten.an .icon { stroke: var(--orange); }
-.b-knoten.an .b-zahl { color: var(--orange-dunkel); }
-.buehne { border-radius: var(--radius-gross); border: 1px solid var(--rand); }
 .popup { border-radius: 14px; border: 1px solid var(--rand); box-shadow: var(--schatten-hoch); }
 .warnung { border-radius: 12px; border: 1px solid #F0DC9A; }
 .fehler { border-radius: 10px; }
@@ -811,8 +767,7 @@ html[data-theme="dark"] .kopf .suche input:focus { background: #1A1B1F; }
 html[data-theme="dark"] .karte, html[data-theme="dark"] .tabelle-wrap, html[data-theme="dark"] .palette, html[data-theme="dark"] .feldliste { background: var(--weiss); }
 html[data-theme="dark"] th { background: #1F2024; color: #9EA1A8; border-bottom-color: var(--rand); }
 html[data-theme="dark"] td { border-bottom-color: #24262B; }
-html[data-theme="dark"] tr.klickbar:hover td, html[data-theme="dark"] table.bauteile tr:hover td, html[data-theme="dark"] .fz:hover:not(:disabled) { background: #2A1D18; }
-html[data-theme="dark"] table.bauteile tr.an td { background: #4A2416; }
+html[data-theme="dark"] tr.klickbar:hover td, html[data-theme="dark"] .fz:hover:not(:disabled) { background: #2A1D18; }
 html[data-theme="dark"] .knopf { background: #222428; color: var(--anthrazit); border-color: var(--rand-stark); }
 html[data-theme="dark"] .knopf:hover { background: #2A2C31; border-color: #4A4D55; }
 html[data-theme="dark"] .knopf.haupt-k { background: var(--orange); border-color: var(--orange); color: #fff; }
@@ -822,7 +777,6 @@ html[data-theme="dark"] .umschalter { background: #1E1F23; }
 html[data-theme="dark"] .umschalter button.an { background: #2E3036; color: #fff; }
 html[data-theme="dark"] .werkzeug input[type=search], html[data-theme="dark"] .werkzeug select, html[data-theme="dark"] .sv-auswahl select, html[data-theme="dark"] .formular input,
 html[data-theme="dark"] .formular select, html[data-theme="dark"] .formular textarea, html[data-theme="dark"] .palette input[type=search],
-html[data-theme="dark"] .baum-karte input[type=search], html[data-theme="dark"] .bt-filter input, html[data-theme="dark"] .bt-filter select,
 html[data-theme="dark"] .anmeldung input, html[data-theme="dark"] .qr-link input, html[data-theme="dark"] .vs-felder input {
   background: #141518; color: var(--anthrazit); border-color: var(--rand-stark);
 }
@@ -877,8 +831,7 @@ html[data-theme="dark"] .hinweis { background: #2A1D18; color: #E8C7B8; }
 html[data-theme="dark"] .sv-bild { background: repeating-conic-gradient(#26282D 0% 25%, #1E1F23 0% 50%) 0 0 / 16px 16px; }
 html[data-theme="dark"] .anmeldung, html[data-theme="dark"] .anmeldung .form { background: #16171A; }
 html[data-theme="dark"] .anmeldung label { color: #C2C4CA; }
-html[data-theme="dark"] .klickbar-li:hover, html[data-theme="dark"] .b-knoten:hover { background: #2A1D18; }
-html[data-theme="dark"] .b-knoten.an { background: #3A1E14; color: #FF9A73; }
+html[data-theme="dark"] .klickbar-li:hover { background: #2A1D18; }
 html[data-theme="dark"] .vs { border-color: var(--rand-stark); }
 html[data-theme="dark"] .qr-svg { border-color: var(--rand-stark); }
 html[data-theme="dark"] .mini-plan { background: #1E1F23; }
@@ -1119,30 +1072,6 @@ html[data-theme="dark"] .sl-t { background: rgba(80,140,220,.2); color: #A9C8F0;
 .profil-knoepfe { display: flex; gap: 8px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
 .profil-knoepfe label.knopf { cursor: pointer; }
 
-/* Grundriss im Vollbild */
-.vb-liste { display: none; }
-.vb-knopf { display: inline-flex; gap: 6px; align-items: center; margin-left: auto; }
-.vb-knopf .icon { width: 16px; height: 16px; }
-body.plan-vollbild { overflow: hidden; }
-.plan-layout.vollbild { position: fixed; inset: 0; z-index: 45; margin: 0; padding: 12px; gap: 12px; background: var(--flaeche); height: 100vh; height: 100dvh; align-items: stretch; }
-.plan-layout.vollbild .palette { position: static; max-height: none; height: 100%; overflow-y: auto; }
-.plan-layout.vollbild .plan-bereich { display: flex; flex-direction: column; height: 100%; min-height: 0; }
-.plan-layout.vollbild .buehne { flex: 1; height: auto; min-height: 0; }
-.plan-layout.vollbild .plan-legende { margin-top: 6px; }
-.plan-layout.vollbild .vb-liste { display: inline-flex; }
-.plan-layout.vollbild.ohne-liste { grid-template-columns: 1fr; }
-.plan-layout.vollbild.ohne-liste .palette { display: none; }
-html[data-theme="dark"] .plan-layout.vollbild { background: var(--flaeche); }
-@media (max-width: 900px) {
-  .plan-layout.vollbild { grid-template-columns: 1fr; grid-template-rows: 1fr; padding: 8px; }
-  .plan-layout.vollbild .palette, .plan-layout.vollbild .vb-liste { display: none; }
-  .plan-layout.vollbild .plan-leiste { flex-wrap: nowrap; }
-  .plan-layout.vollbild .ebenen { flex: 1; min-width: 0; display: flex; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
-  .plan-layout.vollbild .ebenen > * { flex: none; }
-  .plan-layout.vollbild .zoom [data-z="0"] { display: none; }
-  .plan-layout.vollbild .plan-legende { display: none; }
-  .vb-knopf span { display: none; }
-}
 .sv-kz.raster.k4:has(.sl-kz-t) { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
 .sl-kz-t::before { background: #1D4F91 !important; }
 .sl-kz-t .wert { color: #1D4F91; }
@@ -1549,4 +1478,135 @@ html[data-theme="dark"] .gu-zelle:hover { box-shadow: 0 4px 12px rgba(0,0,0,.5);
   .gu-zelle { height: 40px; padding: 0 6px; justify-content: center; } .gu-zelle b { font-size: 15px; } .gu-teile { display: none; }
   .gu-achse { font-size: 11.5px; }
   .gu-einordnen > div { grid-template-columns: 30px minmax(0, 1fr) auto; row-gap: 6px; } .gu-einordnen select { grid-column: 2; grid-row: 2; } .gu-einordnen button { grid-column: 3; grid-row: 2; }
+}
+
+/* ---------- Plan-Ansicht: großer Plan, Etagenleiste am Plan, Listen nur bei Bedarf ---------- */
+.plan-seite { min-width: 0; }
+.plan-layout.pv.bearbeiten, .plan-layout.pv.mit-liste { grid-template-columns: minmax(0, 1fr) 300px; }
+.pv .plan-bereich { display: flex; flex-direction: column; height: calc(100vh - 228px); min-height: 500px; }   /* Leiste darf umbrechen, der Plan nimmt den Rest */
+.pv .plan-leiste { gap: 10px 12px; margin-bottom: 12px; flex: none; }
+.pv-mehr { display: none; }
+.titelzeile .aktionen .icon { width: 16px; height: 16px; }
+.knopf.pv-an, .knopf.pv-an:hover { background: var(--anthrazit); border-color: var(--anthrazit); color: var(--weiss); }
+/* Gebäude als Umschalter */
+.pv-geb { display: inline-flex; gap: 2px; padding: 3px; border-radius: 10px; border: 1px solid var(--rand-stark); background: var(--flaeche); flex: none; max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+.pv-geb[hidden], .pv-etagen[hidden], .pv-band[hidden] { display: none !important; }
+.pv-geb a { padding: 6px 13px; border-radius: 7px; font-weight: 600; font-size: 14px; color: var(--text-2); text-decoration: none; display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+.pv-geb a:hover { color: var(--anthrazit); }
+.pv-geb a.an { background: var(--weiss); color: var(--anthrazit); box-shadow: var(--schatten); }
+.pv-geb a i, .pv-band a i { width: 8px; height: 8px; border-radius: 50%; background: var(--c); flex: none; }
+.pv-such { height: 38px; border: 1px solid var(--rand-stark); border-radius: 9px; background: var(--weiss); padding: 0 8px 0 12px; display: flex; align-items: center; gap: 8px; color: var(--grau); width: 250px; max-width: 100%; }
+.pv-such:focus-within { border-color: var(--orange); box-shadow: var(--fokus); }
+.pv-such .icon { width: 16px; height: 16px; flex: none; }
+.pv-such input { border: 0; outline: 0; background: none; flex: 1; min-width: 0; height: 34px; font-size: 14px; padding: 0; color: var(--anthrazit); }
+.plan-layout.bearbeiten .pv-such, .plan-layout.mit-liste .plan-leiste .pv-such { display: none; }   /* offene Liste: Das Suchfeld steht in der Liste */
+.pv-such-l { width: auto; margin: 0 4px 10px; flex: none; }
+/* Plan mit Etagenleiste */
+.pv-plan { display: flex; flex: 1; min-height: 0; background: var(--weiss); border: 1px solid var(--rand); border-radius: var(--radius-gross); box-shadow: var(--schatten); overflow: hidden; }
+.pv-plan .buehne { flex: 1; min-width: 0; border-radius: 0; box-shadow: none; background: #E9E9EC; height: auto; min-height: 0; }
+.pv-plan .buehne.ziel::after, .pv-plan .buehne.setzmodus::after, .pv-plan .buehne:focus-visible::after { content: ""; position: absolute; inset: 0; border: 3px solid var(--orange); pointer-events: none; z-index: 8; }
+.pv-plan .buehne:focus-visible:not(.ziel):not(.setzmodus)::after { border: 2px solid var(--orange-hell); }
+.pv-plan .buehne.ziel, .pv-plan .buehne.setzmodus, .pv-plan .buehne:focus-visible { box-shadow: none; }
+.pv-etagen { width: max-content; min-width: 92px; max-width: 164px; flex: none; padding: 14px 9px 10px; display: flex; flex-direction: column; border-right: 1px solid var(--rand); background: var(--flaeche); min-height: 0; }
+.pv-etagen h4 { font-size: 10.5px; letter-spacing: .16em; text-transform: uppercase; color: var(--grau); margin: 0 0 8px; text-align: center; font-weight: 700; }
+.pv-el { display: flex; flex-direction: column; gap: 4px; overflow-y: auto; min-height: 0; flex: 1; scrollbar-width: none; padding: 3px; margin: 0 -3px; }
+.pv-et { display: flex; align-items: center; justify-content: center; padding: 3px 6px; min-height: 40px; border-radius: 10px; text-decoration: none; color: var(--text-2); font-weight: 700; font-size: 13.5px; position: relative; flex: none; text-align: center; line-height: 1.15; }
+.pv-et span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.pv-et:hover { background: var(--weiss); color: var(--anthrazit); }
+.pv-et.an, .pv-et.an:hover { background: var(--orange); color: #fff; box-shadow: 0 4px 12px rgba(230,55,19,.3); }
+.pv-et i { position: absolute; right: -2px; top: -2px; width: 11px; height: 11px; border-radius: 50%; background: var(--c); box-shadow: 0 0 0 2.5px var(--flaeche); }
+.pv-et-linie { height: 0; border-top: 2px dashed var(--rand-stark); margin: 5px 4px; flex: none; }
+.pv-teile { display: flex; gap: 3px; justify-content: center; flex-wrap: wrap; margin: 1px 0 3px; flex: none; }
+.pv-teile a { min-width: 21px; height: 22px; padding: 0 4px; border-radius: 7px; border: 1px solid var(--rand-stark); background: var(--weiss); color: var(--text-2); font-size: 11.5px; font-weight: 700; display: grid; place-items: center; text-decoration: none; }
+.pv-teile a.an { background: var(--anthrazit); border-color: var(--anthrazit); color: var(--weiss); }
+.pv-auf { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; padding-top: 10px; flex: none; }
+.pv-auf a, .pv-auf span { height: 34px; border-radius: 9px; border: 1px solid var(--rand-stark); background: var(--weiss); display: grid; place-items: center; font-size: 12px; color: var(--text-2); text-decoration: none; }
+.pv-auf a:hover { border-color: var(--grau); color: var(--anthrazit); }
+.pv-auf span { opacity: .4; }
+/* Werkzeuge auf dem Plan */
+.pv-ecke { position: absolute; right: 16px; bottom: 16px; display: grid; gap: 8px; z-index: 5; }
+.pv-ecke button { width: 44px; height: 44px; border-radius: 12px; border: 1px solid var(--rand); background: var(--weiss); box-shadow: var(--schatten); font: inherit; font-size: 21px; font-weight: 700; display: grid; place-items: center; color: var(--anthrazit); cursor: pointer; padding: 0; }
+.pv-ecke button:hover { border-color: var(--grau); }
+.pv-ecke svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.pv-leg { position: absolute; left: 16px; bottom: 16px; z-index: 5; background: var(--weiss); border: 1px solid var(--rand); border-radius: 20px; padding: 8px 16px; font-size: 12.5px; display: flex; gap: 6px 16px; flex-wrap: wrap; box-shadow: var(--schatten); color: var(--text-2); pointer-events: none; max-width: calc(100% - 96px); }
+.pv-leg span::before { content: ""; display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--c); margin-right: 6px; }
+.pv-pille { position: absolute; right: 16px; top: 16px; z-index: 5; height: 40px; padding: 0 15px; border-radius: 20px; border: 1px solid var(--rand); background: var(--weiss); box-shadow: var(--schatten); font: inherit; font-size: 13.5px; font-weight: 700; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; color: var(--anthrazit); }
+.pv-pille:hover { border-color: var(--grau); }
+.pv-pille em { font-style: normal; background: var(--flaeche); border-radius: 10px; padding: 1px 8px; font-size: 12px; }
+.pv-pille .icon { width: 16px; height: 16px; }
+.plan-layout.bearbeiten .pv-pille, .plan-layout.mit-liste .pv-pille { display: none; }
+/* Rechte Spalte: Liste der Anlagen (Ansehen) oder Symbolliste (Bearbeiten) */
+.pv-dock { display: none; min-width: 0; position: sticky; top: 80px; }
+.plan-layout.bearbeiten .pv-dock, .plan-layout.mit-liste .pv-dock { display: block; }
+.pv-dock .palette { display: none; position: static; max-height: calc(100vh - 228px); }
+.plan-layout.bearbeiten .pv-dock .palette { display: block; }
+.pv-liste { display: none; flex-direction: column; background: var(--weiss); border: 1px solid var(--rand); border-radius: var(--radius-gross); box-shadow: var(--schatten); padding: 14px 10px 10px; max-height: calc(100vh - 228px); }
+.plan-layout.mit-liste .pv-liste { display: flex; }
+.pv-lk { display: flex; align-items: baseline; gap: 8px; margin: 0 6px 10px; }
+.pv-lk h3 { margin: 0; flex: 1; }
+.pv-lk small { color: var(--text-2); font-size: 12.5px; white-space: nowrap; }
+.pv-lk .x { border: 0; background: none; font-size: 22px; color: var(--grau); cursor: pointer; line-height: 1; padding: 0 2px; align-self: center; }
+.pv-ll { display: grid; gap: 2px; overflow-y: auto; min-height: 0; flex: 1; align-content: start; }
+.pv-li { display: grid; grid-template-columns: 34px minmax(0, 1fr) 12px; gap: 10px; align-items: center; padding: 7px 8px; border-radius: 10px; border: 0; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; width: 100%; }
+.pv-li:hover { background: var(--flaeche); }
+.pv-li.an { background: var(--orange-zart); }
+.pv-li b { display: block; font-size: 14px; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pv-li small { display: block; font-size: 12px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pv-li small.rot { color: var(--ueber); font-weight: 700; }
+.pv-li small.gelb { color: #8A6400; font-weight: 700; }
+.pv-li > i { width: 10px; height: 10px; border-radius: 50%; background: var(--c); box-shadow: 0 0 0 3px color-mix(in srgb, var(--c) 22%, transparent); }
+.pv-nichts { margin: 6px 8px; }
+.pv-frei { display: flex; align-items: center; gap: 10px; margin-top: 10px; padding: 11px 12px; border-radius: 12px; border: 1px dashed var(--rand-stark); font: inherit; font-weight: 700; font-size: 14px; background: none; color: inherit; cursor: pointer; width: 100%; text-align: left; }
+.pv-frei:hover { background: var(--flaeche); }
+.pv-frei span { margin-left: auto; background: var(--flaeche); border-radius: 10px; padding: 1px 9px; font-size: 12.5px; }
+/* Band für das Handy */
+.pv-band { display: none; gap: 6px; margin: 0 -16px 10px; padding: 2px 0 2px 16px; align-items: center; }
+.pv-br { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; flex: 1; min-width: 0; padding-right: 16px; }
+.pv-br::-webkit-scrollbar, .pv-geb::-webkit-scrollbar, .pv-el::-webkit-scrollbar { display: none; }
+.pv-band a, .pv-band select { flex: none; height: 38px; padding: 0 13px; border-radius: 19px; border: 1px solid var(--rand-stark); background: var(--weiss); font: inherit; font-weight: 700; font-size: 13.5px; color: var(--text-2); display: inline-flex; align-items: center; gap: 6px; text-decoration: none; white-space: nowrap; }
+.pv-band a.an { background: var(--orange); border-color: var(--orange); color: #fff; }
+.pv-band select { background-color: var(--anthrazit); border-color: var(--anthrazit); color: var(--weiss); padding-right: 8px; max-width: 46vw; }
+/* Vollbild */
+body.plan-vollbild { overflow: hidden; }
+.plan-layout.pv.vollbild { position: fixed; inset: 0; z-index: 45; margin: 0; padding: 12px; gap: 12px; background: var(--flaeche); height: 100vh; height: 100dvh; align-items: stretch; }
+.plan-layout.pv.vollbild .plan-bereich { height: 100%; min-height: 0; }
+.plan-layout.pv.vollbild .pv-dock { position: static; height: 100%; min-height: 0; }
+.plan-layout.pv.vollbild .pv-dock .palette, .plan-layout.pv.vollbild .pv-liste { max-height: 100%; height: 100%; }
+/* Dunkel */
+html[data-theme="dark"] .pv-plan .buehne { background: #1B1C20; }
+html[data-theme="dark"] .pv-li small.rot { color: #FF8A9D; }
+html[data-theme="dark"] .pv-li small.gelb { color: #F2C94C; }
+html[data-theme="dark"] .pv-et.an { color: #fff; }
+/* Schmal: Plan zuerst, Etagen als Band, Liste darunter */
+@media (max-width: 900px) {
+  .plan-layout.pv, .plan-layout.pv.bearbeiten, .plan-layout.pv.mit-liste { grid-template-columns: minmax(0, 1fr); }
+  .pv-etagen, .pv .pv-geb, .pv-pille, .pv-leg { display: none !important; }
+  .pv-band:not([hidden]) { display: flex; order: 1; }
+  .pv .plan-bereich { height: auto; min-height: 0; }
+  .pv-plan { flex: none; order: 2; }
+  .pv .plan-leiste { flex-wrap: nowrap; order: 3; margin: 12px 0 0; }        /* Suche und Gewerke stehen am Handy über der Liste */
+  .pv .ebenen { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; min-width: 0; }
+  .pv .ebenen > * { flex: none; }
+  .pv-such { width: 170px; flex: none; }
+  .pv-plan .buehne { height: 56vh; min-height: 300px; }
+  .plan-layout.pv.vollbild .pv-plan { flex: 1; }
+  .plan-layout.pv.vollbild .buehne { height: auto; min-height: 0; }
+  .pv-ecke { right: 10px; bottom: 10px; gap: 6px; }
+  .pv-ecke button { width: 40px; height: 40px; }
+  .pv-ecke [data-z="+"], .pv-ecke [data-z="-"] { display: none; }        /* am Handy mit zwei Fingern vergrößern */
+  .pv-dock, .plan-layout.pv.bearbeiten .pv-dock { display: block; position: static; }
+  .pv-liste { display: flex; max-height: none; }
+  .pv-such-l { display: none; }
+  .plan-layout.pv.mit-liste .plan-leiste .pv-such { display: flex; }
+  .plan-layout.pv.bearbeiten .pv-liste { display: none; }
+  .pv-lk .x { display: none; }
+  .pv-dock .palette { max-height: 320px; }
+  .plan-seite .titelzeile { flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+  .plan-seite .titelzeile > div:first-child { flex: 1; min-width: 0; }
+  .plan-seite .titelzeile h1 { font-size: 24px; }
+  .pv-mehr { display: grid; place-items: center; width: 42px; height: 42px; padding: 0; font-size: 20px; flex: none; }
+  .plan-seite .titelzeile .aktionen { display: none; width: 100%; margin: 4px 0 0; }
+  .plan-seite .titelzeile.auf .aktionen { display: flex; }
+  .plan-layout.pv.vollbild { padding: 8px; }
+  .plan-layout.pv.vollbild .pv-dock, .plan-layout.pv.vollbild .plan-leiste { display: none; }
 }
