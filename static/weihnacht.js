@@ -83,6 +83,18 @@ function adventskranz(kerzen) {
   </svg>`;
 }
 
+function weihnachtsbaum() {
+  const kugeln = [[52, 46, "#E63713"], [70, 58, "#E0A500"], [42, 70, "#E0A500"], [62, 80, "#B8323F"], [80, 88, "#E63713"], [34, 92, "#B8323F"], [56, 100, "#E0A500"]];
+  return `<svg class="baum" viewBox="0 0 112 132" role="img" aria-label="Weihnachtsbaum">
+    <rect x="49" y="108" width="14" height="16" rx="2" fill="#7A4A2A"/>
+    <path d="M56 18 L82 56 H70 L92 84 H78 L102 112 H10 L34 84 H20 L42 56 H30 Z" fill="#2F6B3A"/>
+    <path d="M56 18 L82 56 H70 L92 84 H78 L102 112 H56 Z" fill="#3A8F4B" opacity=".55"/>
+    <path d="M38 62 Q56 72 76 60 M30 90 Q56 102 86 88" stroke="#EFCFB7" stroke-width="2" fill="none" stroke-dasharray="1 5" stroke-linecap="round"/>
+    ${kugeln.map(([x, y, f], i) => `<circle class="kugel" style="animation-delay:${(i * 0.37).toFixed(2)}s" cx="${x}" cy="${y}" r="4.5" fill="${f}"/>`).join("")}
+    <path class="baum-stern" d="M56 3 L59.5 12 L69 12.5 L61.5 18.5 L64 28 L56 22.5 L48 28 L50.5 18.5 L43 12.5 L52.5 12 Z" fill="#E0A500"/>
+  </svg>`;
+}
+
 function weihnachtKarte(w) {
   let unter;
   if (w.phase === "advent" && w.bisHeiligabend > 0) unter = w.bisHeiligabend === 1 ? "Morgen ist Heiligabend." : `Noch ${w.bisHeiligabend} Tage bis Heiligabend.`;
@@ -94,7 +106,7 @@ function weihnachtKarte(w) {
   return `<div class="karte weihnacht-karte">
     ${adventskranz(w.kerzen)}
     <div class="wk-text"><div class="kicker">${kerzenText || "Casa Concept Consulting"}</div><b>${esc(w.text)}</b><span>${esc(unter)}</span></div>
-    <button class="knopf klein" id="schneeK" title="Schneefall nur bei dir an- oder ausschalten">${schneeErlaubt() ? "Schnee aus" : "Schnee an"}</button>
+    <div class="wk-rechts">${weihnachtsbaum()}<button class="knopf klein" id="schneeK" title="Schneefall nur bei dir an- oder ausschalten">${schneeErlaubt() ? "Schnee aus" : "Schnee an"}</button></div>
   </div>`;
 }
 
@@ -109,6 +121,9 @@ function weihnachtKarte(w) {
     const kopf = el.querySelector(".titelzeile");
     if (!kopf) return;
     kopf.insertAdjacentHTML("afterend", weihnachtKarte(w));
+    const h1 = kopf.querySelector("h1");
+    if (h1 && !h1.querySelector(".gruss-sterne")) h1.insertAdjacentHTML("beforeend",
+      ' <span class="gruss-sterne" aria-hidden="true"><i>✦</i><i>✧</i><i>✦</i><i>✧</i><i>✦</i></span>');
     const k = el.querySelector("#schneeK");
     k.onclick = () => {
       const an = !schneeErlaubt();
