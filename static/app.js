@@ -1,7 +1,7 @@
 /* Casa CAFM – Oberfläche (ohne Fremdbibliotheken) */
 "use strict";
 
-const VERSION = "2026.11.15-37"; // muss zu VERSION in app.py passen
+const VERSION = "2026.11.16-1"; // muss zu VERSION in app.py passen
 /* Hell- und Dunkelmodus: gemerkte Wahl, sonst wie das Gerät */
 const THEMA = (() => {
   let t = null;
@@ -178,7 +178,7 @@ function zelle(ressource, f, z) {
 
 /* ---------- Rahmen ---------- */
 const NAV = [
-  ["start", "Übersicht", "#/"],
+  ["start", "Cockpit", "#/"],
   "Bestand",
   ["objekte", "Objekte", "#/objekte"],
   ["plaene", "Standorte & Pläne", "#/plaene"],
@@ -820,7 +820,7 @@ DETAIL.objekte = async (el, id, q) => {
   document.getElementById("oqr").onclick = () => etikettenDrucken(anl, `QR-Etiketten ${o.kuerzel}`);
   const f = { objekt_id: String(id) };
   reiterLeiste(el.querySelector("#r"), [
-    { titel: "Anlagen", zahl: anl.length, zeigen: (x) => tabelle(x, "anlagen", { filter: f }) },
+    { titel: "Anlagen", zahl: anl.length, zeigen: (x) => anlagenListe(x, { objekt_id: o.id }) },
     { titel: "Pläne", zahl: plaene.length, zeigen: (x) => planListe(x, f) },
     { titel: "Wartungsplan", zahl: wart.length, zeigen: (x) => tabelle(x, "wartungen", { filter: f, extraFilter: wartungFilter }) },
     { titel: "Checklisten & Rundgänge", zeigen: (x) => checklistenReiter(x, { objekt_id: o.id }) },

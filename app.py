@@ -48,7 +48,7 @@ WD_PFAD = DATEN / "winterdienstfotos"
 PROFIL_PFAD = DATEN / "profilbilder"
 MAX_SYMBOL = 2 * 1024 * 1024
 MAX_UPLOAD = 25 * 1024 * 1024
-VERSION = "2026.11.15-37"  # muss zu VERSION in static/app.js passen
+VERSION = "2026.11.16-1"  # muss zu VERSION in static/app.js passen
 SITZUNG_TAGE = 7
 
 GEWERKE = [
@@ -166,6 +166,7 @@ RESSOURCEN: dict[str, dict] = {
             {"name": "sv_gegenstand", "label": "SV-Prüfgegenstand", "typ": "select", "optionen": SV_GEGENSTAENDE},
             {"name": "sv_bereich", "label": "SV-Bereich (Gruppe im Prüfplan)", "typ": "select", "optionen": SV_BEREICHE},
             {"name": "sv_grundlage", "label": "SV-Prüfgrundlage", "typ": "select", "optionen": SV_GRUNDLAGEN},
+            {"name": "liste_ueberschrift", "label": "Eigene Überschrift in der Anlagenliste", "typ": "text"},
             {"name": "notiz", "label": "Notiz", "typ": "textarea"},
             {"name": "plan_id", "label": "Plan", "typ": "ref", "ref": "plaene", "nurlesen": True, "lose": True},
             {"name": "details", "label": "Detailinfo", "typ": "json", "intern": True},
@@ -940,6 +941,39 @@ def dashboard(con) -> dict:
         "kuendigen": kuendigen[:8],
         "tickets_nach_status": {r[0]: r[1] for r in con.execute(
             "SELECT status, COUNT(*) FROM tickets GROUP BY status")},
+        "cockpit": cockpit_daten(con, h),
+    }
+
+
+def cockpit_daten(con, h: dt.date) -> dict:
+    """Zahlen für das Cockpit. Der Objekt-Zustand ist eine einfache, nachvollziehbare Rechnung:
+    50 % Wartungen im Plan, 30 % Störungen, 20 % SV-Mängel."""
+    k = lambda sql, *p: con.execute(sql, p).fetchone()[0]  # noqa: E731
+    hs = h.isoformat()
+    offen = "status NOT IN ('Erledigt','Abgeschlossen')"
+    aktiv = k("SELECT COUNT(*) FROM wartungen WHERE aktiv=1")
+    ueber = k("SELECT COUNT(*) FROM wartungen WHERE aktiv=1 AND naechste < ?", hs)
+    im_plan = round(100 * (aktiv - ueber) / aktiv) if aktiv else 100
+    prio = {r[0] or "Normal": r[1] for r in con.execute(f"SELECT prioritaet, COUNT(*) FROM tickets WHERE {offen} GROUP BY prioritaet")}
+    abzug_t = sum(n * {"Notfall": 30, "Hoch": 20}.get(p, 10) for p, n in prio.items())
+    sv = {r[0] or "unklar": r[1] for r in con.execute(
+        "SELECT einstufung, COUNT(*) FROM sv_maengel WHERE COALESCE(status,'offen') IN ('offen','in Arbeit') GROUP BY einstufung")}
+    abzug_sv = sum(n * {"gefährlich": 40, "erheblich": 25}.get(e, 15) for e, n in sv.items())
+    teile = {"wartung": im_plan, "stoerung": max(0, 100 - abzug_t), "sv": max(0, 100 - abzug_sv)}
+    zustand = round(teile["wartung"] * 0.5 + teile["stoerung"] * 0.3 + teile["sv"] * 0.2)
+    monate = []
+    for i in range(5, -1, -1):
+        m = plus_monate(h.replace(day=1), -i)
+        monate.append({"monat": m.isoformat()[:7], "anzahl": k(
+            "SELECT COUNT(*) FROM wartung_historie WHERE substr(datum,1,7)=? AND COALESCE(ergebnis,'')<>'Nicht durchgeführt'", m.isoformat()[:7])})
+    vg = {r[0] or "offen": (r[1], r[2] or 0) for r in con.execute("SELECT status, COUNT(*), SUM(summe_netto) FROM vorgaenge GROUP BY status")}
+    jahr = str(h.year)
+    return {
+        "zustand": zustand, "teile": teile, "wartungen_aktiv": aktiv, "wartungen_ueberfaellig": ueber,
+        "stoerungen_hoch": prio.get("Notfall", 0) + prio.get("Hoch", 0), "sv_offen": sum(sv.values()),
+        "monate": monate, "erledigt_jahr": k("SELECT COUNT(*) FROM wartung_historie WHERE substr(datum,1,4)=? "
+                                             "AND COALESCE(ergebnis,'')<>'Nicht durchgeführt'", jahr),
+        "vorgaenge": {s_: {"anzahl": vg.get(s_, (0, 0))[0], "summe": vg.get(s_, (0, 0))[1]} for s_ in ("offen", "beauftragt", "fertiggestellt", "abgerechnet")},
     }
 
 

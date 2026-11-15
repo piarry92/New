@@ -68,7 +68,8 @@ async function owWaehlen(erzwungen = false) {
     logo.insertAdjacentHTML("afterend", `<div class="objektwahl">
       <div class="ow-titel">Objekt</div>
       <button type="button" id="owKnopf" class="ow-knopf" ${nurEins ? "disabled" : ""} title="${nurEins ? "" : "Anderes Objekt wählen"}">
-        <span class="ow-name">${o ? `<b>${esc(o.kuerzel || "")}</b> ${esc(o.name || "")}` : "<b>Alle Objekte</b>"}</span>${nurEins ? "" : '<span class="ow-pfeil">▾</span>'}</button></div>`);
+        ${o && o.bild ? `<img class="ow-bild" src="${objektBildUrl(o)}" alt="">` : `<span class="ow-bild">${icon("objekte")}</span>`}
+        <span class="ow-name"><small>Objekt</small>${o ? `<b>${esc(o.kuerzel || o.name || "")}</b><em>${esc(o.name || "")}</em>` : "<b>Alle Objekte</b><em>Gesamtübersicht</em>"}</span>${nurEins ? "" : '<span class="ow-pfeil">▾</span>'}</button></div>`);
     const k = document.getElementById("owKnopf");
     if (k && !nurEins) k.onclick = () => owWaehlen(false);
     const a = document.querySelector('#nav a[data-nav="objekte"]');
