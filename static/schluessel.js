@@ -6,6 +6,7 @@ const slIstT = (s) => s.art === "Transponder";
 const slListe = (u) => u.schluessel.map((s) => `${slIstT(s) ? "Transp. " : ""}${s.nummer}${s.anzahl > 1 ? ` ×${s.anzahl}` : ""}`).join(", ");
 const slArtMarke = (s) => slIstT(s) ? '<span class="marke sl-t">Transponder</span>' : '<span class="marke m-geplant">Schlüssel</span>';
 const slWort = (liste) => { const t = liste.some(slIstT), k = liste.some((s) => !slIstT(s)); return t && k ? "Schlüssel und Transponder" : t ? "Transponder" : "Schlüssel"; };
+const zaehleArt = (liste, transponder) => liste.reduce((n, u) => n + u.schluessel.filter((s) => slIstT(s) === transponder).reduce((m, s) => m + (s.anzahl || 1), 0), 0);
 function slTabellen(u, druck = false) {
   const zeile = (s) => `<tr><td><b>${esc(s.nummer)}</b></td><td>${esc(s.bezeichnung)}${slIstT(s) && s.chip_nr ? `<br>${druck ? "<small>" : '<span class="klein">'}Chip ${esc(s.chip_nr)}${druck ? "</small>" : "</span>"}` : ""}</td><td>${s.anzahl}</td></tr>`;
   const teil = (titel, l) => l.length ? `${druck ? `<h2>${titel}</h2>` : `<div class="sl-titel">${titel}</div>`}<${druck ? "table" : 'div class="tabelle-wrap"><table'}><thead><tr><th>Nr.</th><th>Bezeichnung</th><th>Anzahl</th></tr></thead><tbody>${l.map(zeile).join("")}</tbody></table>${druck ? "" : "</div>"}` : "";
@@ -67,7 +68,8 @@ async function schluesselBereich(ziel, festesObjekt, ansicht = "aus") {
         <div class="karte kennzahl ${liste.length ? "orange" : ""}"><div class="wert">${liste.length}</div><div class="text">Übergaben offen</div></div>
         <div class="karte kennzahl ${ueber ? "rot" : ""}"><div class="wert">${ueber}</div><div class="text">überfällig</div></div>
         <div class="karte kennzahl"><div class="wert">${liste.filter((u) => u.rueckgabe_bis.slice(0, 10) === jetzt.slice(0, 10)).length}</div><div class="text">heute zurück</div></div>
-        <div class="karte kennzahl"><div class="wert">${liste.reduce((n, u) => n + u.schluessel.reduce((m, s) => m + (s.anzahl || 1), 0), 0)}</div><div class="text">Schlüssel unterwegs</div></div></div><div class="abstand"></div>` : "")
+        <div class="karte kennzahl"><div class="wert">${zaehleArt(liste, false)}</div><div class="text">Schlüssel ausgegeben</div></div>
+        <div class="karte kennzahl sl-kz-t"><div class="wert">${zaehleArt(liste, true)}</div><div class="text">Transponder ausgegeben</div></div></div><div class="abstand"></div>` : "")
       + (liste.length ? `<div class="tabelle-wrap"><table><thead><tr><th>Protokoll</th>${festesObjekt ? "" : "<th>Objekt</th>"}<th>Schlüssel / Transponder</th><th>Erhalten von</th><th>Ausgabe</th><th>Rückgabe bis</th><th>E-Mail</th><th></th></tr></thead><tbody>
         ${liste.map((u) => `<tr class="klickbar ${u.status === "ausgegeben" && u.rueckgabe_bis < jetzt ? "zeile-rot" : ""}" data-u="${u.id}"><td><b>${esc(u.nummer)}</b></td>
           ${festesObjekt ? "" : `<td>${esc(u.o_kuerzel || "")}</td>`}<td>${esc(slListe(u))}</td>

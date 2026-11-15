@@ -1140,3 +1140,7 @@ html[data-theme="dark"] .plan-layout.vollbild { background: var(--flaeche); }
   .plan-layout.vollbild .plan-legende { display: none; }
   .vb-knopf span { display: none; }
 }
+.sv-kz.raster.k4:has(.sl-kz-t) { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+.sl-kz-t::before { background: #1D4F91 !important; }
+.sl-kz-t .wert { color: #1D4F91; }
+html[data-theme="dark"] .sl-kz-t .wert { color: #A9C8F0; }
