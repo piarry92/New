@@ -17,7 +17,7 @@ SEITEN.zugaenge = async (el) => {
     <div class="karte"><h3>Rollen und Rechte</h3>
       <p class="klein">Häkchen setzen oder entfernen. Das gilt sofort für alle Zugänge mit dieser Rolle, außer bei Zugängen mit eigenen Rechten.
       Administratoren haben immer alle Rechte. Lesen dürfen alle angemeldeten Zugänge.</p>
-      <div class="tabelle-wrap" style="box-shadow:none"><table class="rechte-matrix"><thead><tr><th>Recht</th>${Object.entries(info.rollennamen).map(([k, t]) => `<th class="mitte">${esc(t)}</th>`).join("")}</tr></thead>
+      <div class="tabelle-wrap" style="box-shadow:none"><table class="rechte-matrix"><thead><tr><th>Recht</th>${["admin", "objektleiter", "benutzer", "zuschauer"].map((k) => `<th class="mitte">${esc(info.rollennamen[k])}</th>`).join("")}</tr></thead>
       <tbody id="rm"></tbody></table></div></div>
     <div class="abstand"></div>
     <div class="karte"><h3>Letzte Änderungen</h3><div id="vl" class="tabelle-wrap" style="box-shadow:none"></div></div>`;
@@ -50,9 +50,9 @@ SEITEN.zugaenge = async (el) => {
       const anzahl = Object.values(b.rechte).filter(Boolean).length;
       return `<tr><td><div class="profil-zeile klein-z">${avatar(b)}<div><b>${esc(b.name)}</b>${b.id === S.ich.id ? ' <span class="marke m-geplant">du</span>' : ""}<br><span class="klein">${esc(b.email)}</span></div></div></td>
         <td><select data-rolle-b="${b.id}" ${b.id === S.ich.id && b.rolle === "admin" ? "disabled" : ""}>${Object.entries(info.rollennamen).map(([k, t]) => `<option value="${k}" ${k === b.rolle ? "selected" : ""}>${t}</option>`).join("")}</select></td>
-        <td>${b.rolle === "admin" ? '<span class="klein">alle</span>' : `${anzahl} von ${info.liste.length}${abw ? ` <span class="marke m-neu" title="Eigene Rechte, abweichend von der Rolle">angepasst</span>` : ' <span class="klein">wie Rolle</span>'}`}</td>
+        <td>${b.rolle === "eigentuemer" ? `<span class="klein">nur ansehen: ${esc(eigObjekteText(b.objekte))}</span>` : b.rolle === "admin" ? '<span class="klein">alle</span>' : `${anzahl} von ${info.liste.length}${abw ? ` <span class="marke m-neu" title="Eigene Rechte, abweichend von der Rolle">angepasst</span>` : ' <span class="klein">wie Rolle</span>'}`}</td>
         <td>${!b.aktiv ? '<span class="marke m-arbeit">gesperrt</span>' : b.einladung_offen ? '<span class="marke m-bald">Einladung offen</span>' : '<span class="marke m-ok">aktiv</span>'}</td>
-        <td class="rechts-knoepfe">${b.rolle !== "admin" ? `<button class="knopf klein" data-rechte="${b.id}">Rechte</button>` : ""}
+        <td class="rechts-knoepfe">${b.rolle === "eigentuemer" ? `<button class="knopf klein" data-eobj="${b.id}">Objekte</button>` : b.rolle !== "admin" ? `<button class="knopf klein" data-rechte="${b.id}">Rechte</button>` : ""}
           <button class="knopf klein" data-pw="${b.id}">Passwort</button><button class="knopf klein ${b.einladung_offen ? "haupt-k" : ""}" data-einl="${b.id}">Einladen</button>
           ${b.id !== S.ich.id ? `<button class="knopf klein" data-sperr="${b.id}" data-aktiv="${b.aktiv}">${b.aktiv ? "Sperren" : "Freigeben"}</button>` : ""}</td></tr>`;
     }).join("")}</tbody></table></div>`;
@@ -80,13 +80,27 @@ SEITEN.zugaenge = async (el) => {
   el.querySelector("#bl").addEventListener("change", async (e) => {
     const s = e.target.closest("[data-rolle-b]");
     if (!s) return;
-    try { await api("PUT", `benutzer/${s.dataset.rolleB}`, { rolle: s.value }); melde("Rolle geändert."); }
+    try {
+      if (s.value === "eigentuemer") {
+        const b = liste.find((x) => x.id === Number(s.dataset.rolleB));
+        const objekte = await eigObjekteWaehlen(b.objekte || []);
+        if (!objekte) { ladeB(); return; }
+        await api("PUT", `benutzer/${s.dataset.rolleB}`, { rolle: s.value, objekte });
+      } else await api("PUT", `benutzer/${s.dataset.rolleB}`, { rolle: s.value });
+      melde("Rolle geändert.");
+    }
     catch (err) { melde(err.message, true); }
     ladeB();
   });
   el.querySelector("#bl").addEventListener("click", async (e) => {
-    const s = e.target.closest("[data-sperr]"), p = e.target.closest("[data-pw]"), r = e.target.closest("[data-rechte]"), ei = e.target.closest("[data-einl]");
+    const s = e.target.closest("[data-sperr]"), p = e.target.closest("[data-pw]"), r = e.target.closest("[data-rechte]"), ei = e.target.closest("[data-einl]"), eo = e.target.closest("[data-eobj]");
     try {
+      if (eo) {
+        const b = liste.find((x) => x.id === Number(eo.dataset.eobj));
+        const objekte = await eigObjekteWaehlen(b.objekte || []);
+        if (objekte) { await api("PUT", `benutzer/${b.id}`, { objekte }); melde("Objekte gespeichert."); ladeB(); }
+        return;
+      }
       if (ei) {
         const b = liste.find((x) => x.id === Number(ei.dataset.einl));
         const ein = await einstellungenLaden(true);
@@ -119,12 +133,20 @@ SEITEN.zugaenge = async (el) => {
   });
 
   el.querySelector("#neuB").onclick = async () => {
+    await lade("objekte");
+    setTimeout(() => { const sel = document.querySelector(".dialog select[name=rolle]"); if (sel) sel.onchange = () => { document.querySelector(".dialog .eig-wahl").hidden = sel.value !== "eigentuemer"; }; }, 0);
     const ok = await dialog("Zugang anlegen", `<div class="dfehler"></div><form class="formular" onsubmit="return false">
       <label><span class="pflicht">Name</span><input name="name" required></label><label><span class="pflicht">E-Mail</span><input name="email" type="email" required></label>
       <label><span class="pflicht">Erstes Passwort</span><input name="passwort" type="text" minlength="8" autocomplete="new-password" required></label>
       <label>Rolle<select name="rolle">${Object.entries(info.rollennamen).map(([k, t]) => `<option value="${k}" ${k === "benutzer" ? "selected" : ""}>${t}</option>`).join("")}</select></label>
-      <p class="klein breit"><b>Administrator</b>: darf alles. <b>Benutzer</b>: arbeitet mit, Rechte wie unten in der Rolle. <b>Zuschauer</b>: sieht alles, ändert nichts, außer du gibst Rechte dazu.</p></form>`,
-      [{ text: "Abbrechen" }, { text: "Anlegen", klasse: "haupt-k", aktion: async (hg) => api("POST", "benutzer", Object.fromEntries(new FormData(hg.querySelector("form")))) }]);
+      <div class="breit eig-wahl" hidden><div class="sl-titel">Objekte, die der Eigentümer sehen darf</div>${eigObjekteHaken([])}</div>
+      <p class="klein breit"><b>Administrator</b>: darf alles. <b>Objektleiter</b>: alles im Objekt, keine Zugänge und Einstellungen. <b>Benutzer</b>: arbeitet mit, Rechte wie unten in der Rolle. <b>Zuschauer</b>: sieht alles, ändert nichts. <b>Eigentümer</b>: sieht nur die gewählten Objekte und ändert nichts.</p></form>`,
+      [{ text: "Abbrechen" }, { text: "Anlegen", klasse: "haupt-k", aktion: async (hg) => {
+        const d = Object.fromEntries(new FormData(hg.querySelector("form")));
+        delete d.eobj;
+        if (d.rolle === "eigentuemer") d.objekte = [...hg.querySelectorAll(".eig-wahl input:checked")].map((c) => Number(c.value));
+        return api("POST", "benutzer", d);
+      } }]);
     if (ok) { melde("Zugang angelegt."); ladeB(); }
   };
 

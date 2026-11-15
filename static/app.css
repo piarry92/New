@@ -1363,3 +1363,8 @@ html[data-theme="dark"] .wd-oeff-warn, html[data-theme="dark"] .kopf-info .kw-wa
 html[data-theme="dark"] .kopf-info .kw-warn.glatt { background: rgba(224,165,0,.16); color: #F2C94C; }
 @media (max-width: 760px) { .wd-tage { grid-template-columns: 1fr; } }
 @media (max-width: 640px) { .kopf-info .kw-warn span { display: none; } }
+
+/* Eigentümer */
+.eig-hinweis { margin-bottom: 18px; padding: 12px 18px; border-left: 4px solid var(--orange); background: var(--orange-zart); }
+html[data-theme="dark"] .eig-hinweis { background: rgba(230,55,19,.12); }
+.liste > li > .avatar, .liste > li > .avatar-bild { flex: none; }

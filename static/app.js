@@ -1,7 +1,7 @@
 /* Casa CAFM – Oberfläche (ohne Fremdbibliotheken) */
 "use strict";
 
-const VERSION = "2026.11.15-30"; // muss zu VERSION in app.py passen
+const VERSION = "2026.11.15-31"; // muss zu VERSION in app.py passen
 /* Hell- und Dunkelmodus: gemerkte Wahl, sonst wie das Gerät */
 const THEMA = (() => {
   let t = null;
@@ -31,7 +31,7 @@ const datum = (iso) => (iso ? iso.slice(0, 10).split("-").reverse().join(".") : 
 const zahl = (v, st = 0) => (v == null || v === "" ? "" : Number(v).toLocaleString("de-DE", { minimumFractionDigits: st, maximumFractionDigits: st || 3 }));
 const geld = (v) => (v == null || v === "" ? "" : Number(v).toLocaleString("de-DE", { style: "currency", currency: "EUR" }));
 const groesse = (b) => (b > 1048576 ? zahl(b / 1048576, 1) + " MB" : zahl(Math.ceil(b / 1024)) + " KB");
-const ROLLENNAMEN = { admin: "Administrator", objektleiter: "Objektleiter", benutzer: "Benutzer", zuschauer: "Zuschauer" };
+const ROLLENNAMEN = { admin: "Administrator", objektleiter: "Objektleiter", benutzer: "Benutzer", zuschauer: "Zuschauer", eigentuemer: "Eigentümer" };
 const darf = (r) => !!(S.ich && S.ich.rechte && S.ich.rechte[r]);
 const RECHT_RES = { objekte: "anlagen_bearbeiten", anlagen: "anlagen_bearbeiten", plaene: "plaene_bearbeiten", symbole: "plaene_bearbeiten",
   wartungen: "wartung_planen", vertraege: "vertraege_bearbeiten", dienstleister: "vertraege_bearbeiten", zaehler: "zaehler_erfassen",
@@ -558,7 +558,7 @@ SEITEN.start = async (el) => {
   const st = d.tickets_nach_status;
   const farben = { "Neu": "var(--orange)", "In Arbeit": "var(--arbeit)", "Warten auf Dienstleister": "var(--bald)", "Erledigt": "var(--ok)", "Abgeschlossen": "#9CC9A5" };
   const summe = Object.values(st).reduce((a, b) => a + b, 0) || 1;
-  el.innerHTML = seitenkopf(`Guten ${new Date().getHours() < 11 ? "Morgen" : new Date().getHours() < 18 ? "Tag" : "Abend"}, ${S.ich.name.split(" ")[0]}`,
+  el.innerHTML = seitenkopf(`Guten ${new Date().getHours() < 11 ? "Morgen" : new Date().getHours() < 18 ? "Tag" : "Abend"}, ${(S.ich.name.split(" ").find((w) => !/\.$/.test(w)) || S.ich.name)}`,
     new Date().toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long", year: "numeric" }),
     darf("tickets_anlegen") ? `<button class="knopf haupt-k" id="neuTicket">${icon("plus")} Störmeldung</button>` : "") + `
   <div class="raster k4">
