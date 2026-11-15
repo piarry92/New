@@ -46,7 +46,7 @@ SCHL_PFAD = DATEN / "schluesselfotos"
 PROFIL_PFAD = DATEN / "profilbilder"
 MAX_SYMBOL = 2 * 1024 * 1024
 MAX_UPLOAD = 25 * 1024 * 1024
-VERSION = "2026.11.15-22"  # muss zu VERSION in static/app.js passen
+VERSION = "2026.11.15-23"  # muss zu VERSION in static/app.js passen
 SITZUNG_TAGE = 7
 
 GEWERKE = [
@@ -631,6 +631,10 @@ def db_anlegen() -> None:
         for r in con.execute("SELECT id FROM objekte WHERE qr_token IS NULL OR qr_token=''").fetchall():
             con.execute("UPDATE objekte SET qr_token=? WHERE id=?", (neuer_qr_token(), r["id"]))
         con.execute('CREATE UNIQUE INDEX IF NOT EXISTS "ux_objekte_qr" ON objekte(qr_token)')
+        spalten_b = {r["name"] for r in con.execute("PRAGMA table_info(benutzer)")}
+        for spalte in ("einladung", "einladung_bis"):
+            if spalte not in spalten_b:
+                con.execute(f"ALTER TABLE benutzer ADD COLUMN {spalte} TEXT")
         if "bild" not in {r["name"] for r in con.execute("PRAGMA table_info(benutzer)")}:
             con.execute("ALTER TABLE benutzer ADD COLUMN bild TEXT")
         if "mail_an" not in {r["name"] for r in con.execute("PRAGMA table_info(benutzer)")}:
@@ -2272,6 +2276,64 @@ def dienstleister_importieren(con, benutzer, d: dict) -> dict:
     return {"neu": neu, "ergaenzt": ergaenzt, "uebersprungen": uebersprungen}
 
 
+def einladung_finden(con, token: str):
+    if not token or len(token) > 200:
+        raise Fehler(404, "Diese Einladung gibt es nicht oder sie ist abgelaufen.")
+    r = con.execute("SELECT * FROM benutzer WHERE einladung=? AND aktiv=1", (hashlib.sha256(token.encode()).hexdigest(),)).fetchone()
+    if not r or (r["einladung_bis"] or "") < jetzt():
+        raise Fehler(404, "Diese Einladung gibt es nicht oder sie ist abgelaufen. Bitte den Administrator um eine neue.")
+    return r
+
+
+def einladung_erzeugen(con, bid: int) -> str:
+    token = secrets.token_urlsafe(32)
+    bis = (dt.datetime.now() + dt.timedelta(days=14)).isoformat(timespec="seconds")
+    con.execute("UPDATE benutzer SET einladung=?, einladung_bis=? WHERE id=?", (hashlib.sha256(token.encode()).hexdigest(), bis, bid))
+    return token
+
+
+def benutzer_importieren(con, admin, d: dict) -> dict:
+    """Zugänge aus Excel oder CSV (Name, E-Mail, Rolle). Ohne Passwort: jeder bekommt eine Einladung und legt es selbst fest."""
+    try:
+        inhalt = base64.b64decode(d.get("inhalt") or "", validate=True)
+    except (ValueError, binascii.Error):
+        raise Fehler(400, "Die Datei konnte nicht gelesen werden.")
+    if str(d.get("dateiname") or "").lower().endswith(".xlsx") or inhalt[:2] == b"PK":
+        zeilen = xlsx_zeilen(inhalt)
+    else:
+        try:
+            text = inhalt.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            text = inhalt.decode("cp1252", errors="replace")
+        zeilen = list(csv.reader(io.StringIO(text), delimiter=";" if text.count(";") >= text.count(",") else ","))
+    kopf_i = next((i for i, z in enumerate(zeilen[:10]) if any("mail" in c.lower() for c in z) and any("name" in c.lower() for c in z)), None)
+    if kopf_i is None:
+        raise Fehler(400, "Keine Kopfzeile gefunden. Es braucht die Spalten „Name“ und „E-Mail“, wahlweise „Rolle“.")
+    kopf = [c.lower() for c in zeilen[kopf_i]]
+    s_name = next(i for i, c in enumerate(kopf) if "name" in c)
+    s_mail = next(i for i, c in enumerate(kopf) if "mail" in c)
+    s_rolle = next((i for i, c in enumerate(kopf) if "rolle" in c), None)
+    rollen = {"admin": "admin", "administrator": "admin", "benutzer": "benutzer", "zuschauer": "zuschauer", "": "benutzer"}
+    neu = vorhanden = 0
+    for z in zeilen[kopf_i + 1:]:
+        name = (z[s_name] if s_name < len(z) else "").strip()[:200]
+        email = (z[s_mail] if s_mail < len(z) else "").strip()[:200]
+        if not name or not EMAIL_MUSTER.match(email):
+            continue
+        rolle = rollen.get(((z[s_rolle] if s_rolle is not None and s_rolle < len(z) else "") or "").strip().lower(), "benutzer")
+        if rolle == "admin" and admin["rolle"] != "admin":
+            rolle = "benutzer"
+        if con.execute("SELECT 1 FROM benutzer WHERE email=?", (email,)).fetchone():
+            vorhanden += 1
+            continue
+        cur = con.execute("INSERT INTO benutzer (name, email, passwort, rolle, erstellt) VALUES (?,?,?,?,?)",
+                          (name, email, passwort_hash(secrets.token_urlsafe(32)), rolle, jetzt()))
+        einladung_erzeugen(con, cur.lastrowid)
+        neu += 1
+    protokollieren(con, admin, "Zugänge importiert", "benutzer", None, f"{neu} neu, {vorhanden} schon vorhanden")
+    return {"neu": neu, "vorhanden": vorhanden}
+
+
 def sv_pruefplan(con, q: dict) -> dict:
     """Alle sicherheitsrelevanten Anlagen mit ihren SV-Prüfungen."""
     bed, werte = ["a.sv_relevant=1"], []
@@ -2802,6 +2864,23 @@ class Handler(BaseHTTPRequestHandler):
             bid = self.benutzer_anlegen(con, d, rolle="admin")
             return self.anmelden_antwort(con, bid)
 
+        if erstes == "einladung" and len(teile) == 2 and m == "GET":
+            r = einladung_finden(con, teile[1])
+            return self.json({"name": r["name"], "email": r["email"]})
+        if erstes == "einladung" and len(teile) == 1 and m == "POST":
+            d = self.body()
+            anmelde_bremse("einladung|" + self.client_address[0])
+            try:
+                r = einladung_finden(con, str(d.get("token") or ""))
+            except Fehler:
+                anmelde_bremse("einladung|" + self.client_address[0], True)
+                raise
+            if len(d.get("passwort") or "") < 8:
+                raise Fehler(400, "Das Passwort braucht mindestens 8 Zeichen.")
+            con.execute("UPDATE benutzer SET passwort=?, einladung=NULL, einladung_bis=NULL WHERE id=?",
+                        (passwort_hash(d["passwort"]), r["id"]))
+            protokollieren(con, {"name": r["name"]}, "Einladung angenommen", "benutzer", r["id"], r["email"])
+            return self.anmelden_antwort(con, r["id"])
         if erstes == "anmelden" and m == "POST":
             d = self.body()
             email = (d.get("email") or "").strip()
@@ -3922,8 +4001,32 @@ class Handler(BaseHTTPRequestHandler):
                 raise Fehler(400, "Das neue Passwort braucht mindestens 8 Zeichen.")
             con.execute("UPDATE benutzer SET passwort=? WHERE id=?", (passwort_hash(d["neu"]), b["id"]))
             return self.json({"ok": True})
+        if len(teile) == 2 and teile[1] == "import" and m == "POST":
+            return self.json(benutzer_importieren(con, b, self.body()))
+        if len(teile) == 3 and teile[2] == "einladung" and m == "POST":
+            bid = self.id(teile[1])
+            ziel = con.execute("SELECT * FROM benutzer WHERE id=?", (bid,)).fetchone()
+            if not ziel:
+                raise Fehler(404, "Zugang nicht gefunden.")
+            if ziel["rolle"] == "admin" and b["rolle"] != "admin":
+                raise Fehler(403, "Einen Administrator kann nur ein Administrator einladen.")
+            token = einladung_erzeugen(con, bid)
+            basis = (einstellung(con, "basis_url") or self.headers.get("Origin") or f'http://{self.headers.get("Host")}').rstrip("/")
+            link = f"{basis}/#/einladung/{token}"
+            gesendet = False
+            if self.body().get("senden"):
+                try:
+                    VERSAND.mail_senden(VERSAND.smtp(con), ziel["email"], "Einladung zu Casa CAFM",
+                                        f'Hallo {ziel["name"]},\n\n{b["name"]} hat dir einen Zugang zu Casa CAFM eingerichtet. '
+                                        f'Über diesen Link legst du dein Passwort fest (gültig 14 Tage):\n{link}', "")
+                    gesendet = True
+                except Exception as e:  # noqa: BLE001
+                    raise Fehler(400, f"Die Einladung ging nicht per Mail raus: {e}. Du kannst den Link stattdessen kopieren.")
+            protokollieren(con, b, "Einladung erstellt", "benutzer", bid, ziel["email"])
+            return self.json({"link": link, "gesendet": gesendet})
         if len(teile) == 1 and m == "GET":
-            return self.json([self.oeffentlich(r, con) | {"aktiv": r["aktiv"], "abweichungen": benutzer_abweichungen(r)}
+            return self.json([self.oeffentlich(r, con) | {"aktiv": r["aktiv"], "abweichungen": benutzer_abweichungen(r),
+                                                          "einladung_offen": bool(r["einladung"])}
                               for r in con.execute("SELECT * FROM benutzer ORDER BY name COLLATE NOCASE")])
         if len(teile) == 1 and m == "POST":
             d = self.body()

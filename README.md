@@ -167,6 +167,14 @@ einen Leser aus dem Internet.
   Ansprechpartner, Telefon, Notdienst, E-Mail, Straße, PLZ, Ort, Bemerkung). Vorhandene Firmen (gleicher Name oder
   gleiche E-Mail) werden nur ergänzt, nie überschrieben. Unbekannte Gewerke landen als Hinweis in der Notiz.
 
+## Zugänge übernehmen und einladen
+
+- Zugänge & Rechte › **„Liste übernehmen (Excel/CSV)“** mit den Spalten Name, E-Mail, Rolle. Es werden keine
+  Passwörter vergeben. Jeder neue Zugang steht auf „Einladung offen“.
+- **„Einladen“** je Zugang: Link kopieren oder (bei eingerichtetem Mailserver) per E-Mail senden. Über den Link
+  legt die Person ihr Passwort selbst fest und ist danach angemeldet. Der Link gilt 14 Tage und nur einmal.
+  Ein neuer Link macht den alten ungültig; so lässt sich auch ein vergessenes Passwort neu setzen.
+
 ## Profilbild
 
 - Freiwillig: Unter Einstellungen › „Dein Zugang“ kann jeder ein Profilbild hinzufügen, ändern oder entfernen.

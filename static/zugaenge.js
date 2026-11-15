@@ -7,7 +7,7 @@ SEITEN.zugaenge = async (el) => {
   const gruppen = [...new Set(info.liste.map((r) => r.gruppe))];
 
   el.innerHTML = seitenkopf("Zugänge & Rechte", "Wer darf was",
-    `<button class="knopf haupt-k" id="neuB">${icon("plus")} Zugang anlegen</button>`) + `
+    `<button class="knopf" id="impB">Liste übernehmen (Excel/CSV)</button><button class="knopf haupt-k" id="neuB">${icon("plus")} Zugang anlegen</button>`) + `
     <div class="karte"><h3>Zugänge</h3><div id="bl"></div></div>
     <div class="abstand"></div>
     <div class="karte"><h3>Rollen und Rechte</h3>
@@ -47,13 +47,25 @@ SEITEN.zugaenge = async (el) => {
       return `<tr><td><div class="profil-zeile klein-z">${avatar(b)}<div><b>${esc(b.name)}</b>${b.id === S.ich.id ? ' <span class="marke m-geplant">du</span>' : ""}<br><span class="klein">${esc(b.email)}</span></div></div></td>
         <td><select data-rolle-b="${b.id}" ${b.id === S.ich.id && b.rolle === "admin" ? "disabled" : ""}>${Object.entries(info.rollennamen).map(([k, t]) => `<option value="${k}" ${k === b.rolle ? "selected" : ""}>${t}</option>`).join("")}</select></td>
         <td>${b.rolle === "admin" ? '<span class="klein">alle</span>' : `${anzahl} von ${info.liste.length}${abw ? ` <span class="marke m-neu" title="Eigene Rechte, abweichend von der Rolle">angepasst</span>` : ' <span class="klein">wie Rolle</span>'}`}</td>
-        <td>${b.aktiv ? '<span class="marke m-ok">aktiv</span>' : '<span class="marke m-arbeit">gesperrt</span>'}</td>
+        <td>${!b.aktiv ? '<span class="marke m-arbeit">gesperrt</span>' : b.einladung_offen ? '<span class="marke m-bald">Einladung offen</span>' : '<span class="marke m-ok">aktiv</span>'}</td>
         <td class="rechts-knoepfe">${b.rolle !== "admin" ? `<button class="knopf klein" data-rechte="${b.id}">Rechte</button>` : ""}
-          <button class="knopf klein" data-pw="${b.id}">Passwort</button>
+          <button class="knopf klein" data-pw="${b.id}">Passwort</button><button class="knopf klein ${b.einladung_offen ? "haupt-k" : ""}" data-einl="${b.id}">Einladen</button>
           ${b.id !== S.ich.id ? `<button class="knopf klein" data-sperr="${b.id}" data-aktiv="${b.aktiv}">${b.aktiv ? "Sperren" : "Freigeben"}</button>` : ""}</td></tr>`;
     }).join("")}</tbody></table></div>`;
   };
   await ladeB();
+  el.querySelector("#impB").onclick = async () => {
+    const r = await dialog("Zugänge übernehmen", `<div class="dfehler"></div><form class="formular" onsubmit="return false">
+      <label class="breit"><span class="pflicht">Datei (.xlsx oder .csv)</span><input type="file" name="datei" accept=".xlsx,.csv,text/csv"></label>
+      <p class="klein breit">Spalten Name, E-Mail und wahlweise Rolle (Administrator, Benutzer, Zuschauer; leer = Benutzer). Es werden keine Passwörter vergeben: Jeder neue Zugang bekommt eine Einladung und legt sein Passwort selbst fest. Vorhandene E-Mail-Adressen werden übersprungen.</p></form>`,
+      [{ text: "Abbrechen" }, { text: "Übernehmen", klasse: "haupt-k", aktion: async (hg) => {
+        const datei = hg.querySelector("[name=datei]").files[0];
+        if (!datei) throw new Error("Bitte eine Datei auswählen.");
+        const inhalt = await new Promise((ok, nein) => { const f = new FileReader(); f.onload = () => ok(String(f.result).split(",")[1] || ""); f.onerror = nein; f.readAsDataURL(datei); });
+        return api("POST", "benutzer/import", { inhalt, dateiname: datei.name });
+      } }]);
+    if (r) { melde(`${r.neu} Zugänge angelegt${r.vorhanden ? `, ${r.vorhanden} gab es schon` : ""}. Jetzt bei jedem auf „Einladen“ klicken.`); ladeB(); }
+  };
 
   const ichNeuLaden = async () => {
     const st = await api("GET", "status");
@@ -68,8 +80,23 @@ SEITEN.zugaenge = async (el) => {
     ladeB();
   });
   el.querySelector("#bl").addEventListener("click", async (e) => {
-    const s = e.target.closest("[data-sperr]"), p = e.target.closest("[data-pw]"), r = e.target.closest("[data-rechte]");
+    const s = e.target.closest("[data-sperr]"), p = e.target.closest("[data-pw]"), r = e.target.closest("[data-rechte]"), ei = e.target.closest("[data-einl]");
     try {
+      if (ei) {
+        const b = liste.find((x) => x.id === Number(ei.dataset.einl));
+        const ein = await einstellungenLaden(true);
+        const w = await dialog(`Einladung für ${b.name}`, `<p>${esc(b.name)} bekommt einen Link und legt damit das Passwort selbst fest. Der Link gilt 14 Tage. Ein früherer Link wird damit ungültig.</p>
+          ${ein.mail_aktiv === "1" ? "" : '<p class="klein">Der E-Mail-Versand ist nicht eingerichtet. Kopier den Link und schick ihn selbst, zum Beispiel per Teams.</p>'}`,
+          [{ text: "Abbrechen" }, { text: "Link kopieren", aktion: () => "kopieren" }, ...(ein.mail_aktiv === "1" ? [{ text: "Per E-Mail senden", klasse: "haupt-k", aktion: () => "senden" }] : [])]);
+        if (w === "senden") { await api("POST", `benutzer/${b.id}/einladung`, { senden: true }); melde(`Einladung an ${b.email} verschickt.`); }
+        if (w === "kopieren") {
+          const r2 = await api("POST", `benutzer/${b.id}/einladung`, {});
+          try { await navigator.clipboard.writeText(r2.link); melde("Einladungslink kopiert."); }
+          catch (err2) { await dialog("Einladungslink", `<p class="klein">Bitte markieren und kopieren:</p><textarea readonly rows="3" style="width:100%">${esc(r2.link)}</textarea>`, [{ text: "Schließen" }]); }
+        }
+        if (w) ladeB();
+        return;
+      }
       if (s) { await api("PUT", `benutzer/${s.dataset.sperr}`, { aktiv: s.dataset.aktiv === "1" ? 0 : 1 }); melde(s.dataset.aktiv === "1" ? "Zugang gesperrt." : "Zugang freigegeben."); ladeB(); }
       if (p) {
         const b = liste.find((x) => x.id === Number(p.dataset.pw));

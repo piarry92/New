@@ -1,7 +1,7 @@
 /* Casa CAFM – Oberfläche (ohne Fremdbibliotheken) */
 "use strict";
 
-const VERSION = "2026.11.15-22"; // muss zu VERSION in app.py passen
+const VERSION = "2026.11.15-23"; // muss zu VERSION in app.py passen
 /* Hell- und Dunkelmodus: gemerkte Wahl, sonst wie das Gerät */
 const THEMA = (() => {
   let t = null;
@@ -256,6 +256,43 @@ async function zaehlerNav() {
 }
 
 /* ---------- Anmeldung ---------- */
+/* Einladung: Passwort selbst festlegen */
+async function zeigeEinladung(token) {
+  let info = null, fehler = "";
+  try { info = await api("GET", "einladung/" + encodeURIComponent(token)); } catch (e) { fehler = e.message; }
+  $app.innerHTML = `
+  <div class="anmeldung">
+    <div class="bild">
+      <img src="/logo-negativ.png" alt="Casa Concept Consulting">
+      <h1>Willkommen bei <em>Casa CAFM.</em></h1>
+      <div class="klein" style="color:#CFCFD0">Casa CAFM · Facility Management</div>
+    </div>
+    <div class="form">
+      ${info ? `<form id="ef">
+        <h2>Passwort festlegen</h2>
+        <p class="klein">Hallo ${esc(info.name)}, lege jetzt dein Passwort fest. Danach meldest du dich mit ${esc(info.email)} an.</p>
+        <div id="efehler"></div>
+        <label>Neues Passwort (mindestens 8 Zeichen)<input name="passwort" type="password" required minlength="8" autocomplete="new-password"></label>
+        <label>Passwort wiederholen<input name="wdh" type="password" required minlength="8" autocomplete="new-password"></label>
+        <button class="knopf haupt-k" type="submit">Speichern und anmelden</button>
+      </form>` : `<div><h2>Einladung</h2><div class="fehler">${esc(fehler)}</div><p><a class="knopf" href="/">Zur Anmeldung</a></p></div>`}
+    </div>
+  </div>`;
+  const f = document.getElementById("ef");
+  if (f) f.onsubmit = async (e) => {
+    e.preventDefault();
+    const d = Object.fromEntries(new FormData(f));
+    const zeige = (t) => { document.getElementById("efehler").innerHTML = `<div class="fehler">${esc(t)}</div>`; };
+    if (d.passwort !== d.wdh) return zeige("Die beiden Passwörter sind nicht gleich.");
+    try {
+      const r = await api("POST", "einladung", { token, passwort: d.passwort });
+      S.ich = r.benutzer;
+      history.replaceState(null, "", "/#/");
+      await start();
+    } catch (err) { zeige(err.message); }
+  };
+}
+
 function zeigeAnmeldung(einrichten = false) {
   $app.innerHTML = `
   <div class="anmeldung">
@@ -1019,6 +1056,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   if (location.pathname.startsWith("/m/c/")) return qrCheckpointSeite(decodeURIComponent(location.pathname.slice(5)));
   if (location.pathname.startsWith("/m/o/")) return qrObjektSeite(decodeURIComponent(location.pathname.slice(5)));
   if (location.pathname.startsWith("/m/")) return qrSeite(decodeURIComponent(location.pathname.slice(3)));
+  if (location.hash.startsWith("#/einladung/")) return zeigeEinladung(decodeURIComponent(location.hash.slice(12)));
   try {
     const st = await api("GET", "status");
     versionPruefen(st.version);
