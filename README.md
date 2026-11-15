@@ -128,6 +128,13 @@ einen Leser aus dem Internet.
 - **Rückgabe:** mit Foto, Unterschrift und Bemerkung; fehlende Schlüssel werden als verloren markiert.
 - Neues Recht „Schlüssel anlegen, ausgeben und zurücknehmen“ unter Zugänge & Rechte.
 
+## Grundriss im Vollbild
+
+- Im Plan rechts über dem Grundriss auf **„Vollbild“** klicken (oder Taste **F**). Plan und Symbolliste füllen dann
+  den ganzen Bildschirm, alles funktioniert wie gewohnt (Symbole ziehen, Anlagen öffnen, Mängel melden).
+- **„Liste“** blendet die Symbolliste aus, damit der Grundriss noch größer wird. Am Handy ist sie im Vollbild aus.
+- Beenden mit „Vollbild beenden“, Esc oder F. Beim Drehen des Handys passt sich der Plan an.
+
 ## Profilbild
 
 - Freiwillig: Unter Einstellungen › „Dein Zugang“ kann jeder ein Profilbild hinzufügen, ändern oder entfernen.

@@ -1115,3 +1115,28 @@ html[data-theme="dark"] .sl-t { background: rgba(80,140,220,.2); color: #A9C8F0;
 .profil-zeile.klein-z { gap: 10px; margin: 0; }
 .profil-knoepfe { display: flex; gap: 8px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
 .profil-knoepfe label.knopf { cursor: pointer; }
+
+/* Grundriss im Vollbild */
+.vb-liste { display: none; }
+.vb-knopf { display: inline-flex; gap: 6px; align-items: center; margin-left: auto; }
+.vb-knopf .icon { width: 16px; height: 16px; }
+body.plan-vollbild { overflow: hidden; }
+.plan-layout.vollbild { position: fixed; inset: 0; z-index: 45; margin: 0; padding: 12px; gap: 12px; background: var(--flaeche); height: 100vh; height: 100dvh; align-items: stretch; }
+.plan-layout.vollbild .palette { position: static; max-height: none; height: 100%; overflow-y: auto; }
+.plan-layout.vollbild .plan-bereich { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.plan-layout.vollbild .buehne { flex: 1; height: auto; min-height: 0; }
+.plan-layout.vollbild .plan-legende { margin-top: 6px; }
+.plan-layout.vollbild .vb-liste { display: inline-flex; }
+.plan-layout.vollbild.ohne-liste { grid-template-columns: 1fr; }
+.plan-layout.vollbild.ohne-liste .palette { display: none; }
+html[data-theme="dark"] .plan-layout.vollbild { background: var(--flaeche); }
+@media (max-width: 900px) {
+  .plan-layout.vollbild { grid-template-columns: 1fr; grid-template-rows: 1fr; padding: 8px; }
+  .plan-layout.vollbild .palette, .plan-layout.vollbild .vb-liste { display: none; }
+  .plan-layout.vollbild .plan-leiste { flex-wrap: nowrap; }
+  .plan-layout.vollbild .ebenen { flex: 1; min-width: 0; display: flex; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .plan-layout.vollbild .ebenen > * { flex: none; }
+  .plan-layout.vollbild .zoom [data-z="0"] { display: none; }
+  .plan-layout.vollbild .plan-legende { display: none; }
+  .vb-knopf span { display: none; }
+}

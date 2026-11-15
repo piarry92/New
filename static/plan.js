@@ -234,6 +234,8 @@ async function planEditor(el, id, q) {
       <div class="plan-leiste">
         <div class="ebenen" id="ebenen"></div>
         <div class="zoom"><button class="knopf klein" data-z="-" aria-label="Verkleinern">−</button><button class="knopf klein" data-z="0">Einpassen</button><button class="knopf klein" data-z="+" aria-label="Vergrößern">+</button></div>
+        <button class="knopf klein vb-liste" id="pliste" type="button" title="Liste links ein- oder ausblenden">Liste</button>
+        <button class="knopf klein vb-knopf" id="pvoll" type="button" title="Vollbild (Taste F)" aria-label="Vollbild"><svg class="icon" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg><span>Vollbild</span></button>
       </div>
       <div class="buehne" id="buehne" tabindex="0">
         <div class="welt" id="welt"><img id="pbild" src="/api/plaene/${id}/bild" alt="Grundriss ${esc(plan.titel)}" draggable="false"><div id="marker"></div></div>
@@ -528,6 +530,39 @@ async function planEditor(el, id, q) {
   };
   let st;
   el.querySelector("#psuche").addEventListener("input", (e) => { clearTimeout(st); st = setTimeout(() => { ansicht.suche = e.target.value.trim().toLowerCase(); zeichnen(); }, 200); });
+
+  /* Vollbild: Plan mit Liste füllt den ganzen Bildschirm (Fenster und Meldungen bleiben sichtbar) */
+  const layout = el.querySelector(".plan-layout"), vollKnopf = el.querySelector("#pvoll");
+  const istVoll = () => layout.classList.contains("vollbild");
+  const vollSetzen = (an) => {
+    if (an === istVoll()) return;
+    layout.classList.toggle("vollbild", an);
+    document.body.classList.toggle("plan-vollbild", an);
+    vollKnopf.querySelector("span").textContent = an ? "Vollbild beenden" : "Vollbild";
+    vollKnopf.querySelector("path").setAttribute("d", an ? "M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" : "M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5");
+    if (an && document.documentElement.requestFullscreen && !document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => {});
+    if (!an && document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(() => {});
+    if (!an) layout.classList.remove("ohne-liste");
+    setTimeout(einpassen, 120);
+    buehne.focus();
+  };
+  vollKnopf.onclick = () => vollSetzen(!istVoll());
+  el.querySelector("#pliste").onclick = () => { layout.classList.toggle("ohne-liste"); setTimeout(einpassen, 80); };
+  const fsWechsel = () => { if (!document.fullscreenElement && istVoll()) vollSetzen(false); };
+  document.addEventListener("fullscreenchange", fsWechsel);
+  const tasten = (e) => {
+    if (e.target.closest("input, textarea, select, .dialog-hg")) return;
+    if ((e.key === "f" || e.key === "F") && !e.ctrlKey && !e.metaKey) { e.preventDefault(); vollSetzen(!istVoll()); }
+    if (e.key === "Escape" && istVoll() && !document.querySelector(".dialog-hg") && popup.hidden && !ansicht.modus) vollSetzen(false);
+  };
+  document.addEventListener("keydown", tasten);
+  window.addEventListener("hashchange", () => {
+    vollSetzen(false);
+    document.removeEventListener("fullscreenchange", fsWechsel);
+    document.removeEventListener("keydown", tasten);
+  }, { once: true });
+  let groesse;
+  window.addEventListener("resize", () => { if (istVoll()) { clearTimeout(groesse); groesse = setTimeout(einpassen, 150); } });
 
   /* Kopf-Knöpfe */
   el.querySelector("#pdruck").onclick = () => { einpassen(); setTimeout(print, 100); };
