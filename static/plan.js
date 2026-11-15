@@ -198,12 +198,33 @@ async function planListe(ziel, filter = {}) {
   };
   ziel.innerHTML = `<div class="werkzeug">
     ${filter.objekt_id ? "" : `<select data-pobj><option value="">Alle Objekte</option>${(S.cache.objekte || []).map((o) => `<option value="${o.id}">${esc(anzeige("objekte", o))}</option>`).join("")}</select>`}
-    ${darf("plaene_bearbeiten") ? `<button class="knopf haupt-k" data-pneu>${icon("plus")} Grundriss hochladen</button>` : ""}</div><div data-pk></div>`;
+    ${darf("plaene_bearbeiten") ? `<button class="knopf haupt-k" data-pneu>${icon("plus")} Grundriss hochladen</button><button class="knopf" data-pimport>Mehrere importieren (ZIP)</button>` : ""}</div><div data-pk></div>`;
   const s = ziel.querySelector("[data-pobj]");
   if (s) s.onchange = zeichnen;
   const n = ziel.querySelector("[data-pneu]");
   if (n) n.onclick = async () => { const e = await planHochladen({ ...filter }); if (e) location.hash = `#/plaene/${e.id}`; };
+  const im = ziel.querySelector("[data-pimport]");
+  if (im) im.onclick = async () => { if (await plaeneImportieren(filter.objekt_id || (s && s.value) || "")) { cacheLeeren(); zeichnen(); } };
   await zeichnen();
+}
+
+async function plaeneImportieren(objektId) {
+  const html = `<div class="dfehler"></div><form class="formular" onsubmit="return false">
+    <label class="breit"><span class="pflicht">Objekt</span><select name="objekt_id"><option value="">Bitte wählen</option>${(S.cache.objekte || []).map((o) => `<option value="${o.id}" ${String(o.id) === String(objektId) ? "selected" : ""}>${esc(anzeige("objekte", o))}</option>`).join("")}</select></label>
+    <label class="breit"><span class="pflicht">ZIP-Datei mit Grundrissen</span><input type="file" name="datei" accept=".zip,application/zip"></label>
+    <p class="klein breit">In der ZIP-Datei liegen die Grundrisse als PNG oder JPG. Gebäude und Etage kommen aus der Datei plaene.json oder aus dem Dateinamen, zum Beispiel „Finger 1__2. OG__Finger 1 2. OG.png“. Schon vorhandene Pläne werden übersprungen.</p></form>`;
+  return dialog("Mehrere Grundrisse importieren", html, [{ text: "Abbrechen" }, {
+    text: "Importieren", klasse: "haupt-k", aktion: async (hg) => {
+      const fm = hg.querySelector("form"), datei = fm.datei.files[0];
+      if (!fm.objekt_id.value) throw new Error("Bitte ein Objekt wählen.");
+      if (!datei) throw new Error("Bitte die ZIP-Datei auswählen.");
+      if (datei.size > 24 * 1024 * 1024) throw new Error("Die ZIP-Datei ist zu groß (höchstens 24 MB). Bitte in zwei Teilen importieren.");
+      const inhalt = await new Promise((ok, nein) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(",")[1] || ""); r.onerror = nein; r.readAsDataURL(datei); });
+      const r = await api("POST", "plaene/import", { objekt_id: Number(fm.objekt_id.value), inhalt });
+      melde(`${r.angelegt} Grundrisse angelegt${r.uebersprungen.length ? `, ${r.uebersprungen.length} schon vorhanden und übersprungen` : ""}.`);
+      return r;
+    },
+  }]);
 }
 
 SEITEN.plaene = async (el) => {

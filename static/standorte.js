@@ -128,10 +128,12 @@ async function standortAnsicht(el, planId, q) {
     const o = S.cache.objekte.find((x) => x.id === objektId);
     const eigene = plaene.filter((p) => p.objekt_id === objektId).sort(etagenSort);
     sr.innerHTML = seitenkopf(o.name, `${o.kuerzel}${o.ort ? " · " + o.ort : ""}${ohnePlan ? " · Bauteile ohne Plan" : ""}`,
-      `${darf("plaene_bearbeiten") ? `<button class="knopf haupt-k" id="sgr">${icon("plus")} Grundriss hochladen</button>` : ""}<a class="knopf" href="#/objekte/${o.id}">Objekt öffnen</a><button class="knopf" id="sqr">QR-Etiketten</button>`)
+      `${darf("plaene_bearbeiten") ? `<button class="knopf haupt-k" id="sgr">${icon("plus")} Grundriss hochladen</button><button class="knopf" id="sgi">Mehrere importieren (ZIP)</button>` : ""}<a class="knopf" href="#/objekte/${o.id}">Objekt öffnen</a><button class="knopf" id="sqr">QR-Etiketten</button>`)
       + (eigene.length ? `<h3>Etagen und Grundrisse</h3>${planKarten(eigene, false)}` : '<div class="karte leer">Für dieses Objekt gibt es noch keinen Grundriss. Lade oben den ersten hoch, zum Beispiel für das EG.</div>');
     const sg = sr.querySelector("#sgr");
     if (sg) sg.onclick = async () => { const e = await planHochladen({ objekt_id: objektId }); if (e) location.hash = `#/plaene/${e.id}`; };
+    const si = sr.querySelector("#sgi");
+    if (si) si.onclick = async () => { if (await plaeneImportieren(objektId)) { cacheLeeren(); route(); } };
     sr.querySelector("#sqr").onclick = async () => etikettenDrucken(ohnePlan ? anlagen.filter((a) => !a.plan_id) : anlagen, `QR-Etiketten ${o.kuerzel}`);
   } else {
     sr.innerHTML = seitenkopf("Standorte & Pläne", "Objekt › Gebäude › Etage") + `<div class="karte leer">Links ein Objekt wählen. Darunter erscheinen Gebäude und Etagen mit ihren Grundrissen.</div>

@@ -46,7 +46,7 @@ SCHL_PFAD = DATEN / "schluesselfotos"
 PROFIL_PFAD = DATEN / "profilbilder"
 MAX_SYMBOL = 2 * 1024 * 1024
 MAX_UPLOAD = 25 * 1024 * 1024
-VERSION = "2026.11.15-17"  # muss zu VERSION in static/app.js passen
+VERSION = "2026.11.15-18"  # muss zu VERSION in static/app.js passen
 SITZUNG_TAGE = 7
 
 GEWERKE = [
@@ -1820,6 +1820,90 @@ def _monate(von: str, bis: str) -> list:
     return aus
 
 
+def bild_masse(inhalt: bytes) -> tuple[int, int]:
+    """Breite und Höhe aus PNG- oder JPG-Kopf lesen, ohne Zusatzpakete."""
+    if inhalt.startswith(b"\x89PNG") and len(inhalt) > 24:
+        return int.from_bytes(inhalt[16:20], "big"), int.from_bytes(inhalt[20:24], "big")
+    if inhalt.startswith(b"\xff\xd8"):
+        i = 2
+        while i + 9 < len(inhalt):
+            if inhalt[i] != 0xFF:
+                i += 1
+                continue
+            marke, laenge = inhalt[i + 1], int.from_bytes(inhalt[i + 2:i + 4], "big")
+            if marke in (0xC0, 0xC1, 0xC2):
+                return int.from_bytes(inhalt[i + 7:i + 9], "big"), int.from_bytes(inhalt[i + 5:i + 7], "big")
+            i += 2 + laenge
+    return 0, 0
+
+
+def plaene_importieren(con, benutzer, d: dict) -> dict:
+    """Mehrere Grundrisse aus einer ZIP-Datei anlegen. Angaben aus plaene.json oder aus dem Dateinamen
+    „Gebäude__Etage__Titel.png“. Gibt es einen Plan mit gleichem Gebäude, gleicher Etage und gleichem Titel, wird er übersprungen."""
+    import zipfile
+    try:
+        oid = int(d.get("objekt_id"))
+    except (TypeError, ValueError):
+        raise Fehler(400, "Bitte ein Objekt wählen.")
+    if not con.execute("SELECT 1 FROM objekte WHERE id=?", (oid,)).fetchone():
+        raise Fehler(400, "Objekt nicht gefunden.")
+    try:
+        roh = base64.b64decode(d.get("inhalt") or "", validate=True)
+        zf = zipfile.ZipFile(io.BytesIO(roh))
+    except (ValueError, binascii.Error, zipfile.BadZipFile):
+        raise Fehler(400, "Das ist keine gültige ZIP-Datei.")
+    namen = [n for n in zf.namelist() if not n.endswith("/") and "__MACOSX" not in n]
+    angaben = {}
+    jn = next((n for n in namen if os.path.basename(n).lower() == "plaene.json"), None)
+    if jn:
+        try:
+            for e in json.loads(zf.read(jn).decode("utf-8")):
+                angaben[os.path.basename(str(e.get("datei") or ""))] = e
+        except (ValueError, UnicodeDecodeError, AttributeError, TypeError):
+            raise Fehler(400, "Die Datei plaene.json ist ungültig.")
+    bilder = [n for n in namen if n.lower().endswith((".png", ".jpg", ".jpeg"))]
+    if not bilder:
+        raise Fehler(400, "In der ZIP-Datei sind keine Grundrisse (PNG oder JPG).")
+    if len(bilder) > 300:
+        raise Fehler(400, "Höchstens 300 Grundrisse auf einmal.")
+    angelegt, uebersprungen = [], []
+    gesamt = 0
+    for n in sorted(bilder):
+        info = zf.getinfo(n)
+        gesamt += info.file_size
+        if info.file_size > MAX_UPLOAD or gesamt > 500 * 1024 * 1024:
+            raise Fehler(400, "Die Grundrisse sind zu groß.")
+        datei = os.path.basename(n)
+        e = angaben.get(datei)
+        if not e:
+            teile_ = os.path.splitext(datei)[0].split("__")
+            e = {"gebaeude": teile_[0] if len(teile_) >= 3 else "", "etage": teile_[-2] if len(teile_) >= 2 else "",
+                 "titel": teile_[-1]}
+        titel = str(e.get("titel") or os.path.splitext(datei)[0]).strip()[:200]
+        geb = str(e.get("gebaeude") or "").strip()[:100]
+        etage = str(e.get("etage") or "").strip()[:100]
+        if con.execute("SELECT 1 FROM plaene WHERE objekt_id=? AND COALESCE(gebaeude,'')=? AND COALESCE(etage,'')=? AND titel=?",
+                       (oid, geb, etage, titel)).fetchone():
+            uebersprungen.append(titel)
+            continue
+        inhalt = zf.read(n)
+        endung = bild_endung(inhalt)
+        if endung not in ("png", "jpg"):
+            uebersprungen.append(titel)
+            continue
+        breite, hoehe = bild_masse(inhalt)
+        sauber = daten_pruefen(RESSOURCEN["plaene"], {"objekt_id": oid, "titel": titel, "gebaeude": geb or None,
+                                                       "etage": etage or None, "notiz": str(e.get("notiz") or "")[:2000] or None}, neu=True)
+        sauber.update({"dateiname": re.sub(r"[^\w.\- äöüÄÖÜß]", "_", datei)[:150], "breite": breite, "hoehe": hoehe})
+        pid = einfuegen(con, "plaene", sauber)
+        pfad = f"{pid:06d}_{secrets.token_hex(6)}.{endung}"
+        (PLAN_PFAD / pfad).write_bytes(inhalt)
+        con.execute("UPDATE plaene SET pfad=? WHERE id=?", (pfad, pid))
+        angelegt.append(titel)
+    protokollieren(con, benutzer, "Grundrisse importiert", "plaene", None, f"{len(angelegt)} angelegt, {len(uebersprungen)} übersprungen")
+    return {"angelegt": len(angelegt), "uebersprungen": uebersprungen}
+
+
 def sv_uebernehmen(con, benutzer, rechte, did: int, d: dict) -> dict:
     """Geprüfte Mängel aus einem SV-Bericht in den SV-Mängelplan übernehmen."""
     dok = con.execute("SELECT * FROM dokumente WHERE id=?", (did,)).fetchone()
@@ -2562,6 +2646,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self.symbol_bild(con, sid)
             if m == "PUT":
                 return self.symbol_hochladen(con, b, sid)
+        if erstes == "plaene" and len(teile) == 2 and teile[1] == "import" and m == "POST":
+            if not self.rechte.get("plaene_bearbeiten"):
+                raise Fehler(403, "Dafür fehlt dir das Recht: Grundrisse hochladen, Symbole setzen und verschieben.")
+            return self.json(plaene_importieren(con, b, self.body()))
         if erstes == "plaene" and len(teile) == 1 and m == "POST":
             return self.plan_hochladen(con, b, None)
         if erstes == "plaene" and len(teile) == 3:

@@ -128,6 +128,14 @@ einen Leser aus dem Internet.
 - **Rückgabe:** mit Foto, Unterschrift und Bemerkung; fehlende Schlüssel werden als verloren markiert.
 - Neues Recht „Schlüssel anlegen, ausgeben und zurücknehmen“ unter Zugänge & Rechte.
 
+## Mehrere Grundrisse auf einmal (ZIP-Import)
+
+- Standorte & Pläne › Objekt wählen › **„Mehrere importieren (ZIP)“**. In der ZIP-Datei liegen die Grundrisse als
+  PNG oder JPG. Gebäude, Etage und Titel kommen aus einer Datei `plaene.json`
+  (`[{"datei": "...png", "gebaeude": "Finger 1", "etage": "2. OG", "titel": "Finger 1 2. OG"}]`) oder aus dem
+  Dateinamen `Gebäude__Etage__Titel.png`. Vorhandene Pläne mit gleichem Gebäude, Etage und Titel werden übersprungen.
+- Im Standortbaum erscheinen sie als Objekt › Gebäude (z. B. Finger 1) › Etage.
+
 ## Grundriss im Vollbild
 
 - Im Plan rechts über dem Grundriss auf **„Vollbild“** klicken (oder Taste **F**). Plan und Symbolliste füllen dann
