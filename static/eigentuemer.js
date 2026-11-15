@@ -12,13 +12,18 @@ function eigObjekteText(ids) {
 function eigObjekteHaken(gewaehlt) {
   return `<div class="wd-empf">${(S.cache.objekte || []).map((o) => `<label class="wn-haken"><input type="checkbox" name="eobj" value="${o.id}" ${gewaehlt.includes(o.id) ? "checked" : ""}> ${esc(anzeige("objekte", o))}</label>`).join("")}</div>`;
 }
-async function eigObjekteWaehlen(gewaehlt) {
+/* olFest = null: Eigentümer. Sonst Objektleiter: olFest sind die Objekte, bei denen er am Objekt als Objektleiter eingetragen ist. */
+async function eigObjekteWaehlen(gewaehlt, olFest = null) {
   await lade("objekte");
-  return dialog("Objekte für den Eigentümer", `<div class="dfehler"></div><p class="klein">Der Eigentümer sieht nur diese Objekte, mit Anlagen, Wartungen, Prüfungen, Störmeldungen, Plänen, Zählern und Dokumenten. Ändern kann er nichts.</p>${eigObjekteHaken(gewaehlt)}`, [
+  const ol = Array.isArray(olFest);
+  const fest = ol ? olFest : [];
+  return dialog(ol ? "Objekte für den Objektleiter" : "Objekte für den Eigentümer", `<div class="dfehler"></div>
+    <p class="klein">${ol ? "Der Objektleiter sieht und bearbeitet nur diese Objekte. Zusätzlich gelten alle Objekte, bei denen er in den Stammdaten als „Objektleiter (Zugang)“ eingetragen ist." : "Der Eigentümer sieht nur diese Objekte, mit Anlagen, Wartungen, Prüfungen, Störmeldungen, Plänen, Zählern und Dokumenten. Ändern kann er nichts."}</p>
+    ${ol && fest.length ? `<p class="klein">Über die Stammdaten schon zugewiesen: <b>${esc(eigObjekteText(fest))}</b></p>` : ""}${eigObjekteHaken(gewaehlt)}`, [
     { text: "Abbrechen" },
     { text: "Speichern", klasse: "haupt-k", aktion: async (hg) => {
       const ids = [...hg.querySelectorAll("input[name=eobj]:checked")].map((c) => Number(c.value));
-      if (!ids.length) throw new Error("Bitte mindestens ein Objekt wählen.");
+      if (!ids.length && !ol) throw new Error("Bitte mindestens ein Objekt wählen.");
       return ids;
     } }]);
 }
@@ -101,6 +106,14 @@ async function eigentuemerKarte(ziel, o) {
   const altStart = SEITEN.start;
   SEITEN.start = async (el, ...rest) => {
     await altStart(el, ...rest);
+    if (S.ich.rolle === "objektleiter") {
+      await lade("objekte");
+      const ob = S.cache.objekte || [];
+      const kopf = el.querySelector(".titelzeile");
+      if (kopf) kopf.insertAdjacentHTML("afterend", ob.length ? `<div class="karte eig-hinweis"><b>Deine Objekte:</b> ${ob.map((o) => `<a href="#/objekte/${o.id}">${esc(anzeige("objekte", o))}</a>`).join(", ")}</div>`
+        : '<div class="karte eig-hinweis"><b>Dir ist noch kein Objekt zugewiesen.</b> Bitte bei einem Administrator melden. Er trägt dich am Objekt als Objektleiter ein oder unter Zugänge &amp; Rechte.</div>');
+      return;
+    }
     if (!istEigentuemer()) return;
     await lade("objekte");
     const ob = S.cache.objekte || [];

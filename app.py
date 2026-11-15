@@ -48,7 +48,7 @@ WD_PFAD = DATEN / "winterdienstfotos"
 PROFIL_PFAD = DATEN / "profilbilder"
 MAX_SYMBOL = 2 * 1024 * 1024
 MAX_UPLOAD = 25 * 1024 * 1024
-VERSION = "2026.11.15-31"  # muss zu VERSION in static/app.js passen
+VERSION = "2026.11.15-32"  # muss zu VERSION in static/app.js passen
 SITZUNG_TAGE = 7
 
 GEWERKE = [
@@ -1563,16 +1563,19 @@ EIGENTUEMER_FREI = {"kat_kategorien", "kat_gruppen", "kat_typen", "kat_maengel",
 
 
 def eigentuemer_objekte(con, b) -> list[int]:
+    """Zugewiesene Objekte: Liste am Zugang, beim Objektleiter zusätzlich alle Objekte, bei denen er als Objektleiter eingetragen ist."""
     try:
         ids = [int(i) for i in json.loads(b["objekte"] or "[]")] if "objekte" in b.keys() else []
     except (ValueError, TypeError):
         ids = []
+    if b["rolle"] == "objektleiter":
+        ids += [r["id"] for r in con.execute("SELECT id FROM main.objekte WHERE objektleiter_id=?", (b["id"],))]
     if not ids:
         return []
-    return [r["id"] for r in con.execute(f"SELECT id FROM main.objekte WHERE id IN ({','.join('?' * len(ids))})", ids)]
+    return sorted({r["id"] for r in con.execute(f"SELECT id FROM main.objekte WHERE id IN ({','.join('?' * len(ids))})", ids)})
 
 
-def eigentuemer_sichten(con, ids: list[int]) -> None:
+def eigentuemer_sichten(con, ids: list[int], rolle: str = "eigentuemer") -> None:
     menge = "(" + ",".join(str(int(i)) for i in ids) + ")" if ids else "(NULL)"
     unter = lambda t, feld="objekt_id": f"SELECT id FROM main.{t} WHERE {feld} IN {menge}"  # noqa: E731
     anl = unter("anlagen")
@@ -1595,16 +1598,95 @@ def eigentuemer_sichten(con, ids: list[int]) -> None:
         "winterdienst_fotos": f"einsatz_id IN ({unter('winterdienst')})",
         "sv_auswertungen": f"dokument_id IN (SELECT id FROM main.dokumente WHERE objekt_id IN {menge})",
         "checkpoints": f"checkliste_id IN ({unter('checklisten')})",
-        "dienstleister": "id IN (" + " UNION ".join(f"SELECT dienstleister_id FROM main.{t} WHERE objekt_id IN {menge}"
-                                                    for t in ("anlagen", "wartungen", "tickets", "vertraege", "winterdienst", "sv_maengel")) + ")",
+        **({"schluessel": f"objekt_id IN {menge}", "schluessel_uebergaben": f"objekt_id IN {menge}",
+            "schluessel_fotos": f"uebergabe_id IN ({unter('schluessel_uebergaben')})",
+            "checkpoint_scans": f"checkpoint_id IN (SELECT id FROM main.checkpoints WHERE checkliste_id IN ({unter('checklisten')}))"}
+           if rolle == "objektleiter" else {}),
+        **({} if rolle == "objektleiter" else {"dienstleister": "id IN (" + " UNION ".join(f"SELECT dienstleister_id FROM main.{t} WHERE objekt_id IN {menge}"
+                                                    for t in ("anlagen", "wartungen", "tickets", "vertraege", "winterdienst", "sv_maengel")) + ")"}),
     }
+    if rolle == "objektleiter":  # gemeinsame Stammdaten bleiben für Objektleiter sichtbar
+        regeln["dienstleister"] = "1"
     for (t,) in con.execute("SELECT name FROM main.sqlite_master WHERE type='table'").fetchall():
         if t in EIGENTUEMER_FREI or t.startswith("sqlite_"):
             continue
         spalten = [r[1] for r in con.execute(f'PRAGMA main.table_info("{t}")')]
-        liste = ", ".join("NULL AS wd_token" if c == "wd_token" else f'"{c}"' for c in spalten)
+        liste = ", ".join("NULL AS wd_token" if c == "wd_token" and rolle == "eigentuemer" else f'"{c}"' for c in spalten)
         bed = regeln.get(t, "0")  # alles Unbekannte (Schlüssel, Verlauf, Scans …) bleibt unsichtbar
         con.execute(f'CREATE TEMP VIEW IF NOT EXISTS "{t}" AS SELECT {liste} FROM main."{t}" WHERE {bed}')
+
+
+PFAD_TABELLE = {"durchgaenge": "checklisten_durchgaenge", "svberichte": "dokumente", "winterdienstlink": "objekte",
+                "schluesseluebergaben": "schluessel_uebergaben"}
+OL_FREI = {"ich", "push", "benachrichtigungen", "einstellungen", "rechte", "benutzer", "dienstleister", "symbole",
+           "kat_kategorien", "kat_gruppen", "kat_typen", "kat_maengel"}
+_GLOBAL = object()
+
+
+def objekt_von(con, tabelle: str, rid: int):
+    """Objekt eines Datensatzes. None = nicht gefunden, _GLOBAL = gehört zu keinem Objekt (gemeinsame Daten)."""
+    if tabelle == "objekte":
+        return rid if con.execute("SELECT 1 FROM main.objekte WHERE id=?", (rid,)).fetchone() else None
+    if tabelle == "ablesungen":
+        r = con.execute("SELECT z.objekt_id FROM main.ablesungen a JOIN main.zaehler z ON z.id=a.zaehler_id WHERE a.id=?", (rid,)).fetchone()
+        return r[0] if r else None
+    if tabelle == "checkpoints":
+        r = con.execute("SELECT c.objekt_id FROM main.checkpoints p JOIN main.checklisten c ON c.id=p.checkliste_id WHERE p.id=?", (rid,)).fetchone()
+        return r[0] if r else None
+    try:
+        spalten = {r[1] for r in con.execute(f'PRAGMA main.table_info("{tabelle}")')}
+    except sqlite3.Error:
+        return _GLOBAL
+    if not spalten or "objekt_id" not in spalten:
+        return _GLOBAL
+    r = con.execute(f'SELECT * FROM main."{tabelle}" WHERE id=?', (rid,)).fetchone()
+    if not r:
+        return None
+    return objekt_aus_daten(con, dict(r))
+
+
+def objekt_aus_daten(con, d: dict):
+    if not isinstance(d, dict):
+        return None
+    if str(d.get("objekt_id") or "").isdigit():
+        return int(d["objekt_id"])
+    for feld, sql in (("anlage_id", "SELECT objekt_id FROM main.anlagen WHERE id=?"), ("ticket_id", "SELECT objekt_id FROM main.tickets WHERE id=?"),
+                      ("zaehler_id", "SELECT objekt_id FROM main.zaehler WHERE id=?"), ("checkliste_id", "SELECT objekt_id FROM main.checklisten WHERE id=?"),
+                      ("wartung_id", "SELECT objekt_id FROM main.wartungen WHERE id=?"), ("plan_id", "SELECT objekt_id FROM main.plaene WHERE id=?")):
+        if str(d.get(feld) or "").isdigit():
+            r = con.execute(sql, (int(d[feld]),)).fetchone()
+            if r and r[0]:
+                return r[0]
+    return None
+
+
+def objektleiter_schreiben_pruefen(handler, con, m: str, teile: list[str], ids: list[int]) -> None:
+    t0 = teile[0] if teile else ""
+    if t0 in OL_FREI or (t0 == "winterdienst" and teile[1:2] == ["pruefen"]):
+        return
+    if t0 == "objekte" and (len(teile) == 1 or m == "DELETE"):
+        raise Fehler(403, "Objekte anlegen oder löschen kann nur ein Administrator.")
+    tabelle = PFAD_TABELLE.get(t0, t0)
+    ziele = set()
+    if len(teile) >= 2 and teile[1].isdigit():
+        o = objekt_von(con, tabelle, int(teile[1]))
+        if o is _GLOBAL:
+            return
+        if o is None:
+            if tabelle in RESSOURCEN or tabelle in PFAD_TABELLE.values():
+                return  # gibt es nicht: das Programm meldet gleich „nicht gefunden“
+            raise Fehler(403, "Das gehört zu keinem Objekt, das dir zugewiesen ist.")
+        ziele.add(o)
+    d = handler.body() if m in ("POST", "PUT") else {}
+    o = objekt_aus_daten(con, d) if isinstance(d, dict) else None
+    if o is not None:
+        ziele.add(o)
+    if not ziele:
+        if tabelle in RESSOURCEN and objekt_von(con, tabelle, 0) is _GLOBAL:
+            return
+        raise Fehler(403, "Bitte ein Objekt wählen, das dir zugewiesen ist.")
+    if not ziele <= set(ids):
+        raise Fehler(403, "Dieses Objekt ist dir nicht zugewiesen. Bitte bei einem Administrator melden.")
 
 
 _wd_zeiten: dict[str, list[float]] = {}
@@ -3227,6 +3309,12 @@ class Handler(BaseHTTPRequestHandler):
         self.senden(status, json.dumps(daten, ensure_ascii=False).encode(), "application/json; charset=utf-8", extra)
 
     def body(self) -> dict:
+        if getattr(self, "_body_cache", None) is not None:
+            return self._body_cache
+        self._body_cache = self._body_lesen()
+        return self._body_cache
+
+    def _body_lesen(self) -> dict:
         laenge = int(self.headers.get("Content-Length") or 0)
         if laenge > MAX_UPLOAD * 1.4:
             raise Fehler(413, "Die Datei ist zu groß (höchstens 25 MB).")
@@ -3283,6 +3371,7 @@ class Handler(BaseHTTPRequestHandler):
                 if self.headers.get("X-CAFM") != "1":
                     raise Fehler(403, "Anfrage abgelehnt.")
             self._spaeter = None
+            self._body_cache = None
             with _db_lock:
                 con = db()
                 try:
@@ -3401,6 +3490,14 @@ class Handler(BaseHTTPRequestHandler):
                         f"SELECT 1 FROM objekte WHERE objektleiter_id=? AND id IN ({','.join('?' * len(ids)) or 'NULL'})", [pid, *ids]).fetchone():
                     raise Fehler(404, "Nicht gefunden.")
             eigentuemer_sichten(con, ids)
+        elif b["rolle"] == "objektleiter":
+            ids = eigentuemer_objekte(con, b)
+            self.eigentuemer_ids = ids
+            if m == "GET":
+                if erstes not in ("personen", "profilbild", "benutzer"):
+                    eigentuemer_sichten(con, ids, "objektleiter")
+            else:
+                objektleiter_schreiben_pruefen(self, con, m, teile, ids)
         recht = benoetigtes_recht(m, teile)
         if recht and not self.rechte.get(recht):
             text = dict((k, t) for k, t, _ in RECHTE)[recht]
@@ -4598,7 +4695,7 @@ class Handler(BaseHTTPRequestHandler):
         aus = {"id": b["id"], "name": b["name"], "email": b["email"], "rolle": b["rolle"],
                "mail_an": 0 if "mail_an" in b.keys() and b["mail_an"] == 0 else 1,
                "bild": b["bild"] if "bild" in b.keys() else None}
-        if b["rolle"] == "eigentuemer":
+        if b["rolle"] in ("eigentuemer", "objektleiter"):
             try:
                 aus["objekte"] = [int(i) for i in json.loads(b["objekte"] or "[]")] if "objekte" in b.keys() else []
             except (ValueError, TypeError):
@@ -4684,14 +4781,17 @@ class Handler(BaseHTTPRequestHandler):
             return self.json({"link": link, "gesendet": gesendet})
         if len(teile) == 1 and m == "GET":
             return self.json([self.oeffentlich(r, con) | {"aktiv": r["aktiv"], "abweichungen": benutzer_abweichungen(r),
-                                                          "objekte": json.loads(r["objekte"] or "[]") if r["rolle"] == "eigentuemer" else [],
+                                                          "objekte": json.loads(r["objekte"] or "[]") if r["rolle"] in ("eigentuemer", "objektleiter") else [],
+                                                          "objekte_ol": [x["id"] for x in con.execute("SELECT id FROM objekte WHERE objektleiter_id=?", (r["id"],))]
+                                                          if r["rolle"] == "objektleiter" else [],
                                                           "einladung_offen": bool(r["einladung"])}
                               for r in con.execute("SELECT * FROM benutzer ORDER BY name COLLATE NOCASE")])
         if len(teile) == 1 and m == "POST":
             d = self.body()
             if d.get("rolle") == "admin" and b["rolle"] != "admin":
                 raise Fehler(403, "Nur ein Administrator kann Administratoren anlegen.")
-            objekte = self.objekte_pruefen(con, d) if (d.get("rolle") == "eigentuemer") else None
+            objekte = self.objekte_pruefen(con, d) if (d.get("rolle") == "eigentuemer" or
+                                                       (d.get("rolle") == "objektleiter" and d.get("objekte"))) else None
             bid = self.benutzer_anlegen(con, d, d.get("rolle") or "benutzer")
             if objekte is not None:
                 con.execute("UPDATE benutzer SET objekte=? WHERE id=?", (json.dumps(objekte), bid))
@@ -4721,12 +4821,15 @@ class Handler(BaseHTTPRequestHandler):
                 con.execute("UPDATE benutzer SET rolle=? WHERE id=?", (d["rolle"], bid))
             if "objekte" in d or d.get("rolle") == "eigentuemer":
                 rolle_neu = d.get("rolle", ziel["rolle"])
+                if rolle_neu == "objektleiter" and "objekte" in d:
+                    ids = d["objekte"] or []
+                    con.execute("UPDATE benutzer SET objekte=? WHERE id=?",
+                                (json.dumps(self.objekte_pruefen(con, d)) if ids else None, bid))
                 if rolle_neu == "eigentuemer":
                     if "objekte" in d:
                         con.execute("UPDATE benutzer SET objekte=? WHERE id=?", (json.dumps(self.objekte_pruefen(con, d)), bid))
                     elif not (ziel["objekte"] if "objekte" in ziel.keys() else None):
                         raise Fehler(400, "Bitte für den Eigentümer mindestens ein Objekt wählen.")
-                con.execute("DELETE FROM sitzungen WHERE benutzer_id=?", (bid,)) if bid != b["id"] else None
             if "rechte" in d:
                 neu = d["rechte"]
                 if neu is None:

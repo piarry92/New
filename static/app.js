@@ -1,7 +1,7 @@
 /* Casa CAFM – Oberfläche (ohne Fremdbibliotheken) */
 "use strict";
 
-const VERSION = "2026.11.15-31"; // muss zu VERSION in app.py passen
+const VERSION = "2026.11.15-32"; // muss zu VERSION in app.py passen
 /* Hell- und Dunkelmodus: gemerkte Wahl, sonst wie das Gerät */
 const THEMA = (() => {
   let t = null;
@@ -642,7 +642,7 @@ SEITEN.objekte = async (el) => {
     if (ansicht === "liste") { await tabelle(ziel, "objekte", { leer: "Noch keine Objekte. Leg oben das erste an." }); return; }
     const objekte = await api("GET", "objekte");
     ziel.innerHTML = `<div class="werkzeug"><input type="search" id="osuche" placeholder="Objekt, Adresse oder Kürzel suchen">
-      ${darf("anlagen_bearbeiten") ? `<button class="knopf haupt-k" id="oneu">${icon("plus")} Objekt</button>` : ""}<span class="anzahl">${objekte.length} Objekte</span></div>
+      ${darf("anlagen_bearbeiten") && S.ich.rolle !== "objektleiter" ? `<button class="knopf haupt-k" id="oneu">${icon("plus")} Objekt</button>` : ""}<span class="anzahl">${objekte.length} Objekte</span></div>
       <div class="objekt-kacheln" id="ok"></div>`;
     const raster = ziel.querySelector("#ok");
     const filtern = () => {
