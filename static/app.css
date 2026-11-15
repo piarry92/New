@@ -1164,3 +1164,31 @@ html[data-theme="dark"] .sv-plan tr.sv-gruppe td { background: rgba(230,55,19,.1
 .sv-mtab td.sv-text { min-width: 200px; max-width: 360px; }
 html[data-theme="dark"] .sv-mtab tr.sv-gruppe td { background: rgba(230,55,19,.14); }
 .sv-mtab td:nth-child(6), .sv-mtab td:nth-child(7) { min-width: 120px; }
+
+/* ---------- Weihnachtsmotto ---------- */
+#schnee { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 5; }
+#schnee i { position: absolute; top: -12px; border-radius: 50%; background: #fff; box-shadow: 0 0 3px rgba(60,60,59,.25);
+  animation-name: flocke; animation-timing-function: linear; animation-iteration-count: infinite; }
+@keyframes flocke { from { transform: translate(0, -12px); } to { transform: translate(var(--drift, 0), 105vh); } }
+@media (prefers-reduced-motion: reduce) { #schnee { display: none; } .weihnacht-karte .flamme { animation: none !important; } }
+.seite .logo { position: relative; }
+.seite .logo span.logo-stern { position: absolute; display: block; top: 12px; right: 18px; margin: 0; font-size: 18px; letter-spacing: 0;
+  color: #E0A500; text-shadow: 0 0 8px rgba(224,165,0,.55); }
+.weihnacht-karte { display: flex; align-items: center; gap: 18px; margin-bottom: 18px; padding: 14px 20px;
+  background: linear-gradient(100deg, var(--orange-zart), #fff 70%); border-left: 4px solid var(--orange); }
+.weihnacht-karte .kranz { width: 128px; height: auto; flex: none; }
+.weihnacht-karte .flamme { transform-origin: center bottom; transform-box: fill-box; animation: flackern 1.6s ease-in-out infinite alternate; }
+@keyframes flackern { from { transform: scale(1, 1); } to { transform: scale(.9, 1.08); } }
+.weihnacht-karte .wk-text { display: flex; flex-direction: column; gap: 2px; }
+.weihnacht-karte .wk-text .kicker { font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--orange); font-weight: 700; }
+.weihnacht-karte .wk-text b { font-size: 20px; color: var(--anthrazit); }
+.weihnacht-karte .wk-text span { color: var(--dunkelgrau); }
+.weihnacht-karte #schneeK { margin-left: auto; }
+.wn-haken { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+html[data-theme="dark"] .weihnacht-karte { background: linear-gradient(100deg, rgba(230,55,19,.16), transparent 70%); }
+html[data-theme="dark"] .weihnacht-karte .wk-text b { color: #fff; }
+html[data-theme="dark"] .weihnacht-karte .wk-text span { color: #C9CBD0; }
+@media (max-width: 640px) { .weihnacht-karte { flex-wrap: wrap; } .weihnacht-karte .kranz { width: 96px; } .weihnacht-karte #schneeK { margin-left: 0; } }
+.formular label.wn-haken { flex-direction: row; align-items: center; display: flex; gap: 10px; font-weight: 400; text-align: left; justify-content: flex-start; }
+.formular label.wn-haken input { width: auto; margin: 0; }
+html[data-theme="dark"] #schnee i { background: #F4F7FB; box-shadow: none; }

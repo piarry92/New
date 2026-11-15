@@ -19,6 +19,7 @@ Es läuft im Browser und braucht nur Python, sonst nichts.
 | Dienstleister | Firmen, Ansprechpartner, Telefon, Notdienst, E-Mail |
 | Zähler | Zählerstände erfassen, Verbrauch je Monat als Diagramm |
 | Dokumente | Dateien hochladen und Objekt, Anlage oder Störmeldung zuordnen |
+| Weihnachtsmotto | Vom 1. Dezember bis 6. Januar automatisch: Gruß mit Adventskranz auf der Übersicht (Kerzen je Adventssonntag, Tage bis Heiligabend, Weihnachten, Silvester, Neujahr), Stern am Logo, leichter Schneefall. Unter Einstellungen für alle automatisch, immer an oder aus; Schnee kann jeder für sich abschalten |
 | Zugänge & Rechte | Anmeldung für alle. Vier Rollen: Administrator (darf alles), Objektleiter (alles im Objekt inkl. Pläne, Anlagen, Wartungsplan, Verträge, aber keine Zugänge und Einstellungen), Benutzer (Störungen, Wartungen erledigen, Zähler, Dokumente, Schlüssel; Pläne und Anlagen nur ansehen), Zuschauer (sieht alles, ändert nichts). Benutzer aus Datei importieren (Excel/CSV, Spalten Name; E-Mail; Rolle). Rechte je Rolle per Häkchen an- und abwählen, zusätzlich je Zugang eigene Rechte. Sperren, Passwort setzen, Liste der letzten Änderungen |
 | Einstellungen | Eigenes Passwort, eigene Rechte ansehen, eigene Symbole, Adresse für QR-Codes |
 

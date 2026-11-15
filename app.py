@@ -46,7 +46,7 @@ SCHL_PFAD = DATEN / "schluesselfotos"
 PROFIL_PFAD = DATEN / "profilbilder"
 MAX_SYMBOL = 2 * 1024 * 1024
 MAX_UPLOAD = 25 * 1024 * 1024
-VERSION = "2026.11.15-24"  # muss zu VERSION in static/app.js passen
+VERSION = "2026.11.15-25"  # muss zu VERSION in static/app.js passen
 SITZUNG_TAGE = 7
 
 GEWERKE = [
@@ -932,9 +932,10 @@ def neuer_qr_token() -> str:
 EINSTELLUNGEN_STANDARD = {"basis_url": "", "oeffentlich_melden": "0", "oeffentlich_objekt": "1", "mail_aktiv": "0",
                           "smtp_host": "", "smtp_port": "587", "smtp_tls": "starttls", "smtp_user": "", "smtp_pass": "",
                           "smtp_absender": "", "vapid_privat": "", "vapid_public": "",
-                          "ki_aktiv": "0", "ki_schluessel": "", "feierabend": "17:00", "schluessel_vorlauf": "60"}
+                          "ki_aktiv": "0", "ki_schluessel": "", "feierabend": "17:00", "schluessel_vorlauf": "60",
+                          "weihnachten": "auto"}
 EINSTELLUNGEN_OEFFENTLICH = ("basis_url", "oeffentlich_melden", "oeffentlich_objekt", "mail_aktiv", "ki_aktiv", "feierabend",
-                             "schluessel_vorlauf")
+                             "schluessel_vorlauf", "weihnachten")
 EINSTELLUNGEN_SMTP = ("smtp_host", "smtp_port", "smtp_tls", "smtp_user", "smtp_absender")
 VERSAND: "versand.Versand | None" = None
 MIETER_THEMEN = {
@@ -3138,6 +3139,10 @@ class Handler(BaseHTTPRequestHandler):
                     if not 0 <= wert <= 720:
                         raise Fehler(400, "Die Vorlaufzeit muss zwischen 0 und 720 Minuten liegen.")
                     con.execute("INSERT OR REPLACE INTO einstellungen VALUES ('schluessel_vorlauf', ?)", (str(wert),))
+                if "weihnachten" in d:
+                    if d["weihnachten"] not in ("auto", "an", "aus"):
+                        raise Fehler(400, "Weihnachtsmotto: bitte automatisch, an oder aus wählen.")
+                    con.execute("INSERT OR REPLACE INTO einstellungen VALUES ('weihnachten', ?)", (d["weihnachten"],))
                 if "ki_aktiv" in d:
                     con.execute("INSERT OR REPLACE INTO einstellungen VALUES ('ki_aktiv', ?)",
                                 ("1" if d["ki_aktiv"] in (1, True, "1") else "0",))
