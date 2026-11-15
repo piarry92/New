@@ -1,7 +1,7 @@
 /* Casa CAFM – Oberfläche (ohne Fremdbibliotheken) */
 "use strict";
 
-const VERSION = "2026.11.15-36"; // muss zu VERSION in app.py passen
+const VERSION = "2026.11.15-37"; // muss zu VERSION in app.py passen
 /* Hell- und Dunkelmodus: gemerkte Wahl, sonst wie das Gerät */
 const THEMA = (() => {
   let t = null;
@@ -41,10 +41,12 @@ const darfAendernRes = (res) => (res === "tickets" ? darf("tickets_bearbeiten") 
 const darfAendern = () => !!(S.ich && Object.entries(S.ich.rechte || {}).some(([k, v]) => v && k !== "export"));
 const istAdmin = () => S.ich && S.ich.rolle === "admin";
 
-async function api(methode, pfad, daten) {
+async function api(methode, pfad, daten, opts = {}) {
+  const kopf = { "Content-Type": "application/json", "X-CAFM": "1" };
+  if (S.objekt && !opts.alle) kopf["X-CAFM-Objekt"] = String(S.objekt);  // gewähltes Objekt: nur dessen Daten
   const r = await fetch("/api/" + pfad, {
     method: methode,
-    headers: { "Content-Type": "application/json", "X-CAFM": "1" },
+    headers: kopf,
     body: daten === undefined ? undefined : JSON.stringify(daten),
     credentials: "same-origin",
   });

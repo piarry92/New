@@ -1422,3 +1422,23 @@ html[data-theme="dark"] .vg-hinweis { color: #9DBBEA; }
 .vg-ganz { position: absolute; top: 16px; right: 200px; }
 .vg-reiter-karte .vg-tabelle-wrap { min-height: 0; }
 @media (max-width: 760px) { .vg-ganz { position: static; margin-bottom: 8px; } }
+
+/* ---------- Objektauswahl in der Seitenleiste ---------- */
+.objektwahl { padding: 4px 14px 12px; }
+.objektwahl .ow-titel { font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--grau); font-weight: 700; margin: 0 0 4px 4px; }
+.ow-knopf { width: 100%; display: flex; align-items: center; gap: 8px; text-align: left; padding: 9px 12px; border-radius: 10px; border: 1px solid var(--orange);
+  background: var(--orange-zart); color: var(--anthrazit); font: inherit; cursor: pointer; }
+.ow-knopf:disabled { cursor: default; border-color: var(--rand, var(--hellgrau)); background: transparent; }
+.ow-knopf .ow-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13.5px; }
+.ow-knopf .ow-name b { color: var(--orange); }
+.ow-knopf .ow-pfeil { color: var(--orange); }
+.ow-liste { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; max-height: 60vh; overflow: auto; }
+.ow-eintrag { display: flex; align-items: center; gap: 10px; text-align: left; padding: 10px 12px; border: 1px solid var(--rand, var(--hellgrau)); border-radius: 10px; background: var(--weiss); color: inherit; font: inherit; cursor: pointer; }
+.ow-eintrag:hover, .ow-eintrag.aktiv { border-color: var(--orange); background: var(--orange-zart); }
+.ow-eintrag img { width: 44px; height: 44px; object-fit: cover; border-radius: 8px; flex: none; }
+.ow-eintrag .ow-haus { width: 44px; height: 44px; border-radius: 8px; background: var(--zartgrau); display: grid; place-items: center; flex: none; color: var(--orange); }
+.ow-eintrag[hidden] { display: none; }
+html[data-theme="dark"] .ow-knopf { background: rgba(230,55,19,.12); color: #E6E7EA; }
+html[data-theme="dark"] .ow-eintrag { background: #1E2024; }
+html[data-theme="dark"] .ow-eintrag:hover, html[data-theme="dark"] .ow-eintrag.aktiv { background: rgba(230,55,19,.14); }
+@media (max-width: 640px) { .ow-liste { grid-template-columns: 1fr; } }

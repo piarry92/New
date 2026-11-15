@@ -48,7 +48,7 @@ WD_PFAD = DATEN / "winterdienstfotos"
 PROFIL_PFAD = DATEN / "profilbilder"
 MAX_SYMBOL = 2 * 1024 * 1024
 MAX_UPLOAD = 25 * 1024 * 1024
-VERSION = "2026.11.15-36"  # muss zu VERSION in static/app.js passen
+VERSION = "2026.11.15-37"  # muss zu VERSION in static/app.js passen
 SITZUNG_TAGE = 7
 
 GEWERKE = [
@@ -3770,6 +3770,7 @@ class Handler(BaseHTTPRequestHandler):
                 raise Fehler(403, "Dafür fehlt dir das Recht.")
             ids = eigentuemer_objekte(con, b)
             self.eigentuemer_ids = ids
+            ids_sicht = self.objekt_kontext(m, erstes, ids) or ids
             if erstes == "personen" and m == "GET":
                 sichtbar = [b["id"]] + [r["objektleiter_id"] for r in con.execute(
                     f"SELECT objektleiter_id FROM objekte WHERE id IN ({','.join('?' * len(ids)) or 'NULL'})", ids) if r["objektleiter_id"]]
@@ -3780,15 +3781,20 @@ class Handler(BaseHTTPRequestHandler):
                 if pid != b["id"] and not con.execute(
                         f"SELECT 1 FROM objekte WHERE objektleiter_id=? AND id IN ({','.join('?' * len(ids)) or 'NULL'})", [pid, *ids]).fetchone():
                     raise Fehler(404, "Nicht gefunden.")
-            eigentuemer_sichten(con, ids)
+            eigentuemer_sichten(con, ids_sicht)
         elif b["rolle"] == "objektleiter":
             ids = eigentuemer_objekte(con, b)
             self.eigentuemer_ids = ids
             if m == "GET":
                 if erstes not in ("personen", "profilbild", "benutzer"):
-                    eigentuemer_sichten(con, ids, "objektleiter")
+                    eigentuemer_sichten(con, self.objekt_kontext(m, erstes, ids) or ids, "objektleiter")
             else:
                 objektleiter_schreiben_pruefen(self, con, m, teile, ids)
+        else:
+            # Gewähltes Objekt oben in der Seitenleiste: beim Ansehen nur dieses Objekt zeigen
+            ctx = self.objekt_kontext(m, erstes, None)
+            if ctx:
+                eigentuemer_sichten(con, ctx, "objektleiter")
         recht = benoetigtes_recht(m, teile)
         if recht and not self.rechte.get(recht):
             text = dict((k, t) for k, t, _ in RECHTE)[recht]
@@ -5050,6 +5056,18 @@ class Handler(BaseHTTPRequestHandler):
         if con is not None:
             aus["rechte"] = effektive_rechte(con, b)
         return aus
+
+    def objekt_kontext(self, m: str, erstes: str, erlaubt: list[int] | None) -> list[int] | None:
+        """Objekt, das oben in der Seitenleiste gewählt ist (Kopfzeile X-CAFM-Objekt). Nur beim Ansehen,
+        nie über die eigenen Rechte hinaus."""
+        roh = (self.headers.get("X-CAFM-Objekt") or "").strip()
+        if m != "GET" or not roh.isdigit() or erstes in ("personen", "profilbild", "benutzer", "rechte", "verlauf", "schema",
+                                                         "einstellungen", "benachrichtigungen", "status"):
+            return None
+        oid = int(roh)
+        if erlaubt is not None and oid not in erlaubt:
+            return None
+        return [oid]
 
     def objekte_pruefen(self, con, d: dict) -> list[int]:
         ids = d.get("objekte")
