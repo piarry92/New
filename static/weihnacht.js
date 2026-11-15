@@ -104,6 +104,7 @@ function weihnachtKarte(w) {
   else unter = `Alles Gute für ${w.jahr}. Auf ein gutes gemeinsames Jahr.`;
   const kerzenText = w.phase === "advent" && w.kerzen ? `${w.kerzen}. Advent` : "";
   return `<div class="karte weihnacht-karte">
+    <div class="haenger" aria-hidden="true"><span><b>★</b></span><span><b>✦</b></span><span><b>★</b></span><span><b>✦</b></span></div>
     ${adventskranz(w.kerzen)}
     <div class="wk-text"><div class="kicker">${kerzenText || "Casa Concept Consulting"}</div><b>${esc(w.text)}</b><span>${esc(unter)}</span></div>
     <div class="wk-rechts">${weihnachtsbaum()}<button class="knopf klein" id="schneeK" title="Schneefall nur bei dir an- oder ausschalten">${schneeErlaubt() ? "Schnee aus" : "Schnee an"}</button></div>

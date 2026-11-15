@@ -1206,13 +1206,26 @@ html[data-theme="dark"] #schnee i { background: #F4F7FB; box-shadow: none; }
 .gruss-sterne i:nth-child(3) { font-size: 22px; animation-delay: .8s; }
 .gruss-sterne i:nth-child(4) { color: var(--orange); font-size: 12px; animation-delay: 1.2s; }
 .gruss-sterne i:nth-child(5) { font-size: 15px; animation-delay: 1.6s; }
-html.weihnacht .kopf { position: relative; }
-html.weihnacht .kopf::after { content: ""; position: absolute; left: 0; right: 0; bottom: -7px; height: 12px; pointer-events: none;
-  background:
-    radial-gradient(circle at 12px 7px, #E63713 0 3.5px, transparent 4px) 0 0 / 96px 12px repeat-x,
-    radial-gradient(circle at 36px 7px, #E0A500 0 3.5px, transparent 4px) 0 0 / 96px 12px repeat-x,
-    radial-gradient(circle at 60px 7px, #3A8F4B 0 3.5px, transparent 4px) 0 0 / 96px 12px repeat-x,
-    radial-gradient(circle at 84px 7px, #2456A6 0 3.5px, transparent 4px) 0 0 / 96px 12px repeat-x;
-  animation: lichter 2.8s ease-in-out infinite; }
-@keyframes lichter { 0%, 100% { opacity: 1; filter: brightness(1); } 50% { opacity: .65; filter: brightness(1.3); } }
-@media (prefers-reduced-motion: reduce) { .gruss-sterne i, .weihnacht-karte .kugel, .weihnacht-karte .baum-stern, html.weihnacht .kopf::after { animation: none !important; } }
+@media (prefers-reduced-motion: reduce) { .gruss-sterne i, .weihnacht-karte .kugel, .weihnacht-karte .baum-stern { animation: none !important; } }
+
+/* Neues Kartenbild: tannengrün mit Gold, hängende Sterne */
+.weihnacht-karte { background: radial-gradient(120% 140% at 0% 0%, #2F6B3A 0%, #1E4A29 55%, #173A20 100%) !important;
+  border-left: 0 !important; color: #F6EFE3; box-shadow: 0 6px 18px rgba(23,58,32,.25); padding: 18px 22px; min-height: 118px; }
+.weihnacht-karte::before { content: ""; position: absolute; inset: 6px; border: 1px solid rgba(224,165,0,.45); border-radius: calc(var(--radius) + 2px); pointer-events: none; }
+.weihnacht-karte .wk-text .kicker { color: #E8B931 !important; }
+.weihnacht-karte .wk-text b { color: #FFFFFF !important; font-size: 22px; letter-spacing: .01em; }
+.weihnacht-karte .wk-text span { color: #D9E4D6 !important; }
+.weihnacht-karte .kranz ellipse:first-child { fill: #4C9A5A; }
+.weihnacht-karte #schneeK { background: rgba(255,255,255,.1); color: #F6EFE3; border-color: rgba(246,239,227,.45); }
+.weihnacht-karte #schneeK:hover { background: rgba(255,255,255,.2); }
+.weihnacht-karte .haenger { position: absolute; top: 0; right: 230px; display: flex; gap: 26px; pointer-events: none; }
+.weihnacht-karte .haenger span { display: flex; flex-direction: column; align-items: center; transform-origin: top center; animation: pendeln 4s ease-in-out infinite; }
+.weihnacht-karte .haenger span::before { content: ""; width: 1px; background: rgba(232,185,49,.7); height: var(--l, 26px); }
+.weihnacht-karte .haenger span b { color: #E8B931; font-size: 15px; line-height: 1; text-shadow: 0 0 6px rgba(232,185,49,.7); }
+.weihnacht-karte .haenger span:nth-child(2) { --l: 14px; animation-delay: .7s; } .weihnacht-karte .haenger span:nth-child(2) b { font-size: 11px; color: #F6EFE3; }
+.weihnacht-karte .haenger span:nth-child(3) { --l: 36px; animation-delay: 1.4s; }
+.weihnacht-karte .haenger span:nth-child(4) { --l: 20px; animation-delay: 2.1s; } .weihnacht-karte .haenger span:nth-child(4) b { font-size: 11px; color: #F6EFE3; }
+@keyframes pendeln { 0%, 100% { transform: rotate(-6deg); } 50% { transform: rotate(6deg); } }
+html[data-theme="dark"] .weihnacht-karte { box-shadow: none; }
+@media (max-width: 640px) { .weihnacht-karte .haenger { display: none; } }
+@media (prefers-reduced-motion: reduce) { .weihnacht-karte .haenger span { animation: none; } }
