@@ -1,7 +1,8 @@
 """Aus einem Flucht- und Rettungsplan (PDF, viele Seiten je Etage) EINEN kompletten Etagenplan je Etage bauen.
 
-Aufruf:  python3 werkzeuge/frp_etagenplan.py <plaene.pdf> <zielordner> [Etage ...] [--drehung=0|90|180|270]
+Aufruf:  python3 werkzeuge/frp_etagenplan.py <plaene.pdf> <zielordner> [Etage ...] [weitere PDF oder Ordner ...] [--drehung=0|90|180|270]
          Etage z. B. 2UG, 1UG, EG, 1OG. Ohne Angabe: alle Etagen.
+         Weitere PDF-Dateien oder Ordner: einzelne neuere Blätter. Gibt es eine Plannummer mehrfach, zählt der jüngste Stand.
          --drehung dreht den fertigen Plan im Uhrzeigersinn, etwa damit Norden oben liegt. Ohne Angabe: Querformat.
 Braucht: pip install pymupdf      (für die Gegenprobe zusätzlich: numpy)
 
@@ -54,9 +55,13 @@ def brauchbar(g):
 
 
 def plan_pfade(seite):
-    """Zeichnung des Gebäudes auf einer Seite: alle Linien im großen Ausschnittfenster. Dazu das Fenster."""
+    """Zeichnung des Gebäudes auf einer Seite: alle Linien im großen Ausschnittfenster. Dazu das Fenster.
+    Das Fenster ist der größte Ausschnitt, der nicht die ganze Seite umfasst. Auf welcher Ebene er liegt, hängt
+    davon ab, wie das Blatt exportiert wurde (ältere Blätter eine Ebene tiefer als neuere)."""
     ze = seite.get_drawings(extended=True)
-    kandidaten = [i for i, g in enumerate(ze) if g["type"] == "clip" and g.get("level") == 1 and g.get("scissor") is not None]
+    blatt = seite.rect.width * seite.rect.height
+    kandidaten = [i for i, g in enumerate(ze) if g["type"] == "clip" and g.get("scissor") is not None
+                  and g["scissor"].width * g["scissor"].height < 0.9 * blatt]
     if not kandidaten:
         return [], None
     gi = max(kandidaten, key=lambda i: ze[i]["scissor"].width * ze[i]["scissor"].height)
@@ -282,20 +287,29 @@ def lage_finden(pfade, bestand, fenster=None, fenster_alle=()):
 
 
 def etage_bauen(pdf, seiten):
-    """seiten: Liste (Seitennummer ab 1, Plannummer). Liefert Bestand, Fenster (im Etagenmaß) und Bericht."""
-    roh = []
-    for nr, plannr in seiten:
-        s = pdf[nr - 1]
+    """seiten: Liste (Seitennummer ab 1, Plannummer) aus `pdf`, oder Einträge aus quellen_sammeln() (jede Seite bringt
+    dann ihre eigene Datei mit). Liefert Bestand, Fenster (im Etagenmaß) und Bericht."""
+    roh, ohne = [], []
+    for eintrag in seiten:
+        if isinstance(eintrag, dict):
+            doc, nr, plannr = eintrag["doc"], eintrag["nr"], eintrag["plannr"]
+            herkunft = {"quelle": eintrag.get("quelle"), "stand": eintrag.get("stand")}
+        else:
+            doc, (nr, plannr), herkunft = pdf, eintrag, {}
+        s = doc[nr - 1]
         if s.rotation:
             s.set_rotation(0)
         gruppe, fenster = plan_pfade(s)
         pfade = [Pfad(g, nr, i) for i, g in enumerate(gruppe) if g["items"] and brauchbar(g)]
         pfade = [p for p in pfade if p.teile]
-        roh.append({"seite": nr, "plannr": plannr, "pfade": pfade, "fenster": fenster})
+        if fenster is None or not pfade:
+            ohne.append({"seite": nr, "plannr": plannr, **herkunft, "linien": 0, "fehler": "keine Zeichnung gefunden"})
+            continue
+        roh.append({"seite": nr, "plannr": plannr, "pfade": pfade, "fenster": fenster, "herkunft": herkunft})
     # Start mit der Seite, die am meisten zeigt
     roh.sort(key=lambda r: -len(r["pfade"]))
     bestand = Bestand()
-    bericht, fenster_alle = [], []
+    bericht, fenster_alle = list(ohne), []
 
     def einordnen(r, s, k, tx, ty, treffer, gewicht=0, dagegen=0):
         # Die Reihenfolge auf der Seite bestimmt, was über was liegt (eine Fläche kann Linien verdecken). Jede neue Linie
@@ -320,7 +334,7 @@ def etage_bauen(pdf, seiten):
         ecken = [(s * drehen(e, k)[0] + tx, s * drehen(e, k)[1] + ty) for e in ((f.x0, f.y0), (f.x1, f.y1))]
         fx = (min(e[0] for e in ecken), min(e[1] for e in ecken), max(e[0] for e in ecken), max(e[1] for e in ecken))
         fenster_alle.append(fx)
-        bericht.append({"seite": r["seite"], "plannr": r["plannr"], "linien": len(r["pfade"]), "neu": neu, "massstab": round(s, 4), "drehung": WINKEL[k],
+        bericht.append({"seite": r["seite"], "plannr": r["plannr"], **r["herkunft"], "linien": len(r["pfade"]), "neu": neu, "massstab": round(s, 4), "drehung": WINKEL[k],
                         "treffer": treffer, "gewicht": gewicht, "dagegen": dagegen, "fenster": [round(v, 1) for v in fx],
                         "abbildung": [s, k, tx, ty]})        # Seite → Etage: Maßstab, Vierteldrehungen, Verschiebung
 
@@ -331,7 +345,7 @@ def etage_bauen(pdf, seiten):
         ergebnisse = [(e, r) for e, r in ergebnisse if e is not None]
         if not ergebnisse:
             for r in offen:
-                bericht.append({"seite": r["seite"], "plannr": r["plannr"], "linien": len(r["pfade"]), "fehler": "passt zu keiner anderen Seite"})
+                bericht.append({"seite": r["seite"], "plannr": r["plannr"], **r["herkunft"], "linien": len(r["pfade"]), "fehler": "passt zu keiner anderen Seite"})
             break
         ergebnisse.sort(key=lambda er: -er[0][5])            # die Seiten mit der sichersten Lage zuerst
         for e, r in ergebnisse:
@@ -475,7 +489,7 @@ def als_svg(bestand, T, breite, hoehe, titel=""):
     return "\n".join(aus)
 
 
-def gegenprobe(pdf, bestand, bericht, T, breite, hoehe, zoom=3.0):
+def gegenprobe(pdf, bestand, bericht, T, breite, hoehe, zoom=3.0, docs=None):
     """Jede Seite einzeln neu zeichnen und in ihrem Ausschnitt mit dem fertigen Etagenplan vergleichen.
     Trägt je Seite die Zahl der abweichenden Bildpunkte in den Bericht ein und gibt die Summe zurück (None ohne numpy)."""
     try:
@@ -492,7 +506,7 @@ def gegenprobe(pdf, bestand, bericht, T, breite, hoehe, zoom=3.0):
         if "abbildung" not in b:
             continue
         s, k, tx, ty = b["abbildung"]
-        gruppe, _ = plan_pfade(pdf[b["seite"] - 1])
+        gruppe, _ = plan_pfade((docs or {}).get(b.get("quelle"), pdf)[b["seite"] - 1])
         allein = Bestand()
         for i, g in enumerate(gruppe):
             if g["items"] and brauchbar(g):
@@ -508,13 +522,61 @@ def gegenprobe(pdf, bestand, bericht, T, breite, hoehe, zoom=3.0):
     return summe
 
 
+PLANNR = re.compile(r"\b(?:(\d)\.?\s?(UG|OG)|(EG))\s*/\s*(\d)([a-c]?)\b")
+DATUM = re.compile(r"\b(\d{2})\.(\d{2})\.(20\d{2})\b")
+
+
+def plannummer(text):
+    """Plannummer einer Seite, einheitlich geschrieben: ('2UG', '2UG/1a'). Auch „5.OG/4“ wird erkannt."""
+    m = PLANNR.search(text)
+    if not m:
+        return None
+    etage = m.group(3) or (m.group(1) + m.group(2))
+    return etage, f"{etage}/{m.group(4)}{m.group(5)}"
+
+
 def plannummern(pdf):
     seiten = collections.defaultdict(list)
     for i, s in enumerate(pdf, 1):
-        m = re.search(r"\b(\dUG|EG|\dOG)\s*/\s*(\d)([a-c]?)\b", s.get_text())
-        if m:
-            seiten[m.group(1)].append((i, m.group(0).replace(" ", "")))
+        nr = plannummer(s.get_text())
+        if nr:
+            seiten[nr[0]].append((i, nr[1]))
     return seiten
+
+
+def quellen_sammeln(pfade):
+    """Alle Seiten mit Plannummer aus mehreren PDF-Dateien oder Ordnern. Gibt es eine Plannummer mehrfach, zählt das
+    Blatt mit dem jüngsten Stand (bei gleichem Stand die später genannte Datei). Liefert {Etage: [Seiten]} und, was
+    dabei ersetzt wurde."""
+    import os
+    dateien = []
+    for p in pfade:
+        if os.path.isdir(p):
+            for ordner, _, namen in sorted(os.walk(p)):
+                dateien += [os.path.join(ordner, n) for n in sorted(namen) if n.lower().endswith(".pdf")]
+        else:
+            dateien.append(p)
+    beste, ersetzt = {}, []
+    for folge, datei in enumerate(dateien):
+        doc = pymupdf.open(datei)
+        for i, s in enumerate(doc, 1):
+            text = s.get_text()
+            nr = plannummer(text)
+            if not nr:
+                continue
+            tage = [f"{j}-{m}-{t}" for t, m, j in DATUM.findall(text)]
+            eintrag = {"doc": doc, "nr": i, "etage": nr[0], "plannr": nr[1], "stand": max(tage) if tage else "", "quelle": os.path.basename(datei), "folge": folge}
+            alt = beste.get(nr[1])
+            if alt is None or (eintrag["stand"], folge) >= (alt["stand"], alt["folge"]):
+                if alt is not None:
+                    ersetzt.append((nr[1], alt["quelle"], alt["stand"], eintrag["quelle"], eintrag["stand"]))
+                beste[nr[1]] = eintrag
+            else:
+                ersetzt.append((nr[1], eintrag["quelle"], eintrag["stand"], alt["quelle"], alt["stand"]))
+    etagen = collections.defaultdict(list)
+    for e in sorted(beste.values(), key=lambda e: (e["folge"], e["nr"])):
+        etagen[e["etage"]].append(e)
+    return etagen, ersetzt
 
 
 def etagenname(c):
@@ -526,14 +588,20 @@ def main():
     wahl = [a for a in sys.argv[1:] if a.startswith("--")]
     rest = [a for a in sys.argv[1:] if not a.startswith("--")]
     drehung = next((int(a.split("=")[1]) for a in wahl if a.startswith("--drehung=")), None)
-    pdf = pymupdf.open(rest[0]); ziel = rest[1]; nur = rest[2:]
+    ziel = rest[1]
+    nur = [a for a in rest[2:] if re.fullmatch(r"\dUG|EG|\dOG", a)]
+    quellen = [rest[0]] + [a for a in rest[2:] if a not in nur]
     os.makedirs(ziel, exist_ok=True)
-    alle = plannummern(pdf)
+    alle, ersetzt = quellen_sammeln(quellen)
+    for plannr, alt_datei, alt_stand, neu_datei, neu_stand in ersetzt:
+        if (alt_datei, alt_stand) != (neu_datei, neu_stand):
+            print(f"{plannr}: {neu_datei} (Stand {neu_stand or '?'}) statt {alt_datei} (Stand {alt_stand or '?'})")
     meta = []
     for code, seiten in alle.items():
         if nur and code not in nur:
             continue
-        bestand, fenster, bericht = etage_bauen(pdf, seiten)
+        docs = {e["quelle"]: e["doc"] for e in seiten}
+        bestand, fenster, bericht = etage_bauen(None, seiten)
         T, breite, hoehe, gedreht = ausgabe_masse(fenster, drehung=drehung)
         masse = {"breite_pt": round(breite, 1), "hoehe_pt": round(hoehe, 1), "drehung": gedreht}
         doc = als_pdf(bestand, T, breite, hoehe)
@@ -546,7 +614,7 @@ def main():
                 e = [T((b_["fenster"][0], b_["fenster"][1])), T((b_["fenster"][2], b_["fenster"][3]))]
                 b_["fenster_blatt"] = [round(min(e[0][0], e[1][0]), 1), round(min(e[0][1], e[1][1]), 1), round(max(e[0][0], e[1][0]), 1), round(max(e[0][1], e[1][1]), 1)]
         fehler = [b for b in bericht if b.get("fehler")]
-        probe = gegenprobe(pdf, bestand, bericht, T, breite, hoehe)
+        probe = gegenprobe(None, bestand, bericht, T, breite, hoehe, docs=docs)
         meta.append({"etage": etagenname(code), "datei": f"{code}.png", "pdf": f"{code}.pdf", "svg": f"{code}.svg", "seiten": len(seiten),
                      "linien": len(bestand.folge), "linien_vorher": sum(b["linien"] for b in bericht), **masse, "gegenprobe": probe, "bericht": bericht})
         print(f"{etagenname(code)}: {len(seiten)} Seiten → 1 Plan, {meta[-1]['linien_vorher']} → {len(bestand.folge)} Linien, {masse['breite_pt']} × {masse['hoehe_pt']} pt · Gegenprobe: "
