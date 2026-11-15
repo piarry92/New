@@ -2,7 +2,7 @@
 "use strict";
 
 const istEigentuemer = () => S.ich && S.ich.rolle === "eigentuemer";
-const EIGENTUEMER_AUS = ["katalog", "checklisten", "pruefungen", "schluessel", "zugaenge"];
+const EIGENTUEMER_AUS = ["katalog", "checklisten", "pruefungen", "schluessel", "zugaenge", "vorgaenge"];
 
 function eigObjekteText(ids) {
   const alle = S.cache.objekte || [];

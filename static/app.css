@@ -1368,3 +1368,44 @@ html[data-theme="dark"] .kopf-info .kw-warn.glatt { background: rgba(224,165,0,.
 .eig-hinweis { margin-bottom: 18px; padding: 12px 18px; border-left: 4px solid var(--orange); background: var(--orange-zart); }
 html[data-theme="dark"] .eig-hinweis { background: rgba(230,55,19,.12); }
 .liste > li > .avatar, .liste > li > .avatar-bild { flex: none; }
+
+/* ---------- Vorgangsliste (wie die Excel-Liste) ---------- */
+.vg-kopf { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 12px; }
+.vg-kopf h1 { margin: 0 0 4px; font-size: 26px; }
+.vg-hinweis { color: #2456A6; max-width: 900px; }
+.vg-logo { width: 160px; flex: none; }
+html[data-theme="dark"] .vg-logo { content: url("/logo-negativ.png"); }
+.vg-werkzeug { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 14px; }
+.vg-werkzeug input[type=search] { min-width: 240px; }
+.vg-chips { display: flex; gap: 4px; flex-wrap: wrap; }
+.vg-rechts { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+.vg-tabelle-wrap { overflow: auto; max-height: calc(100vh - 330px); min-height: 280px; border: 1px solid var(--rand, var(--hellgrau)); border-radius: 10px; background: var(--weiss); }
+.vg-tabelle { border-collapse: separate; border-spacing: 0; font-size: 12.5px; width: max-content; min-width: 100%; }
+.vg-tabelle thead th { position: sticky; z-index: 2; }
+.vg-tabelle tr.vg-gruppen th { top: 0; background: #FBEEE5; color: var(--orange); text-transform: uppercase; letter-spacing: .08em; font-size: 10.5px; padding: 6px 10px; text-align: left; border-bottom: 0; }
+.vg-tabelle thead tr:nth-child(2) th { top: 27px; background: var(--orange); color: #fff; font-size: 11.5px; font-weight: 700; padding: 8px 10px; white-space: nowrap; cursor: pointer; border-right: 1px solid rgba(255,255,255,.25); text-align: center; }
+.vg-tabelle td { padding: 6px 10px; border-bottom: 1px solid #F3E1D3; border-right: 1px solid #F6EAE0; vertical-align: top; max-width: 320px; white-space: pre-wrap; }
+.vg-tabelle tbody tr:nth-child(even) td { background: #FDF6F1; }
+.vg-tabelle td.vg-edit { cursor: text; }
+.vg-tabelle td.vg-edit:hover { box-shadow: inset 0 0 0 1px var(--orange-hell); }
+.vg-tabelle td.vg-aktiv { padding: 2px; box-shadow: inset 0 0 0 2px var(--orange); }
+.vg-tabelle td.vg-aktiv input, .vg-tabelle td.vg-aktiv select, .vg-tabelle td.vg-aktiv textarea { width: 100%; min-width: 120px; font: inherit; padding: 4px 6px; border: 0; background: #fff; }
+.vg-tabelle td[data-f="beschreibung"] { min-width: 260px; } .vg-tabelle td[data-f="bemerkung"] { min-width: 180px; }
+.vg-tabelle .vg-rand, .vg-tabelle .vg-rand-l { border-left: 2px solid #3C3C3B !important; }
+.vg-tabelle tr.vg-ab td { color: var(--grau); text-decoration: line-through; }
+.vg-tabelle tr.vg-ab td[data-f="status"] { text-decoration: none; }
+.vg-tabelle .vg-nr { color: var(--orange); font-weight: 700; }
+.vg-tabelle .vg-akt { position: sticky; right: 0; background: var(--weiss); }
+.vg-leer { padding: 30px !important; text-align: center; }
+.vg-pruef { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }
+.vg-pruef th, .vg-pruef td { padding: 6px 8px; border-bottom: 1px solid var(--zartgrau); text-align: left; vertical-align: middle; }
+.vg-pruef input:not([type=checkbox]), .vg-pruef select { width: 100%; }
+.vg-mehr { margin-top: 8px; }
+html[data-theme="dark"] .vg-tabelle tr.vg-gruppen th { background: #2A1D18; }
+html[data-theme="dark"] .vg-tabelle td { border-color: #2C2F35; }
+html[data-theme="dark"] .vg-tabelle tbody tr:nth-child(even) td { background: #1C1D21; }
+html[data-theme="dark"] .vg-tabelle td.vg-aktiv input, html[data-theme="dark"] .vg-tabelle td.vg-aktiv select, html[data-theme="dark"] .vg-tabelle td.vg-aktiv textarea { background: #222428; color: #fff; }
+html[data-theme="dark"] .vg-hinweis { color: #9DBBEA; }
+@media (max-width: 760px) { .vg-logo { display: none; } .vg-rechts { margin-left: 0; } .vg-tabelle-wrap { max-height: none; } }
+.dialog .formular select, .dialog .formular input { min-width: 0; max-width: 100%; }
+#vgKpi .wert { font-size: 26px; }

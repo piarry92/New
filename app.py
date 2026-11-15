@@ -48,7 +48,7 @@ WD_PFAD = DATEN / "winterdienstfotos"
 PROFIL_PFAD = DATEN / "profilbilder"
 MAX_SYMBOL = 2 * 1024 * 1024
 MAX_UPLOAD = 25 * 1024 * 1024
-VERSION = "2026.11.15-32"  # muss zu VERSION in static/app.js passen
+VERSION = "2026.11.15-33"  # muss zu VERSION in static/app.js passen
 SITZUNG_TAGE = 7
 
 GEWERKE = [
@@ -98,9 +98,10 @@ TICKET_STATUS = ["Neu", "In Arbeit", "Warten auf Dienstleister", "Erledigt", "Ab
 PRIORITAETEN = ["Notfall", "Hoch", "Normal", "Niedrig"]
 MEDIEN = ["Strom", "Wasser", "Wärme", "Kälte", "Gas", "Weitere"]
 DOK_KATEGORIEN = [
-    "Vertrag", "Wartungsprotokoll", "Prüfbericht", "Angebot", "Rechnung", "Plan",
+    "Vertrag", "Wartungsprotokoll", "Prüfbericht", "Angebot", "Auftrag", "Auftragsbestätigung", "Rechnung", "Plan",
     "Foto", "Protokoll", "Schriftverkehr", "Sonstiges",
 ]
+VG_STATUS = ["offen", "beauftragt", "fertiggestellt", "abgerechnet", "abgelehnt", "storniert"]
 
 # ---------------------------------------------------------------------------
 # Datenmodell: eine Beschreibung fuer Datenbank, Schnittstelle und Oberflaeche
@@ -439,6 +440,37 @@ RESSOURCEN: dict[str, dict] = {
             {"name": "quelle", "label": "Erfasst durch", "typ": "text", "nurlesen": True},
         ],
     },
+    "vorgaenge": {
+        "label": "Vorgangsliste", "einzahl": "Vorgang", "anzeige": ["angebot_nr", "beschreibung"], "sort": "-datum",
+        "felder": [
+            {"name": "objekt_id", "label": "Liegenschaft", "typ": "ref", "ref": "objekte", "pflicht": True, "liste": True},
+            {"name": "angebot_nr", "label": "Angebots-Nr.", "typ": "text", "liste": True},
+            {"name": "bearbeiter", "label": "Bearbeiter Kürzel", "typ": "text", "liste": True},
+            {"name": "datum", "label": "Datum", "typ": "date", "liste": True},
+            {"name": "summe_netto", "label": "Angebotssumme netto, inkl. Fee", "typ": "money", "liste": True},
+            {"name": "fee", "label": "Fee J/N", "typ": "select", "optionen": ["ja", "nein"], "liste": True},
+            {"name": "fee_prozent", "label": "Fee %", "typ": "number"},
+            {"name": "beschreibung", "label": "Beschreibung", "typ": "textarea", "pflicht": True, "liste": True},
+            {"name": "firma", "label": "(Sub-)Firma", "typ": "text", "liste": True},
+            {"name": "dienstleister_id", "label": "Dienstleister", "typ": "ref", "ref": "dienstleister"},
+            {"name": "sub_angebot_nr", "label": "(Sub-)Angebots-Nr.", "typ": "text"},
+            {"name": "auftrag_nr", "label": "(extern) Auftrags-Nr.", "typ": "text"},
+            {"name": "beauftragt_am", "label": "beauftragt am", "typ": "date"},
+            {"name": "fertiggestellt_am", "label": "fertiggestellt am", "typ": "date"},
+            {"name": "versendet_am", "label": "versendet am", "typ": "date"},
+            {"name": "bemerkung", "label": "Bemerkung", "typ": "textarea"},
+            {"name": "rg_nr", "label": "RG-Nr.", "typ": "text"},
+            {"name": "rg_datum", "label": "RG-Datum", "typ": "date"},
+            {"name": "rg_betrag", "label": "Betrag netto", "typ": "money"},
+            {"name": "status", "label": "Angebotsstatus", "typ": "select", "optionen": VG_STATUS, "standard": "offen", "liste": True},
+            {"name": "ab_nr", "label": "AB-Nr.", "typ": "text"},
+            {"name": "ab_am", "label": "AB am", "typ": "date"},
+            {"name": "casa_auftrag_nr", "label": "Casa-Auftrag-Nr.", "typ": "text"},
+            {"name": "nu_beauftragt", "label": "NU beauftragt am", "typ": "date"},
+            {"name": "wowflow_ticket", "label": "Wowflow-Ticket", "typ": "text"},
+            {"name": "quelle", "label": "Erfasst über", "typ": "text", "nurlesen": True},
+        ],
+    },
     "dokumente": {
         "label": "Dokumente", "einzahl": "Dokument", "anzeige": ["titel"], "sort": "-id",
         "felder": [
@@ -447,6 +479,7 @@ RESSOURCEN: dict[str, dict] = {
             {"name": "objekt_id", "label": "Objekt", "typ": "ref", "ref": "objekte", "liste": True},
             {"name": "anlage_id", "label": "Anlage", "typ": "ref", "ref": "anlagen", "filter": "objekt_id"},
             {"name": "ticket_id", "label": "Störmeldung", "typ": "ref", "ref": "tickets", "filter": "objekt_id"},
+            {"name": "vorgang_id", "label": "Vorgang (Angebot/Auftrag)", "typ": "ref", "ref": "vorgaenge", "filter": "objekt_id"},
             {"name": "dateiname", "label": "Datei", "typ": "text", "nurlesen": True, "liste": True},
             {"name": "groesse", "label": "Größe", "typ": "number", "nurlesen": True},
             {"name": "hochgeladen_am", "label": "Hochgeladen", "typ": "date", "nurlesen": True, "liste": True},
@@ -1327,6 +1360,238 @@ def wd_abschliessen(con, eid: int, d: dict, wer: str) -> dict:
     return {"ok": True}
 
 
+# ---------------------------------------------------------------------------
+# Vorgangsliste: Angebote und Aufträge je Objekt, mit KI-Auslesen von Dokumenten
+# ---------------------------------------------------------------------------
+VG_RANG = {"offen": 0, "beauftragt": 1, "fertiggestellt": 2, "abgerechnet": 3}
+VG_FELDER_DOK = {  # welche Felder je Dokumentart übernommen werden
+    "Angebot": ["angebot_nr", "datum", "summe_netto", "beschreibung", "casa_auftrag_nr"],
+    "Nachunternehmer-Angebot": ["firma", "sub_angebot_nr", "beschreibung"],
+    "Auftrag": ["auftrag_nr", "beauftragt_am", "casa_auftrag_nr"],
+    "Auftragsbestätigung": ["ab_nr", "ab_am", "auftrag_nr"],
+    "Rechnung": ["rg_nr", "rg_datum", "rg_betrag"],
+    "Abnahme / Fertigmeldung": ["fertiggestellt_am"],
+    "Ablehnung": ["status"],
+    "Sonstiges": ["beschreibung"],
+}
+VG_DOK_KATEGORIE = {"Angebot": "Angebot", "Nachunternehmer-Angebot": "Angebot", "Auftrag": "Auftrag",
+                    "Auftragsbestätigung": "Auftragsbestätigung", "Rechnung": "Rechnung", "Abnahme / Fertigmeldung": "Protokoll",
+                    "Ablehnung": "Schriftverkehr", "Sonstiges": "Sonstiges"}
+
+
+def vorgang_status_aus(v: dict) -> str:
+    if v.get("rg_nr"):
+        return "abgerechnet"
+    if v.get("fertiggestellt_am"):
+        return "fertiggestellt"
+    if v.get("beauftragt_am") or v.get("auftrag_nr") or v.get("ab_nr"):
+        return "beauftragt"
+    return "offen"
+
+
+def vorgang_status_nachziehen(con, vid: int) -> None:
+    """Status rückt automatisch vor (offen → beauftragt → fertiggestellt → abgerechnet), nie zurück, nie über „abgelehnt“."""
+    v = con.execute("SELECT * FROM vorgaenge WHERE id=?", (vid,)).fetchone()
+    if not v or v["status"] in ("abgelehnt", "storniert"):
+        return
+    neu = vorgang_status_aus(dict(v))
+    if VG_RANG.get(neu, 0) > VG_RANG.get(v["status"] or "offen", 0):
+        con.execute("UPDATE vorgaenge SET status=? WHERE id=?", (neu, vid))
+
+
+def vg_kennung(v) -> str:
+    return v["angebot_nr"] or v["auftrag_nr"] or v["sub_angebot_nr"] or f'Vorgang #{v["id"]}'
+
+
+def vg_kontext(con, objekt_id: int | None) -> dict:
+    objekte = [{"id": o["id"], "kuerzel": o["kuerzel"], "name": o["name"],
+                "anschrift": ", ".join(x for x in (o["strasse"], " ".join(y for y in (o["plz"], o["ort"]) if y)) if x)}
+               for o in con.execute("SELECT * FROM objekte ORDER BY kuerzel")]
+    bed, werte = "", []
+    if objekt_id:
+        bed, werte = " WHERE objekt_id=?", [objekt_id]
+    vg = [{"id": v["id"], "kennung": vg_kennung(v), "beschreibung": (v["beschreibung"] or "")[:120], "firma": v["firma"],
+           "sub_angebot_nr": v["sub_angebot_nr"], "auftrag_nr": v["auftrag_nr"], "ab_nr": v["ab_nr"], "objekt_id": v["objekt_id"]}
+          for v in con.execute(f"SELECT * FROM vorgaenge{bed} ORDER BY id DESC LIMIT 150", werte)]
+    return {"objekte": objekte, "vorgaenge": vg}
+
+
+def vg_vorschlag(con, erg: dict, objekt_id: int | None) -> dict:
+    """Aus der Auswertung einen Vorschlag machen: neuer Vorgang oder Ergänzung eines vorhandenen."""
+    if not objekt_id and erg.get("objekt_kuerzel"):
+        r = con.execute("SELECT id FROM objekte WHERE kuerzel=? COLLATE NOCASE", (erg["objekt_kuerzel"],)).fetchone()
+        objekt_id = r["id"] if r else None
+    passend = None
+    kandidaten = con.execute("SELECT * FROM vorgaenge" + (" WHERE objekt_id=?" if objekt_id else ""),
+                             [objekt_id] if objekt_id else []).fetchall()
+    if erg.get("passender_vorgang"):
+        passend = next((v for v in kandidaten if vg_kennung(v) == erg["passender_vorgang"]), None)
+    if not passend:
+        for feld in ("angebot_nr", "sub_angebot_nr", "auftrag_nr", "ab_nr", "rg_nr"):
+            wert = (erg.get(feld) or "").strip()
+            if wert:
+                passend = next((v for v in kandidaten if (v[feld] or "").strip() == wert), None)
+                if passend:
+                    break
+    art = erg.get("dokumentart") or "Sonstiges"
+    felder = {}
+    for f in VG_FELDER_DOK.get(art, []):
+        if f == "status":
+            felder["status"] = "abgelehnt"
+        elif erg.get(f) not in (None, ""):
+            felder[f] = erg[f]
+    if art == "Auftrag" and not felder.get("beauftragt_am") and erg.get("datum"):
+        felder["beauftragt_am"] = erg["datum"]
+    if art == "Auftragsbestätigung" and not felder.get("ab_am") and erg.get("datum"):
+        felder["ab_am"] = erg["datum"]
+    if art == "Rechnung" and not felder.get("rg_datum") and erg.get("datum"):
+        felder["rg_datum"] = erg["datum"]
+    if art == "Nachunternehmer-Angebot" and erg.get("aussteller") and not felder.get("firma"):
+        felder["firma"] = erg["aussteller"]
+    if passend:
+        felder.pop("beschreibung", None) if passend["beschreibung"] else None
+        aktion = "aktualisieren"
+    else:
+        aktion = "neu" if art in ("Angebot", "Nachunternehmer-Angebot", "Auftrag", "Sonstiges") else "zuordnen"
+        if aktion == "neu" and art != "Angebot" and not felder.get("beschreibung"):
+            felder["beschreibung"] = erg.get("beschreibung") or erg.get("zusammenfassung") or None
+        if aktion == "neu" and not felder.get("datum") and erg.get("datum"):
+            felder["datum"] = erg["datum"]
+    return {"aktion": aktion, "vorgang_id": passend["id"] if passend else None, "objekt_id": objekt_id, "felder": felder,
+            "alt": dict(passend) if passend else None,
+            "vorgaenge": [{"id": v["id"], "kennung": vg_kennung(v), "beschreibung": v["beschreibung"]} for v in kandidaten][:300]}
+
+
+def vg_dokument_speichern(con, b, objekt_id, dateiname: str, inhalt_b64: str) -> tuple[int, bytes, str]:
+    name = re.sub(r"[^\w.\- äöüÄÖÜß]", "_", os.path.basename(str(dateiname or "dokument")))[:150] or "dokument"
+    try:
+        inhalt = base64.b64decode(inhalt_b64 or "", validate=True)
+    except (ValueError, binascii.Error):
+        raise Fehler(400, "Die Datei konnte nicht gelesen werden.")
+    if not inhalt:
+        raise Fehler(400, "Bitte eine Datei auswählen.")
+    if len(inhalt) > MAX_UPLOAD:
+        raise Fehler(413, "Die Datei ist zu groß (höchstens 25 MB).")
+    endung = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+    did = einfuegen(con, "dokumente", {"titel": name.rsplit(".", 1)[0][:150], "kategorie": "Angebot", "objekt_id": objekt_id,
+                                      "dateiname": name, "groesse": len(inhalt), "hochgeladen_am": heute().isoformat(),
+                                      "hochgeladen_von": b["name"]})
+    pfad = f"{did:06d}_{secrets.token_hex(4)}_{name}"
+    (DOK_PFAD / pfad).write_bytes(inhalt)
+    con.execute("UPDATE dokumente SET pfad=? WHERE id=?", (pfad, did))
+    protokollieren(con, b, "hochgeladen", "dokumente", did, name)
+    return did, inhalt, endung
+
+
+def vg_uebernehmen(con, b, d: dict) -> dict:
+    res = RESSOURCEN["vorgaenge"]
+    felder = d.get("felder") if isinstance(d.get("felder"), dict) else {}
+    erlaubt = {f["name"] for f in res["felder"] if not f.get("nurlesen")}
+    felder = {k: v for k, v in felder.items() if k in erlaubt}
+    vid = d.get("vorgang_id")
+    oid = d.get("objekt_id")
+    if vid:
+        v = con.execute("SELECT * FROM vorgaenge WHERE id=?", (int(vid),)).fetchone()
+        if not v:
+            raise Fehler(404, "Vorgang nicht gefunden.")
+        sauber = daten_pruefen(res, felder, neu=False)
+        if sauber:
+            sauber["geaendert"] = jetzt()
+            con.execute(f'UPDATE vorgaenge SET {", ".join(f"{chr(34)}{k}{chr(34)}=?" for k in sauber)} WHERE id=?', [*sauber.values(), v["id"]])
+        vid, oid = v["id"], v["objekt_id"]
+        protokollieren(con, b, "aus Dokument ergänzt", "vorgaenge", vid, ", ".join(k for k in sauber if k != "geaendert"))
+    else:
+        felder["objekt_id"] = oid
+        felder.setdefault("bearbeiter", "".join(w[0] for w in b["name"].split() if w and w[0].isalpha())[:4].upper())
+        sauber = daten_pruefen(res, felder, neu=True)
+        sauber["quelle"] = d.get("quelle") or "Claude"
+        vid = einfuegen(con, "vorgaenge", sauber)
+        oid = sauber["objekt_id"]
+        protokollieren(con, b, "aus Dokument angelegt", "vorgaenge", vid)
+    vorgang_status_nachziehen(con, vid)
+    if d.get("dokument_id"):
+        art = d.get("dokumentart") or "Sonstiges"
+        con.execute("UPDATE dokumente SET vorgang_id=?, objekt_id=?, kategorie=? WHERE id=?",
+                    (vid, oid, VG_DOK_KATEGORIE.get(art, "Sonstiges"), int(d["dokument_id"])))
+    return zeile(con.execute("SELECT * FROM vorgaenge WHERE id=?", (vid,)).fetchone())
+
+
+VG_SPALTEN_ERKENNEN = [  # (Suchtext im Spaltenkopf, Feld) – erste passende Regel gewinnt
+    ("sub", "sub"), ("angebotsstatus", "status"), ("angebotssumme", "summe_netto"), ("angebots", "angebot_nr"),
+    ("bearbeiter", "bearbeiter"), ("fee %", "fee_prozent"), ("fee", "fee"), ("liegenschaft", "liegenschaft"),
+    ("beschreibung", "beschreibung"), ("auftrags", "auftrag_nr"), ("beauftragt am", "beauftragt_am"), ("nu beauftragt", "nu_beauftragt"),
+    ("fertiggestellt", "fertiggestellt_am"), ("versendet", "versendet_am"), ("bemerkung", "bemerkung"), ("rg- n", "rg_nr"),
+    ("rg-n", "rg_nr"), ("rg n", "rg_nr"), ("rg- d", "rg_datum"), ("rg-d", "rg_datum"), ("rg d", "rg_datum"), ("betrag", "rg_betrag"),
+    ("ab nr", "ab_nr"), ("ab-nr", "ab_nr"), ("ab am", "ab_am"), ("casa-auftrag", "casa_auftrag_nr"), ("casa auftrag", "casa_auftrag_nr"),
+    ("wowflow", "wowflow_ticket"), ("datum", "datum"),
+]
+
+
+def vg_importieren(con, b, d: dict) -> dict:
+    try:
+        oid = int(d.get("objekt_id"))
+    except (TypeError, ValueError):
+        raise Fehler(400, "Bitte das Objekt wählen.")
+    if not con.execute("SELECT 1 FROM objekte WHERE id=?", (oid,)).fetchone():
+        raise Fehler(400, "Bitte das Objekt wählen.")
+    try:
+        inhalt = base64.b64decode(d.get("inhalt") or "", validate=True)
+    except (ValueError, binascii.Error):
+        raise Fehler(400, "Die Datei konnte nicht gelesen werden.")
+    zeilen = xlsx_zeilen(inhalt)
+    kopf_i = next((i for i, z in enumerate(zeilen[:30]) if any("angebots" in str(c).lower() for c in z)
+                   and any("beschreibung" in str(c).lower() for c in z)), None)
+    if kopf_i is None:
+        raise Fehler(400, "In der Datei steht keine Kopfzeile mit „Angebots-Nr.“ und „Beschreibung“.")
+    zuordnung = {}
+    for j, c in enumerate(zeilen[kopf_i]):
+        t = re.sub(r"\s+", " ", str(c or "").lower()).strip()
+        if not t:
+            continue
+        for such, feld in VG_SPALTEN_ERKENNEN:
+            if such in t:
+                if feld == "sub":
+                    feld = "firma" if "firma" in t else "sub_angebot_nr"
+                if feld not in zuordnung.values():
+                    zuordnung[j] = feld
+                break
+    vorhanden = {(r["angebot_nr"] or "").strip() for r in con.execute("SELECT angebot_nr FROM vorgaenge WHERE objekt_id=?", (oid,))}
+    neu = doppelt = leer = 0
+    res = RESSOURCEN["vorgaenge"]
+    typen = {f["name"]: f["typ"] for f in res["felder"]}
+    for z in zeilen[kopf_i + 1:]:
+        werte = {zuordnung[j]: str(c).strip() for j, c in enumerate(z) if j in zuordnung and str(c or "").strip()}
+        werte.pop("liegenschaft", None)
+        if not werte.get("beschreibung") and not werte.get("angebot_nr"):
+            leer += 1
+            continue
+        if werte.get("angebot_nr") and werte["angebot_nr"] in vorhanden:
+            doppelt += 1
+            continue
+        sauber = {"objekt_id": oid, "quelle": "Excel-Import"}
+        for k, v in werte.items():
+            typ = typen.get(k)
+            if typ == "money" or typ == "number":
+                sauber[k] = ki._betrag(v.replace("%", ""))
+            elif typ == "date":
+                sauber[k] = _datum_frei(v)
+            elif k == "fee":
+                sauber[k] = "ja" if v.lower() in ("ja", "j", "x", "yes", "1") else "nein" if v.lower() in ("nein", "n", "0", "no") else None
+            elif k == "status":
+                s = v.lower()
+                sauber[k] = next((x for x in VG_STATUS if x in s), "abgelehnt" if "abgelehn" in s else None)
+            else:
+                sauber[k] = v[:2000]
+        sauber["beschreibung"] = sauber.get("beschreibung") or "(ohne Beschreibung)"
+        sauber = {k: v for k, v in sauber.items() if v is not None}
+        vid = einfuegen(con, "vorgaenge", sauber)
+        vorgang_status_nachziehen(con, vid)
+        vorhanden.add(sauber.get("angebot_nr", ""))
+        neu += 1
+    protokollieren(con, b, "Vorgangsliste übernommen", "vorgaenge", None, f"{neu} neu, {doppelt} schon vorhanden")
+    return {"neu": neu, "vorhanden": doppelt, "spalten": len(zuordnung)}
+
+
 def einstellung(con, schluessel: str) -> str:
     r = con.execute("SELECT wert FROM einstellungen WHERE schluessel=?", (schluessel,)).fetchone()
     return r["wert"] if r and r["wert"] is not None else EINSTELLUNGEN_STANDARD.get(schluessel, "")
@@ -1418,6 +1683,7 @@ RECHTE = [
     ("wartung_erledigen", "Wartungen und Prüfungen als erledigt melden", "Wartung"),
     ("winterdienst", "Winterdienst-Einsätze protokollieren (mit Fotos)", "Wartung"),
     ("vertraege_bearbeiten", "Verträge und Dienstleister bearbeiten", "Verwaltung"),
+    ("vorgaenge", "Vorgangsliste: Angebote und Aufträge eintragen und ändern", "Verwaltung"),
     ("zaehler_erfassen", "Zähler anlegen und Zählerstände erfassen", "Verwaltung"),
     ("dokumente_hochladen", "Dokumente und Fotos hochladen", "Verwaltung"),
     ("schluessel_verwalten", "Schlüssel anlegen, ausgeben und zurücknehmen", "Verwaltung"),
@@ -1475,7 +1741,7 @@ def effektive_rechte(con, b) -> dict:
 RESSOURCE_RECHT = {
     "objekte": "anlagen_bearbeiten", "anlagen": "anlagen_bearbeiten", "plaene": "plaene_bearbeiten",
     "symbole": "plaene_bearbeiten", "wartungen": "wartung_planen", "sv_maengel": "tickets_bearbeiten",
-    "schluessel": "schluessel_verwalten", "schluesseluebergaben": "schluessel_verwalten", "winterdienst": "winterdienst", "vertraege": "vertraege_bearbeiten",
+    "schluessel": "schluessel_verwalten", "schluesseluebergaben": "schluessel_verwalten", "winterdienst": "winterdienst", "vorgaenge": "vorgaenge", "vertraege": "vertraege_bearbeiten",
     "dienstleister": "vertraege_bearbeiten", "zaehler": "zaehler_erfassen", "ablesungen": "zaehler_erfassen",
     "dokumente": "dokumente_hochladen", "kat_kategorien": "katalog_bearbeiten", "kat_gruppen": "katalog_bearbeiten",
     "kat_typen": "katalog_bearbeiten", "kat_maengel": "katalog_bearbeiten", "checklisten": "wartung_planen",
@@ -1591,7 +1857,8 @@ def eigentuemer_sichten(con, ids: list[int], rolle: str = "eigentuemer") -> None
         "wartungen": f"objekt_id IN {menge} OR anlage_id IN ({anl})",
         "tickets": f"objekt_id IN {menge} OR anlage_id IN ({anl})",
         "sv_maengel": f"objekt_id IN {menge} OR anlage_id IN ({anl})",
-        "dokumente": f"objekt_id IN {menge} OR anlage_id IN ({anl}) OR ticket_id IN ({unter('tickets')})",
+        "dokumente": f"(objekt_id IN {menge} OR anlage_id IN ({anl}) OR ticket_id IN ({unter('tickets')}))"
+                     + (" AND vorgang_id IS NULL" if rolle == "eigentuemer" else ""),
         "ablesungen": f"zaehler_id IN ({unter('zaehler')})",
         "wartung_historie": f"wartung_id IN ({unter('wartungen')})",
         "ticket_kommentare": f"ticket_id IN ({unter('tickets')})",
@@ -1602,6 +1869,7 @@ def eigentuemer_sichten(con, ids: list[int], rolle: str = "eigentuemer") -> None
             "schluessel_fotos": f"uebergabe_id IN ({unter('schluessel_uebergaben')})",
             "checkpoint_scans": f"checkpoint_id IN (SELECT id FROM main.checkpoints WHERE checkliste_id IN ({unter('checklisten')}))"}
            if rolle == "objektleiter" else {}),
+        **({"vorgaenge": f"objekt_id IN {menge}"} if rolle == "objektleiter" else {}),
         **({} if rolle == "objektleiter" else {"dienstleister": "id IN (" + " UNION ".join(f"SELECT dienstleister_id FROM main.{t} WHERE objekt_id IN {menge}"
                                                     for t in ("anlagen", "wartungen", "tickets", "vertraege", "winterdienst", "sv_maengel")) + ")"}),
     }
@@ -1660,6 +1928,24 @@ def objekt_aus_daten(con, d: dict):
     return None
 
 
+def objekte_aus_daten(con, d: dict) -> set:
+    """Alle Objekte, auf die ein Anfrage-Inhalt zeigt (für die Prüfung beim Objektleiter)."""
+    aus = set()
+    if not isinstance(d, dict):
+        return aus
+    if str(d.get("objekt_id") or "").isdigit():
+        aus.add(int(d["objekt_id"]))
+    for feld, sql in (("anlage_id", "SELECT objekt_id FROM main.anlagen WHERE id=?"), ("ticket_id", "SELECT objekt_id FROM main.tickets WHERE id=?"),
+                      ("zaehler_id", "SELECT objekt_id FROM main.zaehler WHERE id=?"), ("checkliste_id", "SELECT objekt_id FROM main.checklisten WHERE id=?"),
+                      ("wartung_id", "SELECT objekt_id FROM main.wartungen WHERE id=?"), ("plan_id", "SELECT objekt_id FROM main.plaene WHERE id=?"),
+                      ("vorgang_id", "SELECT objekt_id FROM main.vorgaenge WHERE id=?"), ("dokument_id", "SELECT objekt_id FROM main.dokumente WHERE id=?")):
+        if str(d.get(feld) or "").isdigit():
+            r = con.execute(sql, (int(d[feld]),)).fetchone()
+            if r and r[0]:
+                aus.add(r[0])
+    return aus
+
+
 def objektleiter_schreiben_pruefen(handler, con, m: str, teile: list[str], ids: list[int]) -> None:
     t0 = teile[0] if teile else ""
     if t0 in OL_FREI or (t0 == "winterdienst" and teile[1:2] == ["pruefen"]):
@@ -1678,9 +1964,7 @@ def objektleiter_schreiben_pruefen(handler, con, m: str, teile: list[str], ids: 
             raise Fehler(403, "Das gehört zu keinem Objekt, das dir zugewiesen ist.")
         ziele.add(o)
     d = handler.body() if m in ("POST", "PUT") else {}
-    o = objekt_aus_daten(con, d) if isinstance(d, dict) else None
-    if o is not None:
-        ziele.add(o)
+    ziele |= objekte_aus_daten(con, d)
     if not ziele:
         if tabelle in RESSOURCEN and objekt_von(con, tabelle, 0) is _GLOBAL:
             return
@@ -3913,6 +4197,58 @@ class Handler(BaseHTTPRequestHandler):
             if not teile_:
                 raise Fehler(400, "Bitte mindestens einen Teilbereich auswählen.")
             return self.json(objekt_bericht(con, self.id(teile[1]), von, bis, teile_, (q.get("kosten") or ["0"])[0] == "1"))
+        if erstes == "vorgaenge" and len(teile) == 2 and not teile[1].isdigit():
+            d = self.body() if m == "POST" else {}
+            oid_roh = d.get("objekt_id") if m == "POST" else (q.get("objekt_id") or [""])[0]
+            oid = int(oid_roh) if str(oid_roh or "").isdigit() else None
+            if teile[1] == "vorlage" and m == "GET":
+                return self.json({"text": ki.vorgang_vorlage(vg_kontext(con, oid))})
+            if teile[1] == "import" and m == "POST":
+                return self.json(vg_importieren(con, b, d))
+            if teile[1] == "uebernehmen" and m == "POST":
+                return self.json(vg_uebernehmen(con, b, d))
+            if teile[1] == "einfuegen" and m == "POST":
+                roh = d.get("ergebnis")
+                if isinstance(roh, str):
+                    t = roh.strip()
+                    t = t[t.find("{"): t.rfind("}") + 1] if "{" in t else t
+                    try:
+                        roh = json.loads(t)
+                    except ValueError:
+                        raise Fehler(400, "Die eingefügte Antwort ist kein gültiger JSON-Block. Bitte die ganze Antwort von Claude kopieren.")
+                try:
+                    erg = ki.vorgang_saeubern(roh)
+                except ki.KiFehler as e:
+                    raise Fehler(400, str(e))
+                return self.json({"ergebnis": erg, "vorschlag": vg_vorschlag(con, erg, oid), "dokument_id": d.get("dokument_id")})
+            if teile[1] == "auswerten" and m == "POST":
+                if not d.get("nur_ablegen"):
+                    if einstellung(con, "ki_aktiv") != "1":
+                        raise Fehler(400, "Die KI-Auswertung im Programm ist ausgeschaltet. Nimm „Mit Claude-Chat auswerten“ oder lass sie unter Einstellungen einschalten.")
+                    schl = einstellung(con, "ki_schluessel") or os.environ.get("ANTHROPIC_API_KEY", "")
+                    if not schl:
+                        raise Fehler(400, "Für die KI-Auswertung fehlt der Schlüssel. Ein Administrator trägt ihn unter Einstellungen ein.")
+                did, inhalt, endung = vg_dokument_speichern(con, b, oid, d.get("dateiname"), d.get("inhalt"))
+                if d.get("nur_ablegen"):
+                    return self.json({"dokument_id": did})
+                if endung not in ki.MEDIEN:
+                    raise Fehler(400, "Auswerten geht nur mit PDF oder Foto (JPG, PNG, WEBP).")
+                kontext = vg_kontext(con, oid)
+
+                def auswerten():
+                    try:
+                        erg = ki.vorgang_auswerten(schl, inhalt, endung, kontext)
+                    except ki.KiFehler as e:
+                        raise Fehler(400, str(e))
+                    with _db_lock:
+                        c2 = db()
+                        try:
+                            vorschlag = vg_vorschlag(c2, erg, oid)
+                        finally:
+                            c2.close()
+                    self.json({"ergebnis": erg, "vorschlag": vorschlag, "dokument_id": did})
+                self._spaeter = auswerten
+                return None
         if erstes == "winterdienst":
             if len(teile) == 1 and m == "GET":
                 return self.json(wd_liste(con, q))
@@ -4041,6 +4377,8 @@ class Handler(BaseHTTPRequestHandler):
                         self.checkliste_pruefen(con, sauber)
                     neue_id = einfuegen(con, name, sauber)
                     protokollieren(con, b, "angelegt", name, neue_id)
+                    if name == "vorgaenge":
+                        vorgang_status_nachziehen(con, neue_id)
                     if name == "checklisten" and sauber.get("zustaendig_id"):
                         self.zuweisung_melden(con, b, neue_id, sauber)
                 return self.json(zeile(con.execute(f'SELECT * FROM "{name}" WHERE id=?', (neue_id,)).fetchone()), 201)
@@ -4072,6 +4410,8 @@ class Handler(BaseHTTPRequestHandler):
                 setz = ", ".join(f'"{k}"=?' for k in sauber)
                 con.execute(f'UPDATE "{name}" SET {setz} WHERE id=?', [*sauber.values(), rid])
                 protokollieren(con, b, "geändert", name, rid, ", ".join(k for k in sauber if k != "geaendert"))
+                if name == "vorgaenge" and "status" not in sauber:
+                    vorgang_status_nachziehen(con, rid)
             neu = zeile(con.execute(f'SELECT * FROM "{name}" WHERE id=?', (rid,)).fetchone())
             neu.pop("pfad", None)
             return self.json(neu)
