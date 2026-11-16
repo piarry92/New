@@ -1635,3 +1635,44 @@ html[data-theme="dark"] .to-zahlen span { background: rgba(255,255,255,.06); bor
 .akte.ablage-akte::after { content: "Hier ablegen: Fotos kommen in die Galerie, andere Dateien zu den Dokumenten der Anlage"; position: absolute; inset: 0;
   display: flex; align-items: flex-start; justify-content: center; text-align: center; padding: 200px 24px 24px; font-weight: 700; font-size: 1.25rem;
   color: var(--orange); background: color-mix(in srgb, var(--weiss) 85%, transparent); border-radius: 18px; z-index: 50; pointer-events: none; }
+
+/* 3D-Ansicht der Gebäude (Leitstand): immer dunkel, Etagen als Ebenen im Raum */
+.g3 { display: grid; grid-template-columns: 250px minmax(0, 1fr) 270px; gap: 14px; background: radial-gradient(1200px 700px at 50% 30%, #1d3b8f 0%, #0d1a45 55%, #080f2b 100%); border-radius: 18px; padding: 16px; color: #dfe8ff; min-height: 720px; }
+.g3 h4 { margin: 0 0 10px; font-size: .8rem; letter-spacing: .08em; text-transform: uppercase; color: #9fb6ee; }
+.g3-links, .g3-rechts { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.g3-karte, .g3-wahl { background: rgba(255,255,255,.07); border: 1px solid rgba(160,190,255,.22); border-radius: 14px; padding: 14px; backdrop-filter: blur(6px); }
+.g3-ring { width: 118px; height: 118px; margin: 4px auto 12px; border-radius: 50%; display: grid; place-content: center; text-align: center; background: radial-gradient(closest-side, #12235c 78%, transparent 80%), conic-gradient(#2ee6a8 calc(var(--p) * 1%), rgba(255,255,255,.14) 0); }
+.g3-ring b { font-size: 1.9rem; line-height: 1; } .g3-ring small { font-size: .9rem; } .g3-ring span { font-size: .72rem; color: #9fb6ee; }
+.g3-zahlen { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; text-align: center; font-size: .7rem; color: #9fb6ee; } .g3-zahlen b { display: block; font-size: 1.25rem; color: #fff; }
+.g3-kreise { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; text-align: center; font-size: .68rem; color: #9fb6ee; }
+.g3-kreise b { display: grid; place-content: center; width: 54px; height: 54px; margin: 0 auto 6px; border-radius: 50%; border: 5px solid var(--c); color: #fff; font-size: 1.1rem; box-shadow: 0 0 14px color-mix(in srgb, var(--c) 55%, transparent); }
+.g3-bal { display: grid; grid-template-columns: 92px 1fr 26px 22px; align-items: center; gap: 6px; font-size: .76rem; margin: 6px 0; } .g3-bal span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.g3-bal i { height: 7px; border-radius: 4px; background: rgba(255,255,255,.12); } .g3-bal u { display: block; height: 100%; border-radius: 4px; background: linear-gradient(90deg, #3d7bff, #5fd0ff); }
+.g3-bal b { text-align: right; color: #fff; } .g3-bal em { font-style: normal; font-size: .68rem; background: #ff4d6d; color: #fff; border-radius: 9px; text-align: center; padding: 1px 0; }
+.g3-leer { color: #9fb6ee; font-size: .8rem; margin: 4px 0; }
+.g3-mitte { display: flex; flex-direction: column; min-width: 0; }
+.g3-kopf { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; } .g3-ort { display: flex; align-items: center; gap: 8px; font-size: 1rem; } .g3-ort svg { width: 18px; height: 18px; }
+.g3-geb { display: flex; gap: 6px; flex-wrap: wrap; } .g3-geb button { border: 1px solid rgba(160,190,255,.3); background: rgba(255,255,255,.06); color: #dfe8ff; border-radius: 999px; padding: 6px 14px; cursor: pointer; font-size: .82rem; } .g3-geb button.an { background: #3d7bff; border-color: #3d7bff; color: #fff; font-weight: 700; }
+.g3-buehne { position: relative; flex: 1; min-height: 560px; overflow: hidden; perspective: 2200px; cursor: grab; touch-action: none; user-select: none; } .g3-buehne:active { cursor: grabbing; }
+.g3-welt { position: absolute; left: 54%; top: 50%; width: 0; height: 0; transform-style: preserve-3d; }
+.g3-ebene { position: absolute; left: 0; top: 0; display: flex; gap: 14px; transform-style: preserve-3d; transition: opacity .25s; cursor: pointer; }
+.g3-plan { position: relative; height: 100%; background: rgba(214,226,255,.9); border: 2px solid color-mix(in srgb, var(--c) 80%, #fff); box-shadow: 0 0 0 1px rgba(8,15,43,.5), 0 0 26px color-mix(in srgb, var(--c) 60%, transparent), 10px 10px 0 rgba(8,15,43,.55); overflow: hidden; }
+.g3-plan::after { content: ""; position: absolute; inset: 0; background: color-mix(in srgb, var(--c) 24%, transparent); mix-blend-mode: multiply; pointer-events: none; }
+.z-leer .g3-plan::after { background: rgba(120,140,190,.25); } .z-leer .g3-plan { box-shadow: 0 0 0 1px rgba(8,15,43,.5), 10px 10px 0 rgba(8,15,43,.55); }
+.g3-plan img { width: 100%; height: 100%; object-fit: fill; display: block; opacity: .92; pointer-events: none; }
+.g3-ebene.blass { opacity: .22; } .g3-ebene.an .g3-plan { border-width: 4px; box-shadow: 0 0 0 1px #fff, 0 0 46px var(--c), 10px 10px 0 rgba(8,15,43,.55); }
+.g3-pkt { position: absolute; width: 16px; height: 16px; margin: -8px 0 0 -8px; border-radius: 50%; background: var(--c); border: 2px solid #0b1640; box-shadow: 0 0 10px var(--c); z-index: 2; cursor: pointer; } .g3-pkt:hover { transform: scale(1.6); }
+.g3-schilder button { position: absolute; border: 0; background: none; color: #dfe8ff; font-weight: 700; font-size: .92rem; cursor: pointer; white-space: nowrap; padding: 2px 4px; text-shadow: 0 1px 6px #080f2b; border-left: 3px solid var(--c); }
+.g3-schilder button.an { color: #fff; font-size: 1.05rem; } .g3-schilder em { font-style: normal; margin-left: 6px; font-size: .7rem; background: var(--c); color: #0b1640; border-radius: 9px; padding: 1px 6px; }
+.g3-regler { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; font-size: .76rem; color: #9fb6ee; padding-top: 8px; } .g3-regler label { display: flex; align-items: center; gap: 8px; } .g3-regler input { accent-color: #5fd0ff; width: 130px; }
+.g3-liste { display: flex; flex-direction: column; max-height: 380px; overflow: auto; } .g3-liste button { display: grid; grid-template-columns: 12px 1fr auto; gap: 10px; align-items: center; border: 0; border-bottom: 1px solid rgba(160,190,255,.14); background: none; color: #dfe8ff; padding: 9px 6px; cursor: pointer; text-align: left; font-size: .86rem; }
+.g3-liste button:hover, .g3-liste button.an { background: rgba(95,208,255,.14); } .g3-liste i { width: 10px; height: 10px; border-radius: 50%; } .g3-liste b { color: #9fb6ee; font-weight: 600; }
+.g3-wahl > b { font-size: 1.15rem; color: #fff; display: block; } .g3-wahl > small { color: #9fb6ee; display: block; margin-bottom: 8px; }
+.g3-wahl button[data-anl] { display: block; width: 100%; text-align: left; border: 0; border-left: 3px solid var(--c); background: rgba(255,255,255,.06); color: #dfe8ff; padding: 7px 9px; margin: 5px 0; border-radius: 0 8px 8px 0; cursor: pointer; font-size: .8rem; } .g3-wahl button[data-anl] span { display: block; color: #9fb6ee; font-size: .72rem; }
+.g3-kn { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; } .g3 .knopf:not(.haupt-k) { background: rgba(255,255,255,.1); color: #fff; border-color: rgba(160,190,255,.3); }
+.g3-info { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); width: min(520px, calc(100% - 24px)); background: rgba(20,32,74,.94); border: 1px solid rgba(160,190,255,.35); border-radius: 16px; padding: 16px 18px; box-shadow: 0 18px 50px rgba(0,0,0,.5); cursor: default; z-index: 5; }
+.g3-x { position: absolute; right: 10px; top: 8px; border: 0; background: none; color: #9fb6ee; font-size: 1.5rem; cursor: pointer; }
+.g3-ik { display: flex; gap: 12px; align-items: center; } .g3-sym { background: #fff; border-radius: 10px; padding: 5px; display: grid; } .g3-ik small { color: #9fb6ee; display: block; font-size: .72rem; } .g3-ik b { display: block; font-size: 1.1rem; color: #fff; } .g3-ik span { font-size: .8rem; }
+.g3-iz { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 14px 0 10px; } .g3-iz small, .g3-iv small { color: #9fb6ee; font-size: .68rem; text-transform: uppercase; letter-spacing: .06em; display: block; } .g3-iz b { font-size: 1.2rem; color: #fff; }
+.g3-iv div { display: grid; grid-template-columns: 76px 120px 1fr; gap: 8px; font-size: .78rem; padding: 4px 0; border-bottom: 1px solid rgba(160,190,255,.12); } .g3-iv span { color: #9fb6ee; } .g3-iv i { font-style: normal; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 1180px) { .g3 { grid-template-columns: 1fr; } .g3-links { flex-direction: row; flex-wrap: wrap; } .g3-links .g3-karte { flex: 1 1 220px; } .g3-mitte { order: -1; } .g3-buehne { min-height: 460px; } .g3-regler span { display: none; } }

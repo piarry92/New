@@ -50,7 +50,7 @@ WD_PFAD = DATEN / "winterdienstfotos"
 PROFIL_PFAD = DATEN / "profilbilder"
 MAX_SYMBOL = 2 * 1024 * 1024
 MAX_UPLOAD = 25 * 1024 * 1024
-VERSION = "2026.11.16-11"  # muss zu VERSION in static/app.js passen
+VERSION = "2026.11.16-12"  # muss zu VERSION in static/app.js passen
 SITZUNG_TAGE = 7
 
 GEWERKE = [
@@ -2047,7 +2047,7 @@ def plaene_uebersicht(con, objekt_id: int) -> dict:
     plaene = [dict(r) for r in con.execute(
         "SELECT id, titel, gebaeude, etage, dateiname, breite, hoehe FROM plaene WHERE objekt_id=? ORDER BY titel", (objekt_id,))]
     felder = ("id", "bezeichnung", "nummer", "gewerk", "standort", "status", "plan_id", "planzeichen", "symbol_id", "kategorie_id",
-              "typ_id", "qr_token", "tickets_offen", "naechste", "naechste_art", "ampel")
+              "typ_id", "qr_token", "tickets_offen", "naechste", "naechste_art", "ampel", "plan_x", "plan_y")
     return {"objekt": dict(o), "heute": heute().isoformat(), "plaene": plaene,
             "anlagen": [{k: a.get(k) for k in felder} for a in anlagen_mit_ampel(con, objekt_id)]}
 

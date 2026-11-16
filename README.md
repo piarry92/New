@@ -338,6 +338,12 @@ Kevox-Bildschirmfotos. Die übrigen Hersteller sind bekannte Anbieter. Die Liste
 Herstellertyp hinterlegt ist, stehen allgemeine Bauarten oder Klassen (z. B. T30-1). Intervalle sind Vorschläge.
 Pflegen dürfen nur Zugänge mit dem Recht „Katalog pflegen“.
 
+## 3D-Ansicht der Gebäude
+
+Unter **Standorte & Pläne** oben auf **3D** umschalten. Jede Etage ist eine Ebene mit ihrem Grundriss, gestapelt wie im Haus. Die Farbe zeigt den Zustand der Etage, die Punkte sind die Anlagen. Ziehen dreht das Gebäude, die Regler ändern Abstand und Größe. Ein Klick auf eine Etage wählt sie aus, ein Klick auf einen Punkt zeigt Zustand, nächsten Termin und Verlauf der Anlage. Links stehen die Kennzahlen des Objekts, rechts die Etagen.
+
+Die Ansicht entsteht aus den vorhandenen Grundrissen. Echte 3D-Modelle von Maschinen und Rohrleitungen brauchen ein 3D-Modell des Gebäudes (BIM) und sind nicht enthalten.
+
 ## Fotos und Dateien an eine Anlage hängen
 
 Auf der Seite einer Anlage Fotos oder Dateien einfach hineinziehen, auch mehrere auf einmal. Fotos kommen in die Galerie, andere Dateien (PDF, Word, Excel) zu den Dokumenten der Anlage. Die Art des Dokuments wird aus dem Dateinamen erraten (Prüfbericht, Wartungsprotokoll, Rechnung …). Ein kopiertes Bild lässt sich mit Strg+V einfügen.

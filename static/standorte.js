@@ -184,7 +184,7 @@ async function gebaeudeUebersicht(ziel, objektId, q) {
   const o = S.cache.objekte.find((x) => x.id === objektId);
   let d, geb, etagen, zellen, frei, auff, wahl = null, ansicht = "gebaeude";
   try { ansicht = localStorage.getItem("cafm-plaene-ansicht") || "gebaeude"; } catch (e) { /* egal */ }
-  if (!["gebaeude", "kacheln", "liste"].includes(ansicht)) ansicht = "gebaeude";
+  if (!["gebaeude", "dreid", "kacheln", "liste"].includes(ansicht)) ansicht = "gebaeude";
   const key = (g, e) => `${g}|${e}`;
   const gebName = (g) => g || (geb.length > 1 ? "Ohne Gebäudeangabe" : o.name);
   const zName = (z) => [z.g || (geb.length > 1 ? "Ohne Gebäudeangabe" : ""), z.e || "Ohne Etage"].filter(Boolean).join(" · ");
@@ -315,17 +315,20 @@ async function gebaeudeUebersicht(ziel, objektId, q) {
   };
 
   const zeichnen = () => {
-    const knoepfe = `<div class="umschalter">${[["gebaeude", "Gebäude"], ["kacheln", "Kacheln"], ["liste", "Liste"]].map(([k, t]) => `<button type="button" data-ans="${k}" class="${ansicht === k ? "an" : ""}">${t}</button>`).join("")}</div>
+    const knoepfe = `<div class="umschalter">${[["gebaeude", "Gebäude"], ["dreid", "3D"], ["kacheln", "Kacheln"], ["liste", "Liste"]].map(([k, t]) => `<button type="button" data-ans="${k}" class="${ansicht === k ? "an" : ""}">${t}</button>`).join("")}</div>
       ${aendern ? `<button class="knopf" type="button" data-gu="import">Grundrisse importieren</button><button class="knopf haupt-k" type="button" data-gu="neu">${icon("plus")} Grundriss</button>` : ""}`;
     const leer = '<div class="karte leer">Für dieses Objekt gibt es noch keinen Grundriss. Lade oben den ersten hoch, zum Beispiel für das EG.</div>';
     const innen = !d.plaene.length ? leer
       : ansicht === "kacheln" ? geb.map((g) => `${geb.length > 1 ? `<h3 class="gu-geb">${esc(gebName(g))}</h3>` : ""}${planKarten(d.plaene.filter((p) => (p.gebaeude || "") === g).sort(etagenSort), false)}`).join("")
       : ansicht === "liste" ? tabelle()
+      : ansicht === "dreid" ? '<div id="g3Ziel"></div>'
       : `<div class="gu-layout">${gitter()}${rechts()}</div>`;
     el.innerHTML = seitenkopf("Standorte & Pläne", `${o.kuerzel || o.name} · Bestand`, knoepfe)
       + (d.plaene.length || d.anlagen.length ? `<div class="gu-such">${icon("suche")}<input type="search" id="guSuche" placeholder="Anlage, Raum oder Etage suchen. Das Programm öffnet gleich den richtigen Plan." autocomplete="off">
           <div class="bsp">${beispiele().length ? "z. B. " + beispiele().map((b) => `<button type="button" data-bsp="${esc(b)}">${esc(b)}</button>`).join("") : ""}</div><div class="gu-treffer" id="guTreffer" hidden></div></div>` : "")
       + `<div id="guInnen">${innen}</div>`;
+    const g3 = el.querySelector("#g3Ziel");
+    if (g3) dreidZeichnen(g3, { d, geb, zellen, gebName, objektId, o, start: wahl ? zellen.get(wahl).g : null });
     const feld = el.querySelector("#guSuche"), box = el.querySelector("#guTreffer");
     if (!feld) return;
     const suchen = () => {
