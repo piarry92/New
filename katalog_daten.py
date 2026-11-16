@@ -54,7 +54,7 @@ KATEGORIEN = [
      "typen": ["Wandhydrant Typ F", "Wandhydrant Typ S", "Trockene Steigleitung", "Überflurhydrant", "Unterflurhydrant"],
      "maengel": [("Schlauch beschädigt", "Hydrant", "mittel", 14), ("Schrank nicht zugänglich", "Brandschutz", "hoch", 3),
                  ("Prüfplakette fehlt", "Hydrant", "gering", 30), ("Undicht", "Hydrant", "mittel", 7)]},
-    {"name": "Tür", "gewerk": "Türen/Tore", "farbe": "Rot", "symbol": "i:tuer", "nr": "204",
+    {"name": "Brandschutztür", "gewerk": "Türen/Tore", "farbe": "Rot", "symbol": "i:tuer", "nr": "204",
      "pruefung": 12, "grundlage": "Zulassung und Herstellerangaben, DIN 14677 bei Feststellanlagen",
      "felder": TUER_FELDER,
      "hersteller_typen": {
@@ -222,6 +222,49 @@ KATEGORIEN = [
      "hersteller": ["asecos", "DÜPERTHAL"],
      "typen": ["Gefahrstoffschrank", "Gefahrstofflager", "Auffangwanne"],
      "maengel": [("Schrank schließt nicht selbsttätig", "Gefahrstoffe", "hoch", 3), ("Kennzeichnung fehlt", "Gefahrstoffe", "mittel", 14)]},
+    # --- Reihen, die mit der Inventarnummer nach Objekt-Kürzel dazugekommen sind (Stand 2026-11) ---
+    {"name": "Brandschutzklappe", "gewerk": "Brandschutz", "farbe": "Rot", "symbol": "i:lueftung", "nr": "213", "neu": True,
+     "pruefung": 12, "grundlage": "Zulassung und Herstellerangaben (Intervall prüfen)",
+     "felder": "Art; Auswahl; Brandschutzklappe, Entrauchungsklappe, Brandschutzventil\nNennweite; Text\nAuslösung; Auswahl; Schmelzlot, Motor, Federrücklauf",
+     "hersteller": ["TROX", "Wildeboer", "SCHAKO", "Strulik", "Systemair"],
+     "typen": ["Brandschutzklappe", "Entrauchungsklappe", "Brandschutzventil"],
+     "maengel": [("Klappe schließt nicht", "Brandschutz", "hoch", 3), ("Klappe nicht zugänglich", "Brandschutzklappe", "mittel", 14),
+                 ("Auslöseeinrichtung defekt", "Brandschutz", "hoch", 3), ("Kennzeichnung fehlt", "Brandschutzklappe", "gering", 30)]},
+    {"name": "Löschanlage", "gewerk": "Brandschutz", "farbe": "Rot", "symbol": "i:sanitaer", "nr": "214", "neu": True,
+     "wartung": 12, "grundlage": "Herstellerangaben, Prüfverordnung des Landes (Intervall prüfen)",
+     "felder": "Art; Auswahl; Sprinkleranlage nass, Sprinkleranlage trocken, Gaslöschanlage, Druckerhöhung Löschwasser, Einspeisung\nSchutzbereich; Text",
+     "hersteller": ["Minimax", "Total Walther", "Calanbau"],
+     "typen": ["Sprinkleranlage", "Sprinklerzentrale", "Gaslöschanlage", "Druckerhöhungsanlage Löschwasser", "Einspeisung Feuerwehr"],
+     "maengel": [("Anlagendruck außerhalb des Sollbereichs", "Brandschutz", "hoch", 1), ("Sprinkler abgedeckt oder zugestellt", "Brandschutz", "hoch", 3),
+                 ("Störmeldung an der Zentrale", "Löschanlage", "hoch", 1), ("Betriebsbuch nicht geführt", "Löschanlage", "gering", 30)]},
+    {"name": "Brandschutztor", "gewerk": "Türen/Tore", "farbe": "Rot", "symbol": "i:tor", "nr": "215", "neu": True,
+     "pruefung": 12, "grundlage": "Zulassung und Herstellerangaben, ASR A1.7",
+     "felder": "Feuerwiderstand; Auswahl; T30, T60, T90, EI2 30, EI2 60, EI2 90\nFeststellanlage; Ja/Nein\nBreite (mm); Zahl\nHöhe (mm); Zahl",
+     "hersteller": ["Hörmann", "Novoferm", "Teckentrup", "Effertz"],
+     "typen": ["Feuerschutz-Schiebetor", "Feuerschutz-Rolltor", "Feuerschutz-Sektionaltor", "Feuerschutzvorhang"],
+     "maengel": [("Tor schließt nicht selbsttätig", "Brandschutz", "hoch", 3), ("Schließbereich zugestellt", "Brandschutz", "hoch", 1),
+                 ("Feststellanlage defekt", "Brandschutztor", "hoch", 3), ("Torprüfung fällig", "Brandschutztor", "gering", 30)]},
+    {"name": "Gaswarnanlage", "gewerk": "Brandschutz", "farbe": "Rot", "symbol": "i:melder", "nr": "216", "neu": True,
+     "wartung": 12, "grundlage": "Herstellerangaben (Intervall prüfen)",
+     "felder": "Art; Auswahl; CO-Warnanlage, Gaswarnanlage\nGas; Text\nAnzahl Sensoren; Zahl",
+     "hersteller": ["Dräger", "MSR-Electronic", "Honeywell"],
+     "typen": ["CO-Warnanlage", "Gaswarnanlage", "Gassensor"],
+     "maengel": [("Sensor löst nicht aus", "Brandschutz", "hoch", 1), ("Störmeldung an der Zentrale", "Gaswarnanlage", "hoch", 1),
+                 ("Kalibrierung fällig", "Gaswarnanlage", "mittel", 14)]},
+    {"name": "Blitzschutz", "gewerk": "Elektro", "farbe": "Gelb", "symbol": "i:elektro", "nr": "310", "neu": True,
+     "grundlage": "DIN EN 62305-3 (Prüfintervall je nach Schutzklasse)",
+     "felder": "Schutzklasse; Auswahl; I, II, III, IV\nArt; Auswahl; Äußerer Blitzschutz, Innerer Blitzschutz",
+     "hersteller": ["Allgemein", "DEHN", "OBO Bettermann"],
+     "typen": ["Äußerer Blitzschutz", "Überspannungsschutz", "Potentialausgleich"],
+     "maengel": [("Fangleitung beschädigt", "Blitzschutz", "mittel", 14), ("Erdungsanschluss korrodiert", "Blitzschutz", "mittel", 14),
+                 ("Prüfung fällig", "Blitzschutz", "gering", 30)]},
+    {"name": "Tür ohne Brandschutz", "gewerk": "Türen/Tore", "farbe": "Blau", "symbol": "i:tuer", "nr": "405", "neu": True,
+     "pruefung": 12, "grundlage": "ASR A1.7 bei kraftbetätigten Türen, Herstellerangaben",
+     "felder": "Art; Auswahl; Eingangstür, Innentür, Automatische Schiebetür, Drehflügeltür, Karusselltür\nAntrieb; Ja/Nein\nFluchtwegtür; Ja/Nein",
+     "hersteller": ["GEZE", "dormakaba", "record"],
+     "typen": ["Automatische Schiebetür", "Drehflügelantrieb", "Karusselltür", "Eingangstür", "Innentür"],
+     "maengel": [("Tür schließt nicht", "Tür", "mittel", 7), ("Antrieb ohne Funktion", "Tür", "mittel", 3),
+                 ("Sensor oder Lichtschranke defekt", "Tür", "hoch", 2), ("Türprüfung fällig", "Tür", "gering", 30)]},
 ]
 
 ALLGEMEINE_MAENGEL = [
@@ -231,25 +274,48 @@ ALLGEMEINE_MAENGEL = [
 ]
 
 
+def _kategorie_anlegen(con, einfuegen, k: dict) -> int:
+    kid = einfuegen(con, "kat_kategorien", {
+        "name": k["name"], "gewerk": k["gewerk"], "farbe": k["farbe"], "symbol": k["symbol"],
+        "nummernkreis": k["nr"], "pruefung_monate": k.get("pruefung"), "wartung_monate": k.get("wartung"),
+        "kontrolle_monate": k.get("kontrolle"), "grundlage": k.get("grundlage"), "zusatzfelder": k.get("felder")})
+    alle = dict(k.get("hersteller_typen", {}))
+    for h in k.get("hersteller", []):
+        alle.setdefault(h, list(k.get("typen", [])))
+    for hersteller, typen in alle.items():
+        gid = einfuegen(con, "kat_gruppen", {"kategorie_id": kid, "name": hersteller})
+        for t in typen:
+            einfuegen(con, "kat_typen", {"gruppe_id": gid, "kategorie_id": kid, "name": t})
+    for text, bereich, gef, tage in k.get("maengel", []):
+        einfuegen(con, "kat_maengel", {"kategorie_id": kid, "text": text, "bereich": bereich,
+                                       "gefaehrdung": gef, "frist_tage": tage})
+    return kid
+
+
+def katalog_ergaenzen(con, einfuegen) -> list:
+    """Bestehender Katalog: Die neuen Reihen einmal nachtragen. Was es dem Namen oder der Reihe nach schon gibt, bleibt
+    unberührt. Die Kategorie „Tür“ (Reihe 204) heißt jetzt „Brandschutztür“, weil Türen ohne Brandschutz eine eigene
+    Reihe bekommen. Liefert die Namen der neu angelegten Kategorien."""
+    if not con.execute("SELECT COUNT(*) FROM kat_kategorien").fetchone()[0]:
+        return []
+    namen = {str(r[0] or "").strip().lower() for r in con.execute("SELECT name FROM kat_kategorien")}
+    reihen = {str(r[0] or "").strip() for r in con.execute("SELECT nummernkreis FROM kat_kategorien")}
+    if "brandschutztür" not in namen:
+        con.execute("UPDATE kat_kategorien SET name='Brandschutztür' WHERE name='Tür' AND TRIM(COALESCE(nummernkreis,''))='204'")
+    neu = []
+    for k in KATEGORIEN:
+        if k.get("neu") and k["name"].lower() not in namen and k["nr"] not in reihen:
+            _kategorie_anlegen(con, einfuegen, k)
+            neu.append(k["name"])
+    return neu
+
+
 def katalog_anlegen(con, einfuegen) -> None:
     """Legt den Grundbestand an, wenn der Katalog leer ist."""
     if con.execute("SELECT COUNT(*) FROM kat_kategorien").fetchone()[0]:
         return
     for k in KATEGORIEN:
-        kid = einfuegen(con, "kat_kategorien", {
-            "name": k["name"], "gewerk": k["gewerk"], "farbe": k["farbe"], "symbol": k["symbol"],
-            "nummernkreis": k["nr"], "pruefung_monate": k.get("pruefung"), "wartung_monate": k.get("wartung"),
-            "kontrolle_monate": k.get("kontrolle"), "grundlage": k.get("grundlage"), "zusatzfelder": k.get("felder")})
-        alle = dict(k.get("hersteller_typen", {}))
-        for h in k.get("hersteller", []):
-            alle.setdefault(h, list(k.get("typen", [])))
-        for hersteller, typen in alle.items():
-            gid = einfuegen(con, "kat_gruppen", {"kategorie_id": kid, "name": hersteller})
-            for t in typen:
-                einfuegen(con, "kat_typen", {"gruppe_id": gid, "kategorie_id": kid, "name": t})
-        for text, bereich, gef, tage in k.get("maengel", []):
-            einfuegen(con, "kat_maengel", {"kategorie_id": kid, "text": text, "bereich": bereich,
-                                           "gefaehrdung": gef, "frist_tage": tage})
+        _kategorie_anlegen(con, einfuegen, k)
     for text, bereich, gef, tage in ALLGEMEINE_MAENGEL:
         einfuegen(con, "kat_maengel", {"kategorie_id": None, "text": text, "bereich": bereich,
                                        "gefaehrdung": gef, "frist_tage": tage})

@@ -29,7 +29,13 @@ function owSetzen(id, neuZeichnen = true) {
   else route();
 }
 
+/* Liste der Objekte neu holen, ohne die Wahl zu ändern (neue Objekte erscheinen so sofort) */
+async function owListeNeu() {
+  try { S.alleObjekte = await api("GET", "objekte", undefined, { alle: true }); } catch (e) { /* alte Liste behalten */ }
+}
+
 async function owWaehlen(erzwungen = false) {
+  await owListeNeu();
   const liste = S.alleObjekte;
   const html = `<p class="klein">${erzwungen ? "Bitte zuerst das Objekt wählen. Danach zeigen alle Bereiche nur dieses Objekt." : "Danach zeigen alle Bereiche nur dieses Objekt."}</p>
     <input type="search" id="owSuche" placeholder="Objekt suchen: Kürzel, Name, Ort …" style="width:100%;margin:6px 0 12px" autocomplete="off">
@@ -82,6 +88,7 @@ async function owWaehlen(erzwungen = false) {
   const altRoute = route;
   route = async function () {
     const m = location.hash.match(/^#\/(?:objekte|vorgaenge)\/(\d+)/);
+    if (m && S.objekt && Number(m[1]) !== S.objekt && !S.alleObjekte.some((o) => o.id === Number(m[1]))) await owListeNeu();   // gerade erst angelegt?
     if (m && S.objekt && Number(m[1]) !== S.objekt && S.alleObjekte.some((o) => o.id === Number(m[1]))) {
       owSetzen(m[1], false);
       rahmen();

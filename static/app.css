@@ -1621,3 +1621,10 @@ html[data-theme="dark"] .pv-et.an { color: #fff; }
 .to-zahlen span { background: var(--zartgrau); border: 1px solid var(--hellgrau); border-radius: 999px; padding: 3px 12px; font-size: 13.5px; }
 .to-zahlen b { font-weight: 700; }
 html[data-theme="dark"] .to-zahlen span { background: rgba(255,255,255,.06); border-color: rgba(255,255,255,.14); }
+
+/* ---------- Inventarnummern vergeben (Fenster in der Anlagenliste) ---------- */
+.nv-wahl { display: grid; gap: 8px; margin: 12px 0; }
+.nv-tab { width: 100%; border-collapse: collapse; font-size: 14.5px; }
+.nv-tab th { text-align: left; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--dunkelgrau); padding: 6px 8px; border-bottom: 2px solid var(--hellgrau); }
+.nv-tab td { padding: 6px 8px; border-bottom: 1px solid var(--zartgrau); vertical-align: top; }
+#nvTafel { max-height: 46vh; overflow: auto; }

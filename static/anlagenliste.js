@@ -35,12 +35,12 @@ async function anlagenListe(ziel, opt = {}) {
     <div class="al-werkzeug"><label class="al-ue">Überschriften <select id="alUe">${AL_UE.map(([v, t]) => `<option value="${v}" ${v === ue ? "selected" : ""}>${t}</option>`).join("")}</select></label>
       <button class="knopf klein" id="alUeNeu" hidden>${icon("plus")} Überschrift hinzufügen</button>
       <span class="al-rechts">${darf("export") ? `<a class="knopf klein" href="/api/export/anlagen">${icon("export")} Excel</a>` : ""}<button class="knopf klein" id="alQr">QR-Etiketten</button>
-        ${kannAendern ? `<button class="knopf haupt-k" id="alNeu">${icon("plus")} Anlage</button>` : ""}</span></div>
+        ${kannAendern ? `<button class="knopf klein" id="alNr">Nummern vergeben</button><button class="knopf haupt-k" id="alNeu">${icon("plus")} Anlage</button>` : ""}</span></div>
     <div class="karte al-karte"><div class="al-wrap"><table class="al-tab"><thead><tr><th></th><th></th>${spalten.map(([f, t]) => `<th data-sort="${f}">${t}<span class="al-pfeil"></span></th>`).join("")}</tr></thead><tbody id="alBody"></tbody></table></div>
       <div class="al-fuss" id="alFuss"></div></div>`;
 
   const sichtbar = () => zeilen.filter((z) => (!gewerk || z.a.gewerk === gewerk) && (!nurRot || z.st === "rot") && (!nurSv || z.a.sv_relevant)
-    && (!suche || [z.a.nummer, z.a.bezeichnung, z.a.standort, z.hersteller, z.kategorie, z.a.gewerk].some((x) => String(x || "").toLowerCase().includes(suche))))
+    && (!suche || [z.a.nummer, z.a.nummer_alt, z.a.bezeichnung, z.a.standort, z.hersteller, z.kategorie, z.a.gewerk].some((x) => String(x || "").toLowerCase().includes(suche))))
     .sort((x, y) => { const a = wert(x, sort) ?? "", b = wert(y, sort) ?? ""; const leerA = a === "" || a == null, leerB = b === "" || b == null;
       if (leerA !== leerB) return leerA ? 1 : -1; return (a < b ? -1 : a > b ? 1 : 0) * (auf ? 1 : -1); });
   const gruppeVon = (z) => ue === "gewerk" ? z.a.gewerk : ue === "kategorie" ? z.kategorie : ue === "gruppe" ? z.a.gruppe : ue === "standort" ? (z.a.standort || "").split(/[·,/]/)[0].trim() : ue === "eigene" ? z.a.liste_ueberschrift : "";
@@ -100,8 +100,43 @@ async function anlagenListe(ziel, opt = {}) {
     const tr = e.target.closest("tr[data-id]"); if (tr) location.hash = `#/anlagen/${tr.dataset.id}`;
   });
   ziel.querySelector("#alQr").onclick = () => etikettenDrucken(sichtbar().map((z) => z.a), "QR-Etiketten");
+  const nr = ziel.querySelector("#alNr");
+  if (nr) nr.onclick = async () => { if (await nummernDialog(opt.objekt_id || S.objekt || null)) { cacheLeeren(); await anlagenListe(ziel, opt); } };
   const neu = ziel.querySelector("#alNeu");
   if (neu) neu.onclick = async () => { const a = await bearbeiten("anlagen", null, opt.objekt_id || S.objekt ? { objekt_id: Number(opt.objekt_id || S.objekt) } : {}); if (a && a.id) location.hash = `#/anlagen/${a.id}`; };
+}
+
+/* Inventarnummern für vorhandene Anlagen: erst zeigen, was passieren würde, dann vergeben */
+async function nummernDialog(objektId) {
+  const objekt = objektId ? (S.cache.objekte || []).find((o) => o.id === Number(objektId)) : null;
+  const wo = objekt ? `im Objekt ${objekt.kuerzel}` : "in allen Objekten";
+  const holen = (umfang, vorschau) => api("POST", "anlagen/nummern", { ...(objektId ? { objekt_id: Number(objektId) } : {}), umfang, vorschau });
+  let vor;
+  try { vor = { fehlende: await holen("fehlende", true), alle: await holen("alle", true) }; } catch (err) { melde(err.message, true); return false; }
+  if (!vor.alle.anzahl) { melde(`Alle Anlagen ${wo} haben schon eine passende Inventar-Nr.`); return false; }
+  let umfang = vor.fehlende.anzahl ? "fehlende" : "alle";
+  const tafel = (v) => !v.anzahl ? '<p class="klein">Hier gibt es nichts zu vergeben.</p>' : `
+    <table class="nv-tab"><thead><tr><th>Reihe</th><th>Kategorie</th><th>Anlagen</th><th>erste neue Nummer</th></tr></thead><tbody>
+      ${v.reihen.map((r) => `<tr><td><b>${esc(r.reihe)}</b></td><td>${esc(r.name)}</td><td>${r.anzahl}</td><td>${esc(r.beispiel)}<br><span class="klein">${esc(r.anlage || "")}</span></td></tr>`).join("")}</tbody></table>
+    ${v.kategorie_gesetzt ? `<p class="klein">Bei ${v.kategorie_gesetzt} ${v.kategorie_gesetzt === 1 ? "Anlage" : "Anlagen"} ohne Kategorie trägt das Programm die passende Kategorie ein. Was sich nicht zuordnen lässt, kommt in die Reihe 900.</p>` : ""}
+    ${v.beispiele.length ? `<p class="klein">Vorhandene Nummern bleiben als „Bisherige Nummer“ stehen, zum Beispiel ${esc(v.beispiele[0].alt)} → ${esc(v.beispiele[0].neu)}.</p>` : ""}`;
+  const html = `<div class="dfehler"></div>
+    <p>Jede Anlage bekommt eine Nummer aus Kürzel des Objekts, Reihe der Kategorie und laufender Nummer, zum Beispiel <b>OPT-204-00012</b>.</p>
+    <div class="nv-wahl">
+      <label class="sl-k"><input type="radio" name="nvU" value="fehlende" ${umfang === "fehlende" ? "checked" : ""} ${vor.fehlende.anzahl ? "" : "disabled"}><span><b>Nur Anlagen ohne Nummer</b><br><span class="klein">${vor.fehlende.anzahl} ${wo}</span></span></label>
+      <label class="sl-k"><input type="radio" name="nvU" value="alle" ${umfang === "alle" ? "checked" : ""}><span><b>Alle Anlagen umstellen</b><br><span class="klein">${vor.alle.anzahl} ${wo}: auch Anlagen mit einer Nummer in anderer Form. Vorher legt das Programm eine Sicherung an.</span></span></label>
+    </div><div id="nvTafel">${tafel(vor[umfang])}</div>`;
+  const p = dialog("Inventarnummern vergeben", html, [{ text: "Abbrechen" }, {
+    text: "Nummern vergeben", klasse: "haupt-k", aktion: async () => {
+      if (!vor[umfang].anzahl) throw new Error("Hier gibt es nichts zu vergeben.");
+      const r = await holen(umfang, false);
+      melde(`${r.anzahl} Inventarnummern vergeben.`);
+      return true;
+    },
+  }]);
+  const hg = letzterDialog();
+  hg.querySelectorAll('input[name="nvU"]').forEach((x) => x.onchange = () => { umfang = x.value; hg.querySelector("#nvTafel").innerHTML = tafel(vor[umfang]); });
+  return p;
 }
 
 SEITEN.anlagen = async (el) => {

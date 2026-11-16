@@ -1,7 +1,7 @@
 /* Casa CAFM – Oberfläche (ohne Fremdbibliotheken) */
 "use strict";
 
-const VERSION = "2026.11.16-9"; // muss zu VERSION in app.py passen
+const VERSION = "2026.11.16-10"; // muss zu VERSION in app.py passen
 /* Hell- und Dunkelmodus: gemerkte Wahl, sonst wie das Gerät */
 const THEMA = (() => {
   let t = null;
@@ -383,7 +383,7 @@ function eingabe(f, wert, ressource) {
     case "email": return `<input type="email" ${n} value="${esc(v)}">`;
     case "tel": return `<input type="tel" ${n} value="${esc(v)}">`;
     case "bool": return `<input type="checkbox" name="${f.name}" ${v ? "checked" : ""}>`;
-    default: return `<input type="text" ${n} value="${esc(v)}">`;
+    default: return `<input type="text" ${n} value="${esc(v)}" ${f.platzhalter ? `placeholder="${esc(f.platzhalter)}"` : ""}>`;
   }
 }
 

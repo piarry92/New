@@ -12,7 +12,8 @@ Es läuft im Browser und braucht nur Python, sonst nichts.
 | Objekte | Kacheln mit großem Bild, darunter Kürzel, Name, Adresse, Anzahl Anlagen, offene Meldungen. Umschaltbar auf Liste. Bild per Kamera-Knopf auf der Kachel oder auf der Objektseite. Liegenschaften mit Stammdaten. Je Objekt alle Anlagen, Termine, Meldungen, Verträge, Zähler und Dokumente |
 | Anlagen | Eigene Akte je Anlage, auch hinter jedem Symbol im Plan: Fotos, Anlagennummer, Beschreibung, Gruppe, Gewerk, Hersteller, Modell, Daten, Manager, Beauftragter, Schalter für GPS-Pflicht und gesetzliche Prüf- und Wartungspflicht, Meldungen, Wartungsplan, Dokumente und Aktivität |
 | Wartungsplan | Je Anlage Aufgaben mit Intervall, Grundlage und Checkliste. Vorschläge je Anlagentyp zum Übernehmen. Gesamtübersicht als Jahresplan (Monate als Spalten) oder Liste, Filter nach Objekt, Gewerk, Art und gesetzlicher Pflicht, Export nach Excel, Drucken quer. „Als erledigt melden“ mit Checkliste und Standort rechnet den nächsten Termin selbst aus |
-| Katalog | Kategorie › Hersteller/Gruppe › Bezeichnung › Detailinfo, mit Symbol je Kategorie, Nummernkreis für die Inventar-Nr., Prüf-, Wartungs- und Kontrollintervall, Zusatzfeldern (z. B. Brandschutztür, Feuerwiderstand, Breite) und Mängelkatalog je Kategorie. Grundbestand: 30 Kategorien, 135 Hersteller, über 600 Bezeichnungen, über 100 Mängel. Erweiterbar |
+| Katalog | Kategorie › Hersteller/Gruppe › Bezeichnung › Detailinfo, mit Symbol je Kategorie, Nummernkreis für die Inventar-Nr., Prüf-, Wartungs- und Kontrollintervall, Zusatzfeldern (z. B. Brandschutztür, Feuerwiderstand, Breite) und Mängelkatalog je Kategorie. Grundbestand: 36 Kategorien, über 150 Hersteller, über 700 Bezeichnungen, über 120 Mängel. Erweiterbar |
+| Inventarnummern | Jede Anlage bekommt beim Anlegen von selbst eine Nummer aus Kürzel des Objekts, Reihe der Kategorie und laufender Nummer, zum Beispiel OPT-204-00012. Brandschutz beginnt mit 2, Technik mit 3, Gebäude mit 4, Außenanlagen mit 5. Vorhandene Anlagen bekommen ihre Nummer über „Nummern vergeben“ in der Anlagenliste (siehe „Inventarnummern“) |
 | Mängel & Störungen | Eintragsmanagement mit Frist, Gefährdung (gering, mittel, hoch), Status, Kategorie, Gruppe, Bezeichnung, Inventar-Nr., Standort. Filter nach Kategorie, Gefährdung und Frist. „Mangel erfassen“ mit Auswahl aus dem Mängelkatalog, Frist und Gefährdung werden vorgeschlagen, bis zu 4 Fotos |
 | Kalender | Monatsansicht mit Wartungen, Prüfungen, Folgeterminen, fälligen Meldungen und Kündigungsfristen |
 | Verträge | Laufzeit, Kündigungsfrist, Jahresbetrag. Warnung 90 Tage vor Ablauf der Kündigungsfrist |
@@ -337,6 +338,39 @@ Kevox-Bildschirmfotos. Die übrigen Hersteller sind bekannte Anbieter. Die Liste
 Herstellertyp hinterlegt ist, stehen allgemeine Bauarten oder Klassen (z. B. T30-1). Intervalle sind Vorschläge.
 Pflegen dürfen nur Zugänge mit dem Recht „Katalog pflegen“.
 
+## Inventarnummern
+
+- **Aufbau:** `OPT-204-00012` ist das Kürzel des Objekts (Options), die Reihe der Kategorie (204 Brandschutztüren) und die
+  laufende Nummer, gezählt je Objekt und Reihe. Die erste Ziffer der Reihe zeigt den Bereich: 2 Brandschutz und Rettung,
+  3 technische Anlagen, 4 Gebäude und Sicherheit, 5 Außenanlagen und Ausstattung, 9 ohne Kategorie.
+- **Kürzel je Objekt:** In den Stammdaten des Objekts steht „Kürzel für Inventarnummern“ (2 bis 8 Buchstaben oder Ziffern,
+  jedes nur einmal). Das Programm schlägt es aus dem Kürzel des Objekts vor, zum Beispiel Options → OPT, KRE 17 → KRE17.
+  Es lässt sich ändern. Schon vergebene Nummern bleiben dabei, wie sie sind.
+- **Reihen:** Jede Kategorie im Katalog hat ihren Nummernkreis: 201 Feuerlöscher, 202 Meldetechnik, 203 Hydranten,
+  204 Brandschutztüren, 205 Schottungen, 206 Feststellanlagen, 207 Flucht und Rettung, 208 Erste Hilfe,
+  209 Defibrillatoren, 210 Sicherheitsbeleuchtung, 211 RWA, 212 Brandmeldezentralen, 213 Brandschutzklappen,
+  214 Löschanlagen und Sprinkler, 215 Brandschutztore, 216 CO- und Gaswarnanlagen, 301 Aufzüge, 302 Heizung, 303 Klima,
+  304 Lüftung, 305 Kälte, 306 Sanitär, 307 Elektro, 308 Gebäudeautomation, 309 IT, 310 Blitzschutz, 401 Fenster,
+  402 Tore, 403 Sicherungstechnik, 404 Dach, 405 Türen ohne Brandschutz, 501 Außenanlagen, 502 Spielgeräte, 503 Regale,
+  504 Solar, 505 Gefahrstoffe. Die Reihen 213 bis 216, 310 und 405 trägt das Programm beim ersten Start der neuen
+  Version einmal in einen bestehenden Katalog nach. Die Kategorie „Tür“ (204) heißt seitdem „Brandschutztür“.
+  Weitere Reihen: im Katalog eine Kategorie mit eigenem Nummernkreis anlegen.
+- **Jede Anlage bekommt sofort eine Nummer**, egal ob sie in der Anlagenliste, im Plan, im Katalog oder bei der
+  Übernahme aus Excel entsteht. Ohne Kategorie schlägt das Programm die passende vor: aus dem Planzeichen, dem
+  SV-Prüfgegenstand, einem Wort in der Bezeichnung (zum Beispiel „Feuerlöscher“, „Sprinkler“, „Aufzug“) oder, wenn es
+  eindeutig ist, aus dem Gewerk. Passt nichts, kommt die Anlage in die Reihe 900. Bekommt sie später ihre Kategorie,
+  bekommt sie von selbst die Nummer aus der richtigen Reihe.
+- **Jede Nummer gibt es nur einmal.** Das Programm merkt sich je Objekt und Reihe die höchste vergebene Nummer. Auch nach
+  dem Löschen einer Anlage wird ihre Nummer nicht neu vergeben. Eine von Hand eingetragene Nummer wird abgelehnt, wenn
+  es sie schon gibt.
+- **Vorhandene Anlagen:** In der Anlagenliste „Nummern vergeben“. Das Fenster zeigt vorher, was passiert: je Reihe die
+  Zahl der Anlagen und die erste neue Nummer. Zur Wahl stehen „Nur Anlagen ohne Nummer“ oder „Alle Anlagen umstellen“
+  (auch Anlagen mit einer Nummer in anderer Form, vorher legt das Programm eine Sicherung an).
+- **Bisherige Nummer:** Wird eine Nummer ersetzt, bleibt die alte im Feld „Bisherige Nummer“ an der Anlage stehen, zum
+  Beispiel eine Nummer aus Wowflow. Die Suche und die Anlagenliste finden die Anlage auch darüber.
+- **Wechsel:** Zieht eine Anlage in ein anderes Objekt, bekommt sie die Nummer des neuen Objekts. Ändert sich die
+  Kategorie, bietet die Anlagenseite „Neue Inventar-Nr.“ an. Gedruckte Etiketten zeigen dann noch die alte Nummer.
+
 ## Zugänge und Rechte
 
 Ohne Anmeldung sieht niemand etwas. Ausnahme: die Meldeseite hinter dem QR-Code, und auch die nur, wenn ein
@@ -381,7 +415,9 @@ Ordner hinein. Die Datenbank wird beim Start automatisch auf den neuen Stand geb
 
 - Unter **Einstellungen**, ganz unten, steht die Karte **„Testobjekt“** (nur für Administratoren). „Testobjekt
   anlegen“ legt ein zusätzliches Objekt **TEST · Testobjekt Musterpark** an, in dem jeder Bereich gefüllt ist.
-  Die echten Objekte bleiben unverändert.
+  Die echten Objekte bleiben unverändert. Danach öffnet sich das Testobjekt und ist oben links bei „Objekt“ gewählt.
+  Ist oben links ein anderes Objekt gewählt, zeigt das Programm nur dieses eine: Das Testobjekt steht dann in der
+  Auswahl oben links und hinter „Zum Testobjekt“ in der Karte.
 - Inhalt: zwei Gebäude und Außenanlagen mit zehn gezeichneten Grundrissen (ein Geschoss mit zwei Teilplänen),
   126 Anlagen mit Katalog, Symbolen und Platz im Plan (fünf davon noch ohne Plan), 97 Wartungen und Prüfungen mit
   zwei Jahren Verlauf, SV-Prüfungen mit Berichten, SV-Mängeln und einer noch nicht übernommenen Auswertung, Mängel
@@ -394,6 +430,7 @@ Ordner hinein. Die Datenbank wird beim Start automatisch auf den neuen Stand geb
   direkt zum Bericht.
 - Alle Angaben sind erfunden. Firmen tragen den Zusatz „(Test)“, Nummern den Baustein „TEST“, Bilder den Stempel
   „TESTBILD“, Dokumente den Hinweis „Testdokument“. E-Mail-Adressen enden auf `.example` und sind nicht zustellbar.
+  Die Anlagen haben Inventarnummern wie jedes Objekt: TEST-201-00001 und so weiter.
 - Es gehen keine E-Mails raus: Die Schlüsselübergaben sind ohne Quittung und ohne Erinnerung angelegt, die Hinweise
   in der Glocke gelten als schon verschickt.
 - Solange das Testobjekt da ist, zählt es in der Gesamtübersicht „Alle Objekte“ mit, und die neun Testfirmen

@@ -200,7 +200,7 @@ function feldNamen(info) {
 const zeitText = (iso) => iso ? `${datum(iso)} ${iso.slice(11, 16) === "12:00" && iso.endsWith("12:00:00") ? "" : iso.slice(11, 16)}` : "";
 
 const KATALOG_FELDER = ["kategorie_id", "gruppe_id", "typ_id"];
-const ZEILEN = ["kategorie_id", "gruppe_id", "typ_id", "nummer", "zulassung", "status", "objekt_id", "gruppe", "gewerk", "standort", "hersteller", "typ", "seriennummer", "herstellungsdatum",
+const ZEILEN = ["kategorie_id", "gruppe_id", "typ_id", "nummer", "nummer_alt", "zulassung", "status", "objekt_id", "gruppe", "gewerk", "standort", "hersteller", "typ", "seriennummer", "herstellungsdatum",
   "inbetriebnahme", "baujahr", "garantie_bis", "planzeichen", "symbol_id"];
 const PERSONEN = ["manager", "beauftragter", "dienstleister_id"];
 const SCHALTER = ["gps_pflicht", "pruefung_pflicht", "wartung_pflicht", "sv_relevant"];
@@ -225,6 +225,11 @@ DETAIL.anlagen = async (el, id, q) => {
     return `<button class="fz" data-feld="${n}" ${aendern ? "" : "disabled"}><span class="fz-l">${esc(f.label.replace(" (statt Planzeichen)", "").replace(" (Arbeitsbereich)", ""))}</span>
       <span class="fz-w">${anzeigeWert || (aendern ? '<span class="fz-neu">+ Hinzufügen</span>' : '<span class="klein">–</span>')}</span>${aendern ? '<span class="fz-p">›</span>' : ""}</button>`;
   };
+  /* Inventarnummer: Kürzel des Objekts, Reihe der Kategorie, laufende Nummer. Passt die Nummer nicht dazu, bietet die Seite eine neue an. */
+  const nrObjekt = (S.cache.objekte || []).find((o) => o.id === a.objekt_id);
+  const nrReihe = /^\d{2,4}$/.test(String((katVon(a.kategorie_id) || {}).nummernkreis || "").trim()) ? String(katVon(a.kategorie_id).nummernkreis).trim() : "900";
+  const nrSoll = nrObjekt && nrObjekt.inventar_kuerzel ? `${nrObjekt.inventar_kuerzel}-${nrReihe}-` : "";
+  const nrPasst = !!nrSoll && new RegExp(`^${nrSoll.replace(/[-]/g, "\\-")}\\d{5}$`).test(a.nummer || "");
   const titelbild = fotos.length ? "" : `<div class="galerie-leer">${symbolVon(a, 72)}<span>${darf("dokumente_hochladen") ? "Noch kein Foto. Tippe auf +, um eins hinzuzufügen." : "Noch kein Foto."}</span></div>`;
 
   el.innerHTML = `<a class="zurueck" href="#/objekte/${a.objekt_id}">← ${esc(refText("objekte", a.objekt_id))}</a>
@@ -249,7 +254,7 @@ DETAIL.anlagen = async (el, id, q) => {
         <div class="marken">${zustandMarke(a.status)} ${a.pruefung_pflicht ? '<span class="marke m-neu">Prüfpflichtig</span>' : ""} ${a.wartung_pflicht ? '<span class="marke m-neu">Wartungspflichtig</span>' : ""} ${a.sv_relevant ? '<a class="marke m-sv" href="#/svpruefplan">SV-Prüfplan</a>' : ""}
           ${tickets.length ? `<span class="marke m-ueber">${tickets.length} Störmeldung${tickets.length > 1 ? "en" : ""} offen</span>` : ""}
           ${naechste ? `<span class="marke m-geplant">Nächster Termin ${datum(naechste)}</span> ${faelligMarke(naechste)}` : '<span class="marke m-bald">kein Wartungsplan</span>'}</div>
-        ${aendern && !a.nummer ? '<button class="knopf klein" data-feld="nummer">+ Anlagennummer</button>' : ""}
+        ${aendern && nrSoll && !nrPasst ? `<button class="knopf klein" id="nrNeu" title="Die Nummer passt nicht zu Objekt und Kategorie">${a.nummer ? "Neue Inventar-Nr." : "Inventar-Nr. vergeben"}: ${esc(nrSoll)}…</button>` : ""}
       </div>
     </div>
     ${a.sv_relevant && !hatSv ? `<div class="warnung">Diese Anlage steht im SV-Prüfplan, hat aber noch keinen Prüftermin. ${darf("wartung_planen") ? '<button class="knopf klein" id="svneu">Prüftermin anlegen</button>' : ""}</div>` : ""}
@@ -303,6 +308,17 @@ DETAIL.anlagen = async (el, id, q) => {
     const i = Math.round(gal.scrollLeft / gal.clientWidth);
     galp.querySelectorAll("span").forEach((s, k) => s.classList.toggle("an", k === i));
   });
+
+  const nrNeu = el.querySelector("#nrNeu");
+  if (nrNeu) nrNeu.onclick = async () => {
+    const ja = !a.nummer || await dialog("Neue Inventar-Nr. vergeben", `<div class="dfehler"></div>
+      <p>Die Anlage bekommt eine neue Nummer, die zu Objekt und Kategorie passt: <b>${esc(nrSoll)}…</b></p>
+      <p>Die jetzige Nummer <b>${esc(a.nummer)}</b> bleibt als „Bisherige Nummer“ an der Anlage stehen. Gedruckte Etiketten zeigen dann noch die alte Nummer.</p>`,
+      [{ text: "Abbrechen" }, { text: "Neue Nummer vergeben", klasse: "haupt-k", aktion: async () => true }]);
+    if (!ja) return;
+    try { const r = await api("POST", `anlagen/${id}/nummer-neu`, {}); melde(`Inventar-Nr. ${r.nummer} vergeben.`); cacheLeeren(); route(); }
+    catch (err) { melde(err.message, true); }
+  };
 
   /* Bearbeiten */
   el.querySelectorAll("[data-feld]").forEach((b) => b.addEventListener("click", async (e) => {

@@ -50,7 +50,7 @@ WD_PFAD = DATEN / "winterdienstfotos"
 PROFIL_PFAD = DATEN / "profilbilder"
 MAX_SYMBOL = 2 * 1024 * 1024
 MAX_UPLOAD = 25 * 1024 * 1024
-VERSION = "2026.11.16-9"  # muss zu VERSION in static/app.js passen
+VERSION = "2026.11.16-10"  # muss zu VERSION in static/app.js passen
 SITZUNG_TAGE = 7
 
 GEWERKE = [
@@ -117,6 +117,8 @@ RESSOURCEN: dict[str, dict] = {
         "felder": [
             {"name": "kuerzel", "label": "Kürzel", "typ": "text", "pflicht": True, "liste": True},
             {"name": "name", "label": "Name", "typ": "text", "pflicht": True, "liste": True},
+            {"name": "inventar_kuerzel", "label": "Kürzel für Inventarnummern (z. B. OPT)", "typ": "text",
+             "platzhalter": "leer lassen: wird vorgeschlagen"},
             {"name": "strasse", "label": "Straße", "typ": "text", "liste": True},
             {"name": "plz", "label": "PLZ", "typ": "text"},
             {"name": "ort", "label": "Ort", "typ": "text", "liste": True},
@@ -136,7 +138,8 @@ RESSOURCEN: dict[str, dict] = {
     "anlagen": {
         "label": "Anlagen", "einzahl": "Anlage", "anzeige": ["bezeichnung"], "sort": "bezeichnung",
         "felder": [
-            {"name": "nummer", "label": "Inventar-Nr.", "typ": "text", "liste": True},
+            {"name": "nummer", "label": "Inventar-Nr.", "typ": "text", "liste": True, "platzhalter": "leer lassen: wird automatisch vergeben"},
+            {"name": "nummer_alt", "label": "Bisherige Nummer (z. B. aus Wowflow)", "typ": "text"},
             {"name": "objekt_id", "label": "Objekt (Arbeitsbereich)", "typ": "ref", "ref": "objekte", "pflicht": True, "liste": True},
             {"name": "bezeichnung", "label": "Bezeichnung", "typ": "text", "pflicht": True, "liste": True},
             {"name": "beschreibung", "label": "Beschreibung", "typ": "textarea"},
@@ -646,6 +649,12 @@ CREATE TABLE IF NOT EXISTS push_abos (
     geraet TEXT,
     erstellt TEXT
 );
+CREATE TABLE IF NOT EXISTS inventar_zaehler (
+    objekt_id INTEGER NOT NULL,
+    reihe TEXT NOT NULL,
+    stand INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (objekt_id, reihe)
+);
 CREATE TABLE IF NOT EXISTS verlauf (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     zeit TEXT NOT NULL,
@@ -730,6 +739,12 @@ def db_anlegen() -> None:
             con.execute("INSERT OR REPLACE INTO einstellungen VALUES ('rechte_rollen_v2', '1')")
         for r in con.execute("SELECT id FROM objekte WHERE qr_token IS NULL OR qr_token=''").fetchall():
             con.execute("UPDATE objekte SET qr_token=? WHERE id=?", (neuer_qr_token(), r["id"]))
+        # Inventarnummern: Jedes Objekt bekommt sein Kürzel, der Katalog einmalig die neuen Reihen
+        for r in con.execute("SELECT id, kuerzel, name FROM objekte WHERE inventar_kuerzel IS NULL OR inventar_kuerzel='' ORDER BY id").fetchall():
+            con.execute("UPDATE objekte SET inventar_kuerzel=? WHERE id=?", (kuerzel_vorschlag(con, r["kuerzel"], r["name"], r["id"]), r["id"]))
+        if not con.execute("SELECT 1 FROM einstellungen WHERE schluessel='katalog_reihen_2026_11'").fetchone():
+            katalog_daten.katalog_ergaenzen(con, einfuegen)
+            con.execute("INSERT OR REPLACE INTO einstellungen VALUES ('katalog_reihen_2026_11', '1')")
         con.execute('CREATE UNIQUE INDEX IF NOT EXISTS "ux_objekte_qr" ON objekte(qr_token)')
         spalten_b = {r["name"] for r in con.execute("PRAGMA table_info(benutzer)")}
         for spalte in ("einladung", "einladung_bis", "objekte"):
@@ -1634,27 +1649,275 @@ def einstellung(con, schluessel: str) -> str:
     return r["wert"] if r and r["wert"] is not None else EINSTELLUNGEN_STANDARD.get(schluessel, "")
 
 
-def naechste_inventarnr(con, kategorie_id) -> str | None:
-    k = con.execute("SELECT nummernkreis FROM kat_kategorien WHERE id=?", (kategorie_id,)).fetchone()
-    praefix = (k["nummernkreis"] or "").strip() if k else ""
-    if not praefix.isdigit():
-        return None
-    hoechste = 0
-    for (nr,) in con.execute("SELECT nummer FROM anlagen WHERE nummer LIKE ?", (praefix + "%",)):
+# ---------------------------------------------------------------------------
+# Inventarnummern: Kürzel des Objekts, Reihe der Kategorie, laufende Nummer je Objekt und Reihe.
+# Beispiel OPT-204-00012: Objekt Options, Reihe 204 Brandschutztüren, die 12. Tür in diesem Objekt.
+# Jede Anlage bekommt beim Anlegen eine Nummer. Eine Nummer wird nie zweimal vergeben, auch nicht nach dem Löschen.
+# ---------------------------------------------------------------------------
+INV_SONST = "900"                       # Reihe für Anlagen ohne Kategorie
+INV_STELLEN = 5
+KUERZEL_MUSTER = re.compile(r"^[A-Z0-9]{2,8}$")
+PLANZEICHEN_KATEGORIE = {
+    "F001": "Feuerlöscher", "F002": "Hydrant", "F005": "Meldetechnik", "F006": "Meldetechnik", "E001": "Flucht & Rettung",
+    "E002": "Flucht & Rettung", "E003": "Erste Hilfe", "E007": "Flucht & Rettung", "E010": "Defibrillator", "E011": "Erste Hilfe",
+    "BMZ": "Brandmeldezentrale", "FAT": "Brandmeldezentrale", "FBF": "Brandmeldezentrale", "FSD": "Brandmeldezentrale", "RWA": "RWA"}
+SV_GEGENSTAND_KATEGORIE = {
+    "Raumlufttechnische Anlage (RLT)": "Lüftung", "Brandschutzklappen (BSK)": "Brandschutzklappe", "Lüftungsanlage": "Lüftung",
+    "Abgasanlage / Feuerstätte": "Heizung", "Starkstromanlage": "Elektro", "Elektrische Anlage": "Elektro",
+    "Sicherheitsbeleuchtung": "Sicherheitsbeleuchtung", "Sicherheitsstromversorgung / Notstrom": "Elektro",
+    "Blitzschutzanlage": "Blitzschutz", "Brandmelde- und Alarmierungsanlage": "Brandmeldezentrale",
+    "Maschinelle Rauchabzugsanlage (MRA)": "RWA", "Natürliche Rauchabzugsanlage (NRA)": "RWA", "Rauchabzugsanlage (RWA)": "RWA",
+    "Druckbelüftungsanlage (RDA)": "RWA", "Wandhydranten / Steigleitungen": "Hydrant", "Sprinkleranlage": "Löschanlage",
+    "Gaslöschanlage": "Löschanlage", "Feuerlöschanlage (Sprinkler, Gaslöschanlage)": "Löschanlage", "CO-Warnanlage": "Gaswarnanlage",
+    "Aufzug": "Aufzug", "Verdunstungskühlanlage": "Kälte", "Feststellanlage (Brandschutztür)": "Feststellanlage"}
+KATEGORIE_ERKENNEN = [                  # Wort in der Bezeichnung -> Kategorie; die erste passende Regel gewinnt
+    (r"feuerl[öo]scher", "Feuerlöscher"),
+    (r"brandmelde(anlage|zentrale)|\bbma\b|\bbmz\b|feuerwehr-?(bedienfeld|anzeigetableau|schl[üu]sseldepot)", "Brandmeldezentrale"),
+    (r"handfeuermelder|rauchmelder|rauchwarnmelder|w[äa]rmemelder|multisensormelder", "Meldetechnik"),
+    (r"brandschutzklappe|\bbsk\b|entrauchungsklappe", "Brandschutzklappe"),
+    (r"sprinkler|l[öo]schanlage|l[öo]schwasser|einspeisevorrichtung|\bfla\b", "Löschanlage"),
+    (r"wandhydrant|hydrant|steigleitung|\bwh\b", "Hydrant"),
+    (r"brandschutztor|feuerschutz-?(schiebe|roll|sektional)?tor", "Brandschutztor"),
+    (r"brandschutzt[üu]r|rauchschutzt[üu]r|feuerschutzt[üu]r", "Brandschutztür"),
+    (r"feststellanlage", "Feststellanlage"),
+    (r"abschottung|schottung|brandschott", "Schottung"),
+    (r"\brwa\b|\bnra\b|\bmra\b|rauchabzug|w[äa]rmeabzug|entrauchung", "RWA"),
+    (r"co-?warn|gaswarn", "Gaswarnanlage"),
+    (r"sicherheitsbeleuchtung|sicherheitslicht|notbeleuchtung|rettungszeichenleuchte|zentralbatterie", "Sicherheitsbeleuchtung"),
+    (r"defibrillator|\baed\b", "Defibrillator"),
+    (r"erste.?hilfe|verbandkasten|augensp[üu]l", "Erste Hilfe"),
+    (r"rettungszeichen|rettungsplan|sammelstelle|notausgang", "Flucht & Rettung"),
+    (r"aufzug|fahrtreppe|fahrsteig|personenbef[öo]rderung", "Aufzug"),
+    (r"blitzschutz|[üu]berspannungsschutz", "Blitzschutz"),
+    (r"k[äa]ltemaschine|kaltwassersatz|k[üu]hlturm|r[üu]ckk[üu]hl|k[äa]lteanlage|k[äa]ltetechnik|k[äa]ltezentrale", "Kälte"),
+    (r"klimasplit|split-?klima|klimager[äa]t|klimaanlage", "Klima"),
+    (r"l[üu]ftung|\brlt\b|abluft|zuluft|ventilator|befeuchter|volumenstromregler", "Lüftung"),
+    (r"heizung|heizkessel|brennwert|fernw[äa]rme|heizkreis|w[äa]rmepumpe|schornstein|abgasanlage|ausdehnungsgef[äa][ßs]", "Heizung"),
+    (r"hebeanlage|druckerh[öo]hung|trinkwasser|abwasser|wasserfilter|enth[äa]rtung|warmwasser|fettabscheider|wasseraufbereitung|sanit[äa]r|"
+     r"zisterne|bew[äa]sserung|wasserverteilung|wasserz[äa]hler|fallrohr|durchlauferhitzer|\btw-", "Sanitär"),
+    (r"\bnea\b|notstrom|netzersatz|\busv\b|unterverteilung|hauptverteilung|hauptverteiler|\bnshv\b|z[äa]hlerschrank|dguv v3|schwachstrom|\belt\b", "Elektro"),
+    (r"\bglt\b|\bmsr\b|\bddc\b|geb[äa]udeautomation|geb[äa]udeleittechnik", "Gebäudeautomation"),
+    (r"photovoltaik|pv-anlage|wechselrichter|solaranlage", "Solar"),
+    (r"rolltor|sektionaltor|schranke|schnelllauftor", "Tor"),
+    (r"schiebet[üu]r|dreht[üu]r|drehtrommelt[üu]r|drehfl[üu]gel|karussellt[üu]r|t[üu]rantrieb|fluchtt[üu]r|automatikt[üu]r|eingangst[üu]r", "Tür ohne Brandschutz"),
+    (r"fenster|jalousie|sonnenschutz|fassade", "Fenster"),
+    (r"flachdach|dachfl[äa]che|dachentw[äa]sserung|seku?r?ant|absturzsicherung|anschlagpunkt", "Dach"),
+    (r"zutrittskontroll|einbruchmelde|videokamera|schlie[ßs]anlage|gegensprech|klingelanlage", "Sicherungstechnik"),
+    (r"spielger[äa]t|schaukel|rutsche|kletterger[üu]st", "Spielgeräte"),
+    (r"palettenregal|fachbodenregal|kragarmregal", "Regale"),
+    (r"gefahrstoff", "Gefahrstoffe"),
+    (r"au[ßs]enbeleuchtung|parkplatz|gr[üu]nfl[äa]che|zaunanlage|baumbestand", "Außenanlagen"),
+    (r"serverschrank|netzwerkverteiler|wlan", "IT"),
+]
+GEWERK_KATEGORIE = {"Aufzug": "Aufzug", "Heizung": "Heizung", "Kälte": "Kälte", "Sanitär": "Sanitär", "Elektro": "Elektro",
+                    "Gebäudeautomation": "Gebäudeautomation", "Außenanlagen": "Außenanlagen"}
+
+
+def kuerzel_sauber(text) -> str:
+    t = str(text or "").upper()
+    for a, b in (("Ä", "AE"), ("Ö", "OE"), ("Ü", "UE"), ("ẞ", "SS")):
+        t = t.replace(a, b)
+    return re.sub(r"[^A-Z0-9]", "", t)
+
+
+def kuerzel_vorschlag(con, kuerzel, name, ohne_id=None) -> str:
+    """Kurzes Kürzel für die Inventarnummern eines Objekts, aus dem Kürzel oder dem Namen: Options -> OPT, KRE 17 -> KRE17."""
+    roh = kuerzel_sauber(kuerzel) or kuerzel_sauber(name) or "OBJ"
+    if len(roh) > 6:
+        buchstaben, ziffern = re.sub(r"\d", "", roh), re.sub(r"\D", "", roh)
+        roh = (buchstaben[:3] + ziffern[:3]) if ziffern else buchstaben[:3]
+    if len(roh) < 2:
+        roh = (roh + kuerzel_sauber(name) + "OBJ")[:3]
+    vergeben = {str(r[0] or "").upper() for r in con.execute("SELECT inventar_kuerzel FROM main.objekte WHERE id<>?", (ohne_id or 0,))}
+    kandidat, n = roh, 1
+    while kandidat in vergeben:
+        n += 1
+        kandidat = f"{roh[:8 - len(str(n))]}{n}"      # bleibt bei höchstens 8 Zeichen
+    return kandidat
+
+
+def kuerzel_pruefen(con, wert, ohne_id=None) -> str:
+    kz = kuerzel_sauber(wert)
+    if not KUERZEL_MUSTER.match(kz):
+        raise Fehler(400, "Das Kürzel für Inventarnummern braucht 2 bis 8 Buchstaben oder Ziffern, zum Beispiel OPT.")
+    r = con.execute("SELECT kuerzel, name FROM main.objekte WHERE UPPER(inventar_kuerzel)=? AND id<>?", (kz, ohne_id or 0)).fetchone()
+    if r:
+        raise Fehler(400, f'Das Kürzel {kz} hat schon das Objekt {r["kuerzel"]} · {r["name"]}. Bitte ein anderes wählen.')
+    return kz
+
+
+def objekt_inventar_kuerzel(con, oid, schreiben: bool = True) -> str:
+    r = con.execute("SELECT inventar_kuerzel, kuerzel, name FROM main.objekte WHERE id=?", (oid,)).fetchone()
+    if not r:
+        raise Fehler(400, "Objekt nicht gefunden.")
+    if r["inventar_kuerzel"]:
+        return r["inventar_kuerzel"]
+    kz = kuerzel_vorschlag(con, r["kuerzel"], r["name"], oid)
+    if schreiben:
+        con.execute("UPDATE main.objekte SET inventar_kuerzel=? WHERE id=?", (kz, oid))
+    return kz
+
+
+def inventar_reihe(con, kategorie_id) -> str:
+    """Reihe (Nummernkreis) der Kategorie, ohne Kategorie die Reihe 900."""
+    if kategorie_id:
+        k = con.execute("SELECT nummernkreis FROM main.kat_kategorien WHERE id=?", (kategorie_id,)).fetchone()
+        kreis = str(k["nummernkreis"] or "").strip() if k else ""
+        if re.fullmatch(r"\d{2,4}", kreis):
+            return kreis
+    return INV_SONST
+
+
+def _inventar_stand(con, oid, reihe: str, praefix: str) -> int:
+    """Höchste bisher vergebene laufende Nummer: aus dem Zähler und aus den Nummern, die es mit diesem Anfang schon gibt."""
+    r = con.execute("SELECT stand FROM main.inventar_zaehler WHERE objekt_id=? AND reihe=?", (oid, reihe)).fetchone()
+    stand = r["stand"] if r else 0
+    for (nr,) in con.execute("SELECT nummer FROM main.anlagen WHERE nummer LIKE ?", (praefix + "%",)):
         rest = (nr or "")[len(praefix):]
-        if len(rest) == 5 and rest.isdigit():
-            hoechste = max(hoechste, int(rest))
-    return f"{praefix}{hoechste + 1:05d}"
+        if rest.isascii() and rest.isdigit():
+            stand = max(stand, int(rest))
+    return stand
+
+
+def naechste_inventarnr(con, objekt_id, kategorie_id) -> str:
+    kz = objekt_inventar_kuerzel(con, objekt_id)
+    reihe = inventar_reihe(con, kategorie_id)
+    praefix = f"{kz}-{reihe}-"
+    stand = _inventar_stand(con, objekt_id, reihe, praefix) + 1
+    con.execute("INSERT OR REPLACE INTO inventar_zaehler (objekt_id, reihe, stand) VALUES (?,?,?)", (objekt_id, reihe, stand))
+    return f"{praefix}{stand:0{INV_STELLEN}d}"
+
+
+def inventar_passt(nummer, kz: str, reihe: str) -> bool:
+    """Hat die Nummer schon die Form Kürzel-Reihe-laufende Nummer für dieses Objekt und diese Reihe?"""
+    return bool(re.fullmatch(rf"{re.escape(kz)}-{re.escape(reihe)}-\d{{{INV_STELLEN}}}", str(nummer or "").strip()))
+
+
+def kategorie_vorschlag(con, d: dict):
+    """Passende Kategorie für eine Anlage ohne Kategorie: aus dem Planzeichen, dem SV-Prüfgegenstand, der Bezeichnung oder,
+    wenn es eindeutig ist, aus dem Gewerk. Liefert die id der Kategorie oder None."""
+    namen = [PLANZEICHEN_KATEGORIE.get(str(d.get("planzeichen") or "").split(" ")[0]),
+             SV_GEGENSTAND_KATEGORIE.get(d.get("sv_gegenstand") or "")]
+    text = str(d.get("bezeichnung") or "").lower()
+    namen.append(next((kat for muster, kat in KATEGORIE_ERKENNEN if re.search(muster, text)), None))
+    namen.append(GEWERK_KATEGORIE.get(d.get("gewerk") or ""))
+    for name in namen:
+        if name:
+            r = con.execute("SELECT id FROM main.kat_kategorien WHERE name=? COLLATE NOCASE", (name,)).fetchone()
+            if r:
+                return r["id"]
+    return None
+
+
+def nummer_frei(con, nummer: str, ohne_id=None) -> None:
+    r = con.execute("SELECT a.bezeichnung, o.kuerzel FROM main.anlagen a LEFT JOIN main.objekte o ON o.id=a.objekt_id "
+                    "WHERE a.nummer=? COLLATE NOCASE AND a.id<>?", (nummer, ohne_id or 0)).fetchone()
+    if r:
+        raise Fehler(400, f'Die Inventar-Nr. {nummer} gibt es schon: {r["bezeichnung"]} ({r["kuerzel"] or "ohne Objekt"}). Jede Nummer gibt es nur einmal.')
+
+
+def anlage_nummer_bei_aenderung(con, alt: dict, sauber: dict) -> None:
+    """Beim Ändern einer Anlage: Eine von Hand eingetragene Nummer darf es nicht schon geben. Eine geleerte Nummer wird
+    neu vergeben. Zieht die Anlage in ein anderes Objekt oder bekommt eine Anlage aus der Reihe 900 ihre Kategorie,
+    bekommt sie die passende neue Nummer. Die alte bleibt als bisherige Nummer stehen."""
+    neu = {**alt, **sauber}
+    alte = str(alt.get("nummer") or "").strip()
+    if "nummer" in sauber:
+        nr = str(sauber["nummer"] or "").strip()
+        if nr and nr != alte:
+            nummer_frei(con, nr, alt["id"])
+            sauber["nummer"] = nr
+            return
+        if not nr:
+            sauber["nummer"] = naechste_inventarnr(con, neu["objekt_id"], neu.get("kategorie_id"))
+            return
+    objekt_neu = "objekt_id" in sauber and sauber["objekt_id"] != alt.get("objekt_id")
+    kat_neu = "kategorie_id" in sauber and sauber["kategorie_id"] != alt.get("kategorie_id")
+    if not (objekt_neu or kat_neu):
+        return
+    kz_alt = objekt_inventar_kuerzel(con, alt["objekt_id"]) if alt.get("objekt_id") else ""
+    automatisch = bool(re.fullmatch(rf"{re.escape(kz_alt)}-\d{{2,4}}-\d{{{INV_STELLEN}}}", alte))
+    platzhalter = alte.startswith(f"{kz_alt}-{INV_SONST}-")
+    if not alte or (objekt_neu and automatisch) or (kat_neu and platzhalter):
+        sauber["nummer"] = naechste_inventarnr(con, neu["objekt_id"], neu.get("kategorie_id"))
+        if alte and not alt.get("nummer_alt"):
+            sauber["nummer_alt"] = alte
+
+
+def anlage_nummer_neu(con, benutzer, aid: int) -> dict:
+    """Neue Nummer aus der Reihe, die zum Objekt und zur Kategorie passt. Die alte bleibt als bisherige Nummer stehen."""
+    a = con.execute("SELECT * FROM anlagen WHERE id=?", (aid,)).fetchone()
+    if not a:
+        raise Fehler(404, "Anlage nicht gefunden.")
+    alte = str(a["nummer"] or "").strip()
+    if inventar_passt(alte, objekt_inventar_kuerzel(con, a["objekt_id"]), inventar_reihe(con, a["kategorie_id"])):
+        return {"nummer": alte, "geaendert": False}
+    neu = naechste_inventarnr(con, a["objekt_id"], a["kategorie_id"])
+    con.execute("UPDATE anlagen SET nummer=?, nummer_alt=COALESCE(NULLIF(nummer_alt, ''), ?), geaendert=? WHERE id=?",
+                (neu, alte or None, jetzt(), aid))
+    protokollieren(con, benutzer, "Inventar-Nr. neu vergeben", "anlagen", aid, f"{alte or 'ohne Nummer'} → {neu}")
+    return {"nummer": neu, "geaendert": True}
+
+
+def nummern_vergeben(con, benutzer, objekt_ids: list, alle: bool, schreiben: bool) -> dict:
+    """Inventarnummern für vorhandene Anlagen. alle=False: nur Anlagen ohne Nummer. alle=True: auch Anlagen, deren Nummer
+    noch nicht die Form Kürzel-Reihe-laufende Nummer hat (die alte bleibt als bisherige Nummer stehen).
+    schreiben=False rechnet nur vor (Vorschau) und ändert nichts."""
+    reihen: dict = {}
+    beispiele, kategorie_gesetzt, anzahl, geprueft = [], 0, 0, 0
+    staende: dict = {}
+    kat = {r["id"]: r["name"] for r in con.execute("SELECT id, name FROM kat_kategorien")}
+    for oid in objekt_ids:
+        kz = objekt_inventar_kuerzel(con, oid, schreiben)
+        for a in con.execute("SELECT * FROM anlagen WHERE objekt_id=? ORDER BY id", (oid,)).fetchall():
+            geprueft += 1
+            alte = str(a["nummer"] or "").strip()
+            if alte and not alle:
+                continue
+            kid = a["kategorie_id"]
+            vorschlag = None if kid else kategorie_vorschlag(con, dict(a))
+            reihe = inventar_reihe(con, kid or vorschlag)
+            if alte and inventar_passt(alte, kz, reihe):
+                continue
+            praefix = f"{kz}-{reihe}-"
+            if (oid, reihe) not in staende:
+                staende[(oid, reihe)] = _inventar_stand(con, oid, reihe, praefix)
+            staende[(oid, reihe)] += 1
+            neu = f"{praefix}{staende[(oid, reihe)]:0{INV_STELLEN}d}"
+            anzahl += 1
+            kategorie_gesetzt += 1 if vorschlag else 0
+            name = kat.get(kid or vorschlag) or "ohne Kategorie"
+            eintrag = reihen.setdefault(reihe, {"reihe": reihe, "name": name, "anzahl": 0, "beispiel": neu, "anlage": a["bezeichnung"]})
+            eintrag["anzahl"] += 1
+            if eintrag["name"] != name and name not in eintrag["name"].split(", ") and eintrag["name"].count(",") < 2:
+                eintrag["name"] += ", " + name
+            if len(beispiele) < 6 and alte:
+                beispiele.append({"anlage": a["bezeichnung"], "alt": alte, "neu": neu})
+            if schreiben:
+                con.execute("UPDATE anlagen SET nummer=?, nummer_alt=COALESCE(NULLIF(nummer_alt, ''), ?), kategorie_id=COALESCE(kategorie_id, ?), "
+                            "geaendert=? WHERE id=?", (neu, alte or None, vorschlag, jetzt(), a["id"]))
+    if schreiben:
+        for (oid, reihe), stand in staende.items():
+            con.execute("INSERT OR REPLACE INTO inventar_zaehler (objekt_id, reihe, stand) VALUES (?,?,?)", (oid, reihe, stand))
+        if anzahl:
+            protokollieren(con, benutzer, "Inventar-Nr. vergeben", "anlagen", None,
+                           f"{anzahl} Anlagen in {len(objekt_ids)} Objekt{'en' if len(objekt_ids) != 1 else ''}"
+                           + (", vorhandene Nummern umgestellt" if alle else ""))
+    return {"anzahl": anzahl, "geprueft": geprueft, "kategorie_gesetzt": kategorie_gesetzt, "beispiele": beispiele,
+            "reihen": sorted(reihen.values(), key=lambda r: r["reihe"])}
 
 
 def einfuegen(con, tabelle: str, sauber: dict) -> int:
     sauber = dict(sauber)
     if tabelle in ("anlagen", "objekte") and not sauber.get("qr_token"):
         sauber["qr_token"] = neuer_qr_token()
-    if tabelle == "anlagen" and not sauber.get("nummer") and sauber.get("kategorie_id"):
-        nr = naechste_inventarnr(con, sauber["kategorie_id"])
-        if nr:
-            sauber["nummer"] = nr
+    if tabelle == "objekte" and not sauber.get("inventar_kuerzel"):
+        sauber["inventar_kuerzel"] = kuerzel_vorschlag(con, sauber.get("kuerzel"), sauber.get("name"))
+    if tabelle == "anlagen" and sauber.get("objekt_id"):
+        if not sauber.get("kategorie_id"):                       # ohne Kategorie: das Programm schlägt die passende vor
+            sauber["kategorie_id"] = kategorie_vorschlag(con, sauber)
+        if not str(sauber.get("nummer") or "").strip():          # jede Anlage bekommt sofort ihre Inventarnummer
+            sauber["nummer"] = naechste_inventarnr(con, sauber["objekt_id"], sauber.get("kategorie_id"))
     sauber["erstellt"] = sauber["geaendert"] = jetzt()
     spalten = ", ".join(f'"{k}"' for k in sauber)
     platz = ", ".join("?" for _ in sauber)
@@ -3747,7 +4010,7 @@ def beispieldaten(con) -> None:
         "nsv": ins("anlagen", objekt_id=o2, bezeichnung="Niederspannungshauptverteilung", gewerk="Elektro",
                    standort="Technikraum", status="In Betrieb"),
     }
-    for key, nr, gruppe, extra in [
+    for key, _, gruppe, extra in [
         ("a1", "1.2.01.0010", "Fördertechnik", {"pruefung_pflicht": 1, "wartung_pflicht": 1}),
         ("a2", "1.2.01.0020", "Fördertechnik", {"pruefung_pflicht": 1, "wartung_pflicht": 1}),
         ("bma", "1.4.01.0010", "Brandschutz", {"pruefung_pflicht": 1, "wartung_pflicht": 1, "sv_relevant": 1,
@@ -3759,7 +4022,7 @@ def beispieldaten(con) -> None:
         ("tor", "2.6.01.0010", "Sonstiges", {"pruefung_pflicht": 1}),
         ("nsv", "2.5.01.0010", "Elektro & Beleuchtung", {"pruefung_pflicht": 1}),
     ]:
-        felder = {"nummer": nr, "gruppe": gruppe, "manager": "Beispiel Objektleitung", **extra}
+        felder = {"gruppe": gruppe, "manager": "Beispiel Objektleitung", **extra}   # die Nummer vergibt das Programm selbst
         setz = ", ".join(f'"{k}"=?' for k in felder)
         con.execute(f"UPDATE anlagen SET {setz} WHERE id=?", [*felder.values(), anl[key]])
     con.execute("UPDATE anlagen SET dienstleister_id=?, beauftragter=? WHERE id IN (?,?)",
@@ -3883,8 +4146,10 @@ def beispieldaten(con) -> None:
     def zuordnen(muster, kname, gname=None, tname=None, details=None):
         kid = kat(kname)
         gid, tid = typ(kname, gname, tname) if gname else (None, None)
-        for r in con.execute("SELECT id, nummer FROM anlagen WHERE bezeichnung LIKE ? AND objekt_id IN (?, ?)", (muster, o1, o2)).fetchall():
-            nummer = r["nummer"] or naechste_inventarnr(con, kid)
+        for r in con.execute("SELECT id, nummer, objekt_id FROM anlagen WHERE bezeichnung LIKE ? AND objekt_id IN (?, ?)", (muster, o1, o2)).fetchall():
+            nummer = r["nummer"]
+            if not inventar_passt(nummer, objekt_inventar_kuerzel(con, r["objekt_id"]), inventar_reihe(con, kid)):
+                nummer = naechste_inventarnr(con, r["objekt_id"], kid)
             con.execute("UPDATE anlagen SET kategorie_id=?, gruppe_id=?, typ_id=?, nummer=?, details=? WHERE id=?",
                         (kid, gid, tid, nummer, json.dumps(details, ensure_ascii=False) if details else None, r["id"]))
 
@@ -3919,7 +4184,7 @@ def beispieldaten(con) -> None:
     con.execute("INSERT INTO checklisten_durchgaenge (checkliste_id, objekt_id, zeit, wer, ergebnisse, abweichungen) VALUES (?,?,?,?,?,0)",
                 (rg, o1, vorher, "Haustechnik", json.dumps(erg, ensure_ascii=False)))
     zuordnen("Feuerlöscher %", "Feuerlöscher", "GLORIA", "ABC-Pulver 6 kg", {"Löschmittel": "ABC-Pulver", "Löschmitteleinheiten (LE)": 10})
-    zuordnen("Tür %", "Tür", "Teckentrup", "T 30-1-FSA-42", {"Brandschutztür": True, "Feuerwiderstand": "T30", "Flügel": "1-flügelig", "Feststellanlage": True})
+    zuordnen("Tür %", "Brandschutztür", "Teckentrup", "T 30-1-FSA-42", {"Brandschutztür": True, "Feuerwiderstand": "T30", "Flügel": "1-flügelig", "Feststellanlage": True})
     zuordnen("Wandhydrant%", "Hydrant", "Hawle", "Wandhydrant Typ F")
     zuordnen("Handfeuermelder%", "Meldetechnik", "Hekatron", "Handfeuermelder", {"Meldertyp": "Handfeuermelder"})
     zuordnen("Brandmeldeanlage", "Brandmeldezentrale")
@@ -4557,6 +4822,23 @@ class Handler(BaseHTTPRequestHandler):
             con.execute("UPDATE objekte SET qr_token=? WHERE id=?", (neuer_qr_token(), oid))
             protokollieren(con, b, "neuen Mieter-QR-Code erzeugt", "objekte", oid)
             return self.json({"qr_token": con.execute("SELECT qr_token FROM objekte WHERE id=?", (oid,)).fetchone()[0]})
+        if erstes == "anlagen" and len(teile) == 2 and teile[1] == "nummern" and m == "POST":
+            d = self.body()
+            alle, schreiben = d.get("umfang") == "alle", d.get("vorschau") is False
+            if str(d.get("objekt_id") or "").isdigit():
+                ids = [int(d["objekt_id"])]
+                if not con.execute("SELECT 1 FROM objekte WHERE id=?", (ids[0],)).fetchone():
+                    raise Fehler(404, "Objekt nicht gefunden.")
+            else:
+                ids = [r["id"] for r in con.execute("SELECT id FROM objekte ORDER BY kuerzel COLLATE NOCASE")]
+            sicherung = None
+            if schreiben and alle:                               # vorhandene Nummern werden umgestellt: vorher sichern
+                sicherung = db_sichern("vor_inventarnummern")
+                if not sicherung:
+                    raise Fehler(500, "Die Sicherung vor dem Umstellen hat nicht geklappt. Es wurde nichts geändert.")
+            return self.json({**nummern_vergeben(con, b, ids, alle, schreiben), "sicherung": sicherung, "vorschau": not schreiben})
+        if erstes == "anlagen" and len(teile) == 3 and teile[2] == "nummer-neu" and m == "POST":
+            return self.json(anlage_nummer_neu(con, b, self.id(teile[1])))
         if erstes == "anlagen" and len(teile) == 3 and teile[2] == "qr-neu" and m == "POST":
             aid = self.id(teile[1])
             if not con.execute("SELECT 1 FROM anlagen WHERE id=?", (aid,)).fetchone():
@@ -4804,6 +5086,11 @@ class Handler(BaseHTTPRequestHandler):
                     self.personen_pruefen(con, res, sauber)
                     if name == "checklisten":
                         self.checkliste_pruefen(con, sauber)
+                    if name == "objekte" and sauber.get("inventar_kuerzel"):
+                        sauber["inventar_kuerzel"] = kuerzel_pruefen(con, sauber["inventar_kuerzel"])
+                    if name == "anlagen" and str(sauber.get("nummer") or "").strip():
+                        sauber["nummer"] = str(sauber["nummer"]).strip()
+                        nummer_frei(con, sauber["nummer"])
                     neue_id = einfuegen(con, name, sauber)
                     protokollieren(con, b, "angelegt", name, neue_id)
                     if name == "vorgaenge":
@@ -4827,6 +5114,12 @@ class Handler(BaseHTTPRequestHandler):
                     sauber.get("erledigt_am") or alt.get("erledigt_am")):
                 sauber["erledigt_am"] = heute().isoformat()
             self.personen_pruefen(con, res, sauber)
+            if name == "objekte" and "inventar_kuerzel" in sauber:
+                gemischt = {**alt, **sauber}
+                sauber["inventar_kuerzel"] = (kuerzel_pruefen(con, sauber["inventar_kuerzel"], rid) if sauber["inventar_kuerzel"]
+                                              else kuerzel_vorschlag(con, gemischt.get("kuerzel"), gemischt.get("name"), rid))
+            if name == "anlagen":
+                anlage_nummer_bei_aenderung(con, alt, sauber)
             if name == "checklisten":
                 self.checkliste_pruefen(con, sauber)
                 if sauber.get("zustaendig_id") and sauber["zustaendig_id"] != alt.get("zustaendig_id"):

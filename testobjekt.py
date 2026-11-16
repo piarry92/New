@@ -2,6 +2,7 @@
 
 - Alles ist frei erfunden: Anschrift, Firmen, Namen, Beträge und Termine. Firmen tragen den Zusatz „(Test)“,
   Nummern den Baustein „TEST“. E-Mail-Adressen enden auf „.example“ und sind nicht zustellbar.
+  Die Inventarnummern der Anlagen vergibt das Programm selbst, wie bei jedem Objekt: TEST-201-00001 und so weiter.
 - Das Testobjekt steht neben den echten Objekten. An bestehenden Einträgen wird nichts geändert.
 - Die Daten hängen am heutigen Tag: Es gibt Überfälliges, bald Fälliges und Erledigtes aus den letzten zwei Jahren,
   damit jeder Berichtszeitraum gefüllt ist.
@@ -34,9 +35,11 @@ BEREICH = {"Brandschutz": "Brandschutz", "Flucht und Rettung": "Flucht & Rettung
            "Heizung": "Heizung & Sanitär", "Sanitär": "Heizung & Sanitär", "Lüftung/Klima": "Klima, Kälte & Lüftung (RLT)",
            "Kälte": "Klima, Kälte & Lüftung (RLT)", "Elektro": "Elektro & Beleuchtung", "Sicherheitstechnik": "Sicherheitstechnik",
            "Gebäudeautomation": "Gebäudeautomation", "Dach/Fassade": "Gebäudehülle", "Außenanlagen": "Außenanlagen"}
-PFLICHT = {"Aufzug": (1, 1), "Feuerlöscher": (1, 0), "Hydrant": (1, 0), "Tür": (1, 0), "Brandmeldezentrale": (1, 1), "RWA": (1, 1),
+PFLICHT = {"Aufzug": (1, 1), "Feuerlöscher": (1, 0), "Hydrant": (1, 0), "Brandschutztür": (1, 0), "Brandmeldezentrale": (1, 1), "RWA": (1, 1),
            "Sicherheitsbeleuchtung": (1, 1), "Elektro": (1, 0), "Tor": (1, 0), "Regale": (1, 0), "Lüftung": (0, 1), "Heizung": (0, 1),
-           "Kälte": (1, 1), "Feststellanlage": (1, 0), "Gefahrstoffe": (1, 0)}
+           "Kälte": (1, 1), "Feststellanlage": (1, 0), "Gefahrstoffe": (1, 0), "Brandschutzklappe": (1, 1), "Löschanlage": (1, 1),
+           "Gaswarnanlage": (1, 1), "Blitzschutz": (1, 0), "Tür ohne Brandschutz": (1, 1), "Brandschutztor": (1, 0)}
+KAT_FRUEHER = {"Brandschutztür": "Tür"}      # so hieß die Kategorie, bevor Türen ohne Brandschutz eine eigene Reihe bekamen
 FIRMA_FUER = {"Aufzug": "auf", "Brandschutz": "bs", "Flucht und Rettung": "bs", "Heizung": "ht", "Sanitär": "ht", "Elektro": "el",
               "Lüftung/Klima": "kl", "Kälte": "kl", "Türen/Tore": "tor", "Außenanlagen": "wd"}
 TAETIGKEITEN = {
@@ -101,7 +104,7 @@ def status(con) -> dict:
 # ---------------------------------------------------------------------------
 def anlegen(app, con, benutzer) -> dict:
     if status(con)["vorhanden"]:
-        raise app.Fehler(409, "Das Testobjekt gibt es schon. Du findest es unter Objekte.")
+        raise app.Fehler(409, "Das Testobjekt gibt es schon. Wähle es oben links bei „Objekt“ aus.")
     dateien: list = []                      # geschriebene Dateien; geht etwas schief, werden sie wieder gelöscht
     try:
         _Bau(app, con, benutzer, dateien).alles()
@@ -260,7 +263,7 @@ class _Bau:
               zeichen="F005 Brandmelder (Handfeuermelder)", details={**melder, "Meldergruppe / Nr.": f"{gruppe}/1"})
             for seite, x, richtung in (("Nord", 840, "E001 Notausgang links"), ("Süd", 1740, "E002 Notausgang rechts")):
                 self.bst.append(f"bst_{k}_{seite[0].lower()}")
-                a(f"bst_{k}_{seite[0].lower()}", f"Brandschutztür {etage} Treppenhaus {seite}", "Tür", plan, x, 642, f"Treppenhaus {seite}",
+                a(f"bst_{k}_{seite[0].lower()}", f"Brandschutztür {etage} Treppenhaus {seite}", "Brandschutztür", plan, x, 642, f"Treppenhaus {seite}",
                   "Teckentrup", "T 30-1-FSA-62", details=t30)
                 a(f"rz_{k}_{seite[0].lower()}", f"Rettungszeichenleuchte {etage} Treppenhaus {seite}", "Flucht & Rettung", plan, x, 560,
                   f"Treppenhaus {seite}", "Allgemein", "Rettungszeichenleuchte", zeichen=richtung)
@@ -273,8 +276,9 @@ class _Bau:
         a("wws", "Warmwasserspeicher 1000 l", "Sanitär", "a_ug", 300, 520, "Heizzentrale", sn=True)
         a("dea", "Druckerhöhungsanlage", "Sanitär", "a_ug", 530, 340, "Sanitärzentrale", "Wilo", "Druckerhöhungsanlage",
           details={"Nennweite": "DN 50"}, sn=True)
-        a("sprinkler", "Sprinklerzentrale Tiefgarage", None, "a_ug", 670, 340, "Sprinklerzentrale", gewerk="Brandschutz", pflicht=(1, 1),
-          sv=("Sprinkleranlage", *brand), sn=True, text="Nassanlage für die Tiefgarage mit 86 Sprinklern.")
+        a("sprinkler", "Sprinklerzentrale Tiefgarage", "Löschanlage", "a_ug", 670, 340, "Sprinklerzentrale", "Minimax", "Sprinklerzentrale",
+          details={"Art": "Sprinkleranlage nass", "Schutzbereich": "Tiefgarage"}, sv=("Sprinkleranlage", *brand), sn=True,
+          text="Nassanlage für die Tiefgarage mit 86 Sprinklern.")
         a("hebe", "Hebeanlage Schmutzwasser", "Sanitär", "a_ug", 600, 520, "Sanitärzentrale", "Kessel", "Hebeanlage",
           details={"Nennweite": "DN 100"}, sn=True)
         a("nshv", "Niederspannungshauptverteilung", "Elektro", "a_ug", 1130, 340, "Elektro (NSHV)", "Hager", "Hauptverteilung",
@@ -286,8 +290,8 @@ class _Bau:
           "CEAG", "Zentralbatterieanlage", sv=("Sicherheitsbeleuchtung", "Elektrotechnik", 0), sn=True)
         a("gab", "Garagenabluft", "Lüftung", "a_ug", 2100, 340, "Lüftung Garage", "Systemair", "Garagenabluft",
           details={"Luftmenge (m³/h)": 24000}, sv=("Lüftungsanlage", "Raumlufttechnik", 0), sn=True)
-        a("co", "CO-Warnanlage Tiefgarage", None, "a_ug", 2100, 520, "Lüftung Garage", gewerk="Sicherheitstechnik", pflicht=(1, 1),
-          sv=("CO-Warnanlage", "Raumlufttechnik", 0), sn=True)
+        a("co", "CO-Warnanlage Tiefgarage", "Gaswarnanlage", "a_ug", 2100, 520, "Lüftung Garage", "MSR-Electronic", "CO-Warnanlage",
+          details={"Art": "CO-Warnanlage", "Gas": "Kohlenmonoxid", "Anzahl Sensoren": 8}, sv=("CO-Warnanlage", "Raumlufttechnik", 0), sn=True)
         a("rolltor", "Rolltor Tiefgarage", "Tor", "a_ug", 2250, 1000, "Ein- und Ausfahrt", "Hörmann", "Rolltor", sn=True)
 
         # Haus A, EG: Foyer mit Brandmeldezentrale, Aufzüge, Sicherheit
@@ -300,8 +304,8 @@ class _Bau:
           "Feuerwehr-Anzeigetableau", zeichen="FAT Feuerwehr-Anzeigetableau")
         a("fsd", "Feuerwehr-Schlüsseldepot", "Brandmeldezentrale", "a_eg", 1560, 150, "außen am Haupteingang", "Hekatron",
           "Feuerwehr-Schlüsseldepot", zeichen="FSD Feuerwehr-Schlüsseldepot")
-        a("autotuer", "Automatische Schiebetür Haupteingang", "Tür", "a_eg", 1350, 222, "Haupteingang", pflicht=(1, 1), sn=True,
-          details={"Fluchtwegtür": True, "Flügel": "2-flügelig"})
+        a("autotuer", "Automatische Schiebetür Haupteingang", "Tür ohne Brandschutz", "a_eg", 1350, 222, "Haupteingang", "GEZE",
+          "Automatische Schiebetür", sn=True, details={"Art": "Automatische Schiebetür", "Antrieb": True, "Fluchtwegtür": True})
         a("zk", "Zutrittskontrolle Haupteingang", "Sicherungstechnik", "a_eg", 1470, 250, "Haupteingang", "dormakaba", "Zutrittskontrolle")
         a("defi", "Defibrillator Foyer", "Defibrillator", "a_eg", 1590, 330, "Foyer", "Philips", "HeartStart FRx",
           zeichen="E010 Defibrillator (AED)", details={"Elektroden bis": self.tag(410), "Akku bis": self.tag(900)})
@@ -326,8 +330,9 @@ class _Bau:
         a("eh_o1", "Erste-Hilfe-Kasten Teeküche 1. OG", "Erste Hilfe", "a_o1", 1200, 900, "Teeküche", "Söhngen", "Verbandkasten DIN 13157",
           zeichen="E003 Erste Hilfe", details={"Ablaufdatum": self.tag(120)})
         for seite, x in (("Nord", 990), ("Süd", 1890)):
-            a(f"bsk_{seite[0].lower()}", f"Brandschutzklappe 2. OG Schacht {seite}", "Lüftung", "a_o2", x, 320, f"Schacht {seite}", "TROX",
-              "Brandschutzklappe", pflicht=(1, 1), sv=("Brandschutzklappen (BSK)", "Raumlufttechnik", 0) if seite == "Nord" else None)
+            a(f"bsk_{seite[0].lower()}", f"Brandschutzklappe 2. OG Schacht {seite}", "Brandschutzklappe", "a_o2", x, 320, f"Schacht {seite}",
+              "TROX", "Brandschutzklappe", details={"Art": "Brandschutzklappe", "Auslösung": "Schmelzlot"},
+              sv=("Brandschutzklappen (BSK)", "Raumlufttechnik", 0) if seite == "Nord" else None)
         a("rm_o2", "Rauchmelder Flur 2. OG", "Meldetechnik", "a_o2", 1440, 700, "Flur", "Hekatron", "Optischer Rauchmelder",
           details={"Meldertyp": "Rauchmelder", "Meldergruppe / Nr.": "4/7"})
         a("rwaz", "RWA-Zentrale Treppenhaus Nord", "RWA", "a_o3", 840, 330, "Treppenhaus Nord", "D+H", "RWA-Zentrale",
@@ -345,8 +350,8 @@ class _Bau:
           details={"Kältemittel": "R513A", "Füllmenge (kg)": 38}, sn=True)
         a("rk", "Rückkühler (Verdunstungskühlanlage)", "Kälte", "a_da", 1436, 384, "Dach", "Carrier", "Rückkühler",
           sv=("Verdunstungskühlanlage", "Kältetechnik", 5), sn=True)
-        a("blitz", "Blitzschutzanlage", None, "a_da", 2120, 300, "Dach, Attika", gewerk="Elektro", pflicht=(1, 0),
-          sv=("Blitzschutzanlage", "Elektrotechnik", 0))
+        a("blitz", "Blitzschutzanlage", "Blitzschutz", "a_da", 2120, 300, "Dach, Attika", "DEHN", "Äußerer Blitzschutz",
+          details={"Schutzklasse": "III", "Art": "Äußerer Blitzschutz"}, sv=("Blitzschutzanlage", "Elektrotechnik", 0))
         a("anschlag", "Anschlagpunkte Dach (Absturzsicherung)", "Dach", "a_da", 570, 620, "Dach", "Allgemein", "Anschlagpunkt", pflicht=(1, 0))
         a("dachfl", "Dachfläche Haus A", "Dach", "a_da", 400, 1000, "Dach", "Allgemein", "Dachfläche")
         a("pv", "PV-Anlage Dach (62 kWp)", "Solar", "a_da", 1368, 1020, "Dach", "SMA", "PV-Anlage", sn=True, baujahr=2024, neu=True)
@@ -379,7 +384,7 @@ class _Bau:
           details={"Absicherung (A)": 250})
         loescher("fl_b4", "Feuerlöscher Haus B Flur EG", "b_bu", 700, 710, "Flur")
         self.bst.append("bst_b")
-        a("bst_b", "Brandschutztür Haus B Treppenhaus EG", "Tür", "b_bu", 1325, 652, "Treppenhaus", "Teckentrup", "T 30-1-FSA-62", details=t30)
+        a("bst_b", "Brandschutztür Haus B Treppenhaus EG", "Brandschutztür", "b_bu", 1325, 652, "Treppenhaus", "Teckentrup", "T 30-1-FSA-62", details=t30)
         a("augen", "Augenspüleinrichtung", None, "b_bu", 1000, 710, "Flur zur Halle", gewerk="Flucht und Rettung",
           zeichen="E011 Augenspüleinrichtung")
         a("rlt_b", "RLT-Anlage Halle", "Lüftung", "b_og", 1775, 350, "Lüftungszentrale", "Wolf GmbH", "Zentrales RLT-Gerät",
@@ -411,10 +416,9 @@ class _Bau:
           text="Seit dem Umbau auf Gas im Jahr 2019 außer Betrieb, gereinigt und stillgelegt.")
 
         kat_id = {r["name"]: r["id"] for r in con.execute("SELECT id, name FROM kat_kategorien")}
-        lfd: dict[str, int] = {}
         for nr, e in enumerate(A, 1):
             kat = e["kat"]
-            kid = kat_id.get(kat) if kat else None
+            kid = (kat_id.get(kat) or kat_id.get(KAT_FRUEHER.get(kat, ""))) if kat else None
             gid = tid = None
             if kid and e["gruppe"]:
                 r = con.execute("SELECT id FROM kat_gruppen WHERE kategorie_id=? AND name=?", (kid, e["gruppe"])).fetchone()
@@ -423,15 +427,13 @@ class _Bau:
                     r = con.execute("SELECT id FROM kat_typen WHERE gruppe_id=? AND name=?", (gid, e["typ"])).fetchone()
                     tid = r["id"] if r else None
             gewerk = e.get("gewerk") or (KAT[kat]["gewerk"] if kat in KAT else "Sonstiges")
-            kreis = KAT[kat]["nr"] if kat in KAT else "900"
-            lfd[kreis] = lfd.get(kreis, 0) + 1
             pid, gebaeude, etage = self.plan[e["plan"]] if e["plan"] else (None, "", "")
             standort = ", ".join(x for x in (gebaeude, etage, e["raum"]) if x)
             pruefung, wartung = e.get("pflicht") or PFLICHT.get(kat, (0, 0))
             sv = e.get("sv")
             baujahr = e.get("baujahr") or 2012
             aid = self.ein(
-                "anlagen", objekt_id=self.oid, nummer=f"T-{kreis}-{lfd[kreis]:02d}", bezeichnung=e["name"], beschreibung=e.get("text"),
+                "anlagen", objekt_id=self.oid, bezeichnung=e["name"], beschreibung=e.get("text"),     # die Inventarnummer vergibt das Programm
                 kategorie_id=kid, gruppe_id=gid, typ_id=tid, gruppe=BEREICH.get(gewerk, "Sonstiges"), gewerk=gewerk,
                 planzeichen=e.get("zeichen"), standort=standort, hersteller=e["gruppe"] if e["gruppe"] not in (None, "Allgemein") else None,
                 typ=e["typ"], seriennummer=f"TST-{baujahr}-{nr:04d}" if e.get("sn") else None, baujahr=baujahr,
@@ -1288,6 +1290,7 @@ def entfernen(app, con, benutzer) -> tuple[dict, list]:
             bleiben.append(d["firma"])
         else:
             con.execute("DELETE FROM dienstleister WHERE id=?", (did,))
+    con.execute("DELETE FROM inventar_zaehler WHERE objekt_id=?", (oid,))          # Zähler der Inventarnummern dieses Objekts
     con.execute("DELETE FROM einstellungen WHERE schluessel=?", (MERKER,))
     app.protokollieren(con, benutzer, "Testobjekt entfernt", "objekte", oid, f'{o["kuerzel"]} {o["name"]}: {gesamt} Einträge, {len(dateien)} Dateien')
     return {"ok": True, "eintraege": gesamt, "dateien": len(dateien), "firmen_bleiben": bleiben}, dateien

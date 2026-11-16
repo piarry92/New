@@ -31,15 +31,18 @@ async function testobjektKarte(karte) {
         <li>Rundgänge mit Checkpoints, Checklisten, Zähler mit Ablesungen, Verträge</li>
         <li>Schlüssel mit Übergabeprotokollen, Winterdienst, Vorgänge, Dokumente und Fotos</li>
       </ul>
-      <p class="klein">Alle Angaben sind erfunden. Deine echten Objekte bleiben unverändert. Es werden keine E-Mails verschickt. Das Testobjekt lässt sich hier jederzeit wieder entfernen.</p>
+      <p class="klein">Alle Angaben sind erfunden. Deine echten Objekte bleiben unverändert. Es werden keine E-Mails verschickt. Nach dem Anlegen öffnet sich das Testobjekt und ist oben links gewählt. Hier lässt es sich jederzeit wieder entfernen.</p>
       <div class="qr-knoepfe"><button class="knopf haupt-k" id="toAnlegen">${icon("plus")} Testobjekt anlegen</button></div>`;
     const knopf = karte.querySelector("#toAnlegen");
     knopf.onclick = async () => {
       knopf.disabled = true;
       try {
         const neu = await api("POST", "einstellungen/testobjekt", {});
-        melde(`Testobjekt ${neu.kuerzel} ist angelegt.`);
-        await testobjektNeuLaden();
+        await owListeNeu();
+        owSetzen(neu.objekt_id, false);      // gleich oben links wählen: Danach zeigen alle Bereiche das Testobjekt
+        rahmen();
+        melde(`Testobjekt ${neu.kuerzel} ist angelegt und oben links gewählt.`);
+        if (location.hash === `#/objekte/${neu.objekt_id}`) route(); else location.hash = `#/objekte/${neu.objekt_id}`;
       } catch (err) { melde(err.message, true); knopf.disabled = false; }
     };
     return;
@@ -48,7 +51,7 @@ async function testobjektKarte(karte) {
   karte.innerHTML = `${kopf}
     <p><b>${esc(st.kuerzel)} · ${esc(st.name)}</b> ist angelegt${am ? ` (am ${am}${st.von ? ` von ${esc(st.von)}` : ""})` : ""}. Alle Angaben darin sind erfunden.</p>
     <div class="to-zahlen">${st.zahlen.filter((z) => z.anzahl).map((z) => `<span><b>${z.anzahl}</b> ${esc(z.name)}</span>`).join("")}</div>
-    <p class="klein">Solange das Testobjekt da ist, zählt es in der Gesamtübersicht „Alle Objekte“ mit. Wähle oben links ein einzelnes Objekt, dann siehst du nur dessen Zahlen.</p>
+    <p class="klein">Du findest es jederzeit oben links bei „Objekt“. Solange das Testobjekt da ist, zählt es in der Gesamtübersicht „Alle Objekte“ mit. Wähle oben links ein einzelnes Objekt, dann siehst du nur dessen Zahlen.</p>
     <div class="qr-knoepfe">
       <button class="knopf haupt-k" id="toHin">Zum Testobjekt</button>
       <button class="knopf" id="toPlaene">Gebäude und Pläne</button>
