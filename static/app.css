@@ -1676,3 +1676,21 @@ html[data-theme="dark"] .to-zahlen span { background: rgba(255,255,255,.06); bor
 .g3-iz { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 14px 0 10px; } .g3-iz small, .g3-iv small { color: #9fb6ee; font-size: .68rem; text-transform: uppercase; letter-spacing: .06em; display: block; } .g3-iz b { font-size: 1.2rem; color: #fff; }
 .g3-iv div { display: grid; grid-template-columns: 76px 120px 1fr; gap: 8px; font-size: .78rem; padding: 4px 0; border-bottom: 1px solid rgba(160,190,255,.12); } .g3-iv span { color: #9fb6ee; } .g3-iv i { font-style: normal; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 @media (max-width: 1180px) { .g3 { grid-template-columns: 1fr; } .g3-links { flex-direction: row; flex-wrap: wrap; } .g3-links .g3-karte { flex: 1 1 220px; } .g3-mitte { order: -1; } .g3-buehne { min-height: 460px; } .g3-regler span { display: none; } }
+
+/* Anlagenschema (Leitstand-Stil wie die 3D-Ansicht) */
+.g3.sch { grid-template-columns: minmax(0, 1fr) 290px; min-height: 0; }
+.sch-rahmen { overflow: auto; margin-top: 10px; } .sch-svg { width: 100%; min-width: 900px; height: auto; display: block; }
+.sch-zone rect { fill: rgba(255,255,255,.035); stroke: rgba(160,190,255,.22); stroke-dasharray: 6 6; } .sch-zone text { fill: #9fb6ee; font-size: 15px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.sch-rohr { fill: none; stroke-width: 5; stroke-linejoin: round; stroke-linecap: round; opacity: .92; }
+.sch-fluss { fill: none; stroke: rgba(255,255,255,.75); stroke-width: 1.6; stroke-dasharray: 3 15; animation: schFluss 1.4s linear infinite; pointer-events: none; } .sch-fluss.gegen { animation-direction: reverse; }
+@keyframes schFluss { to { stroke-dashoffset: -18; } }
+@media (prefers-reduced-motion: reduce) { .sch-fluss { animation: none; } }
+.sch-knoten { cursor: pointer; } .sch-hg { fill: #14245c; stroke: rgba(160,190,255,.45); stroke-width: 1.5; } .sch-knoten.mit .sch-hg { stroke: var(--c); }
+.sch-knoten:hover .sch-hg { fill: #1c3380; } .sch-knoten.an .sch-hg { fill: #223c96; stroke: #fff; stroke-width: 2.5; }
+.sch-zeichen { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.sch-t { fill: #fff; font-size: 13.5px; font-weight: 700; } .sch-u { fill: #9fb6ee; font-size: 11px; }
+.sch-leg { display: flex; align-items: center; gap: 9px; font-size: .8rem; margin: 6px 0; } .sch-leg i { width: 26px; height: 5px; border-radius: 3px; }
+.sch-daten { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 10px 0; } .sch-daten small, .sch-wahl small, .sch-anl small { display: block; color: #9fb6ee; font-size: .68rem; text-transform: uppercase; letter-spacing: .05em; } .sch-daten b { color: #fff; font-size: .86rem; }
+.sch-anl { border-left: 3px solid var(--c); background: rgba(255,255,255,.06); border-radius: 0 10px 10px 0; padding: 9px 11px; margin-top: 8px; } .sch-anl b { display: block; color: #fff; } .sch-anl span { display: block; font-size: .78rem; color: #cfdcff; }
+.sch-wahl { display: block; margin-top: 12px; } .sch-wahl select { width: 100%; margin-top: 4px; background: #14245c; color: #fff; border: 1px solid rgba(160,190,255,.35); border-radius: 8px; padding: 7px; }
+@media (max-width: 1180px) { .g3.sch { grid-template-columns: 1fr; } }

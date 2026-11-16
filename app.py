@@ -50,7 +50,7 @@ WD_PFAD = DATEN / "winterdienstfotos"
 PROFIL_PFAD = DATEN / "profilbilder"
 MAX_SYMBOL = 2 * 1024 * 1024
 MAX_UPLOAD = 25 * 1024 * 1024
-VERSION = "2026.11.16-12"  # muss zu VERSION in static/app.js passen
+VERSION = "2026.11.16-13"  # muss zu VERSION in static/app.js passen
 SITZUNG_TAGE = 7
 
 GEWERKE = [
@@ -191,6 +191,14 @@ RESSOURCEN: dict[str, dict] = {
             {"name": "dateiname", "label": "Datei", "typ": "text", "nurlesen": True},
             {"name": "breite", "label": "Breite (px)", "typ": "number", "nurlesen": True, "intern": True},
             {"name": "hoehe", "label": "Höhe (px)", "typ": "number", "nurlesen": True, "intern": True},
+        ],
+    },
+    "schemata": {
+        "label": "Anlagenschemata", "einzahl": "Anlagenschema", "anzeige": ["titel"], "sort": "titel", "versteckt": True,
+        "felder": [
+            {"name": "objekt_id", "label": "Objekt", "typ": "ref", "ref": "objekte", "pflicht": True, "liste": True},
+            {"name": "titel", "label": "Titel", "typ": "text", "pflicht": True, "liste": True},
+            {"name": "daten", "label": "Schema", "typ": "schema", "pflicht": True},
         ],
     },
     "kat_kategorien": {
@@ -827,6 +835,18 @@ def wert_pruefen(feld: dict, wert):
             raise Fehler(400, f'Bitte „{feld["label"]}“ ausfüllen.')
         return None
     t = feld["typ"]
+    if t == "schema":                       # Anlagenschema: Geräte (Knoten) und Leitungen als JSON
+        try:
+            d = json.loads(wert) if isinstance(wert, str) else wert
+        except ValueError:
+            raise Fehler(400, "Das ist keine gültige Schema-Datei.")
+        if not isinstance(d, dict) or not isinstance(d.get("knoten"), list) or not isinstance(d.get("leitungen", []), list) \
+                or not d["knoten"] or len(d["knoten"]) > 400 or len(d.get("leitungen", [])) > 1200:
+            raise Fehler(400, "Das ist keine gültige Schema-Datei.")
+        text = json.dumps(d, ensure_ascii=False, separators=(",", ":"))
+        if len(text) > 400000:
+            raise Fehler(400, "Die Schema-Datei ist zu groß.")
+        return text
     if t == "jsonliste":
         if isinstance(wert, str):
             try:
@@ -2123,7 +2143,7 @@ def effektive_rechte(con, b) -> dict:
 
 RESSOURCE_RECHT = {
     "objekte": "anlagen_bearbeiten", "anlagen": "anlagen_bearbeiten", "plaene": "plaene_bearbeiten",
-    "symbole": "plaene_bearbeiten", "wartungen": "wartung_planen", "sv_maengel": "tickets_bearbeiten",
+    "symbole": "plaene_bearbeiten", "schemata": "plaene_bearbeiten", "wartungen": "wartung_planen", "sv_maengel": "tickets_bearbeiten",
     "schluessel": "schluessel_verwalten", "schluesseluebergaben": "schluessel_verwalten", "winterdienst": "winterdienst", "vorgaenge": "vorgaenge", "vertraege": "vertraege_bearbeiten",
     "dienstleister": "vertraege_bearbeiten", "zaehler": "zaehler_erfassen", "ablesungen": "zaehler_erfassen",
     "dokumente": "dokumente_hochladen", "kat_kategorien": "katalog_bearbeiten", "kat_gruppen": "katalog_bearbeiten",
@@ -2232,6 +2252,7 @@ def eigentuemer_sichten(con, ids: list[int], rolle: str = "eigentuemer") -> None
         "objekte": f"id IN {menge}",
         "anlagen": f"objekt_id IN {menge}",
         "plaene": f"objekt_id IN {menge}",
+        "schemata": f"objekt_id IN {menge}",
         "zaehler": f"objekt_id IN {menge}",
         "vertraege": f"objekt_id IN {menge}",
         "winterdienst": f"objekt_id IN {menge}",

@@ -344,6 +344,12 @@ Unter **Standorte & Pläne** oben auf **3D** umschalten. Jede Etage ist eine Ebe
 
 Die Ansicht entsteht aus den vorhandenen Grundrissen. Echte 3D-Modelle von Maschinen und Rohrleitungen brauchen ein 3D-Modell des Gebäudes (BIM) und sind nicht enthalten.
 
+## Anlagenschema
+
+Unter **Standorte & Pläne** oben auf **Schema** umschalten. Ein Schema zeigt die Geräte einer Anlage mit ihren Leitungen, zum Beispiel die Kälte mit Kältemaschinen, Kühltürmen, Wärmetauschern und Kältekreisen. Die Leitungen sind nach Medium gefärbt. Ein Klick auf ein Gerät zeigt seine Daten. Jedes Gerät lässt sich mit einer Anlage aus dem Programm verknüpfen und zeigt dann deren Zustand, mit Sprung zur Akte. Geräte, die so heißen wie eine Anlage, verknüpft das Programm von selbst.
+
+Ein Schema kommt als Datei (Endung .json) über „Schema-Datei wählen“ ins Programm. Die Datei gehört zum Objekt und liegt nicht im Programmordner.
+
 ## Fotos und Dateien an eine Anlage hängen
 
 Auf der Seite einer Anlage Fotos oder Dateien einfach hineinziehen, auch mehrere auf einmal. Fotos kommen in die Galerie, andere Dateien (PDF, Word, Excel) zu den Dokumenten der Anlage. Die Art des Dokuments wird aus dem Dateinamen erraten (Prüfbericht, Wartungsprotokoll, Rechnung …). Ein kopiertes Bild lässt sich mit Strg+V einfügen.
