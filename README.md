@@ -279,6 +279,14 @@ einen Leser aus dem Internet.
   ohne Durchgang im Zeitraum werden genannt. Grundlage ist, was beim Abschluss des Durchgangs festgehalten wurde.
 - Unter **„Rundgänge im Bericht“** lässt sich wählen: „Mit Checkpoints“ (Vorgabe), „Vollständig“ (zusätzlich alle
   Prüfpunkte je Durchgang, nach Stationen geordnet) oder „Kurz“ (nur die Liste der Durchgänge wie bisher).
+- **Schlüsselbuch:** Im Teilbereich „Schlüssel und Transponder“ steht je Schlüssel, **an wen er gegangen ist**:
+  Name und Firma, Ausgabe am und durch wen, Zweck, Rückgabe bis, zurück am und von wem zurückgenommen, mit den
+  Marken „noch aus“, „überfällig“ und „zu spät“, dazu die Nummer des Übergabeprotokolls. Aufgenommen sind alle
+  Übergaben, die im Berichtszeitraum liefen, auch wenn der Schlüssel schon vorher ausgegeben wurde.
+- Unter **„Schlüssel im Bericht“** lässt sich wählen: „Mit Schlüsselbuch“ (Vorgabe), „Vollständig“ (zusätzlich
+  jedes Übergabeprotokoll mit allen Angaben und der ganze Bestand mit „derzeit bei“) oder „Kurz“ (nur die Übersicht
+  wie bisher). Unterschriften, Fotos, E-Mail-Adressen und Telefonnummern der Empfänger stehen nicht im Bericht,
+  nur ob unterschrieben wurde und wie viele Fotos es gibt. Ein Eigentümer-Zugang sieht den Teilbereich nicht.
 - Der Bericht öffnet sich im Casa-Design mit Deckblatt (Objektbild, Zeitraum, Inhalt), Kennzahlen, Diagrammen,
   Tabellen und Seitenzahlen. Im Druckfenster „Als PDF speichern“ wählen. Die Auswahl merkt sich das Programm.
 

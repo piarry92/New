@@ -49,7 +49,7 @@ WD_PFAD = DATEN / "winterdienstfotos"
 PROFIL_PFAD = DATEN / "profilbilder"
 MAX_SYMBOL = 2 * 1024 * 1024
 MAX_UPLOAD = 25 * 1024 * 1024
-VERSION = "2026.11.16-7"  # muss zu VERSION in static/app.js passen
+VERSION = "2026.11.16-8"  # muss zu VERSION in static/app.js passen
 SITZUNG_TAGE = 7
 
 GEWERKE = [
@@ -2769,7 +2769,81 @@ def bericht_rundgaenge(con, oid: int, durchgaenge: list[dict], voll: bool) -> di
             "dauer_min": round(sum(dauern) / len(dauern)) if dauern else None}
 
 
-def objekt_bericht(con, oid: int, von: str, bis: str, teile: list, kosten: bool, rundgang: str = "checkpoints") -> dict:
+BERICHT_SCHLUESSEL = ("kurz", "buch", "voll")   # wie ausführlich die Schlüssel im Bericht stehen
+
+
+def bericht_schluessel(con, oid: int, von: str, bis: str, stufe: str) -> dict:
+    """Schlüssel und Transponder für den Bericht. Ab der Stufe „buch“ steht je Schlüssel, an wen er gegangen ist
+    (Schlüsselbuch aus den Übergabeprotokollen), mit „voll“ zusätzlich jedes Protokoll mit allen Angaben und der Bestand.
+    Unterschriften, Fotos, E-Mail-Adressen und Telefonnummern der Empfänger stehen nicht in den Berichtsdaten."""
+    jz, bis_ende = jetzt()[:16], bis + "T23:59:59"
+    bestand = {r["id"]: dict(r) for r in con.execute(
+        "SELECT id, art, nummer, bezeichnung, schliessanlage, anzahl, aufbewahrung, status FROM schluessel WHERE objekt_id=?", (oid,))}
+    ug = []
+    for r in con.execute(
+            "SELECT id, nummer, schluessel, ausgeber_name, empfaenger_name, empfaenger_firma, zweck, ausgabe_zeit, rueckgabe_bis, status, "
+            "rueckgabe_zeit, rueckgabe_von, bemerkung, rueckgabe_bemerkung, (sig_empfaenger IS NOT NULL) AS sig_empfaenger, "
+            "(sig_ausgeber IS NOT NULL) AS sig_ausgeber, (sig_rueckgabe IS NOT NULL) AS sig_rueckgabe FROM schluessel_uebergaben "
+            "WHERE objekt_id=? AND (status='ausgegeben' OR (ausgabe_zeit<=? AND (rueckgabe_zeit IS NULL OR rueckgabe_zeit>=?))) "
+            "ORDER BY ausgabe_zeit, id", (oid, bis_ende, von)):
+        u = dict(r)
+        u["schluessel"] = [{k: x.get(k) for k in ("id", "nummer", "bezeichnung", "anzahl", "art")}
+                           for x in json.loads(u["schluessel"] or "[]") if isinstance(x, dict)]
+        u["spaet"] = (u["rueckgabe_zeit"] or jz)[:16] > u["rueckgabe_bis"]             # zu spät zurück oder überfällig
+        for feld in ("sig_empfaenger", "sig_ausgeber", "sig_rueckgabe"):
+            u[feld] = bool(u[feld])
+        ug.append(u)
+    zeitraum = [u for u in ug if von <= u["ausgabe_zeit"][:10] <= bis]                  # im Zeitraum ausgegeben
+    laufend = [u for u in ug if u["ausgabe_zeit"] <= bis_ende and (not u["rueckgabe_zeit"] or u["rueckgabe_zeit"][:10] >= von)]
+    kurz = ("nummer", "schluessel", "empfaenger_name", "empfaenger_firma", "ausgabe_zeit", "rueckgabe_bis", "rueckgabe_zeit", "status", "spaet")
+    aus = {
+        "zeitraum": [{k: u[k] for k in kurz} for u in zeitraum],
+        "offen": [{k: u[k] for k in kurz} for u in ug if u["status"] == "ausgegeben"],
+        "verloren": [{k: x[k] for k in ("nummer", "bezeichnung", "art")} for x in bestand.values() if x["status"] == "verloren"],
+        "bestand": len(bestand), "zu_spaet": sum(1 for u in zeitraum if u["spaet"]),
+    }
+    if stufe == "kurz":
+        return aus
+    natuerlich = lambda t: [int(x) if x.isdigit() else x.lower() for x in re.split(r"(\d+)", str(t or ""))]  # noqa: E731
+    # Schlüsselbuch: je Schlüssel alle Übergaben, die im Zeitraum liefen (auch vorher ausgegebene, die noch aus waren)
+    buch: dict = {}
+    for u in laufend:
+        for x in u["schluessel"]:
+            b = bestand.get(x["id"]) or {}
+            eintrag = buch.setdefault(x["id"] if x["id"] in bestand else f'{x["art"]}|{x["nummer"]}', {
+                "nummer": b.get("nummer") or x["nummer"], "bezeichnung": b.get("bezeichnung") or x["bezeichnung"],
+                "art": b.get("art") or x["art"] or "Schlüssel", "anzahl": b.get("anzahl") or 1, "schliessanlage": b.get("schliessanlage"),
+                "status": b.get("status") or ("aktiv" if b else "nicht mehr im Bestand"), "uebergaben": []})
+            eintrag["uebergaben"].append({
+                "protokoll": u["nummer"], "ausgabe_zeit": u["ausgabe_zeit"], "empfaenger_name": u["empfaenger_name"],
+                "empfaenger_firma": u["empfaenger_firma"], "ausgeber_name": u["ausgeber_name"], "zweck": u["zweck"], "anzahl": x.get("anzahl") or 1,
+                "rueckgabe_bis": u["rueckgabe_bis"], "rueckgabe_zeit": u["rueckgabe_zeit"], "rueckgabe_von": u["rueckgabe_von"],
+                "status": u["status"], "spaet": u["spaet"]})
+    aus["buch"] = sorted(buch.values(), key=lambda k: (k["art"] != "Schlüssel", natuerlich(k["nummer"])))
+    aus["ohne_ausgabe"] = max(len(bestand) - sum(1 for k in buch if k in bestand), 0)
+    aus["empfaenger"] = len({(u["empfaenger_name"] or "").strip().lower() for u in laufend})
+    if stufe == "voll":
+        fotos: dict = {}
+        ids = [u["id"] for u in laufend]
+        if ids:
+            for r in con.execute(f"SELECT uebergabe_id, art, COUNT(*) AS n FROM schluessel_fotos WHERE uebergabe_id IN ({','.join('?' * len(ids))}) "
+                                 "GROUP BY uebergabe_id, art", ids):
+                fotos.setdefault(r["uebergabe_id"], {})[r["art"]] = r["n"]
+        aus["protokolle"] = [{**{k: u[k] for k in u if k != "id"}, "fotos_ausgabe": fotos.get(u["id"], {}).get("ausgabe", 0),
+                              "fotos_rueckgabe": fotos.get(u["id"], {}).get("rueckgabe", 0)} for u in laufend]
+        bei: dict = {}
+        for u in ug:
+            if u["status"] == "ausgegeben":
+                for x in u["schluessel"]:
+                    bei.setdefault(x["id"], []).append(u["empfaenger_name"])
+        aus["bestand_liste"] = [{**{k: x[k] for k in ("art", "nummer", "bezeichnung", "schliessanlage", "anzahl", "aufbewahrung", "status")},
+                                 "bei": bei.get(x["id"], [])}
+                                for x in sorted(bestand.values(), key=lambda k: (k["art"] != "Schlüssel", natuerlich(k["nummer"])))][:400]
+    return aus
+
+
+def objekt_bericht(con, oid: int, von: str, bis: str, teile: list, kosten: bool, rundgang: str = "checkpoints",
+                   schluessel: str = "buch") -> dict:
     o = zeile(con.execute("SELECT * FROM objekte WHERE id=?", (oid,)).fetchone())
     if not o:
         raise Fehler(404, "Objekt nicht gefunden.")
@@ -2890,16 +2964,7 @@ def objekt_bericht(con, oid: int, von: str, bis: str, teile: list, kosten: bool,
             vt.append(v)
         aus["vertraege"] = vt
     if "schluessel" in teile:
-        ug = uebergaben_liste(con, {"objekt_id": [str(oid)]})
-        aus["schluessel"] = {
-            "zeitraum": [u for u in ug if von <= u["ausgabe_zeit"][:10] <= bis],
-            "offen": [u for u in ug if u["status"] == "ausgegeben"],
-            "verloren": [dict(r) for r in con.execute("SELECT nummer, bezeichnung, art FROM schluessel WHERE objekt_id=? AND status='verloren'", (oid,))],
-            "bestand": con.execute("SELECT COUNT(*) FROM schluessel WHERE objekt_id=?", (oid,)).fetchone()[0],
-        }
-        jz = jetzt()[:16]
-        aus["schluessel"]["zu_spaet"] = sum(1 for u in aus["schluessel"]["zeitraum"]
-                                            if (u["rueckgabe_zeit"] or jz)[:16] > u["rueckgabe_bis"])
+        aus["schluessel"] = bericht_schluessel(con, oid, von, bis, schluessel)
     if "dokumente" in teile:
         aus["dokumente"] = [dict(r) for r in con.execute(
             "SELECT titel, kategorie, dateiname, hochgeladen_am FROM dokumente WHERE objekt_id=? AND hochgeladen_am BETWEEN ? AND ? "
@@ -4527,11 +4592,14 @@ class Handler(BaseHTTPRequestHandler):
             if db_ < dv or (db_ - dv).days > 3 * 366:
                 raise Fehler(400, "Der Zeitraum ist ungültig (höchstens drei Jahre).")
             teile_ = [t for t in (q.get("teile") or [""])[0].split(",") if t in BERICHT_TEILE]
+            if b["rolle"] == "eigentuemer":                      # Schlüssel sieht ein Eigentümer-Zugang nicht, also auch nicht im Bericht
+                teile_ = [t for t in teile_ if t != "schluessel"]
             if not teile_:
                 raise Fehler(400, "Bitte mindestens einen Teilbereich auswählen.")
-            rundgang = (q.get("rundgang") or ["checkpoints"])[0]
+            rundgang, schl = (q.get("rundgang") or ["checkpoints"])[0], (q.get("schluessel") or ["buch"])[0]
             return self.json(objekt_bericht(con, self.id(teile[1]), von, bis, teile_, (q.get("kosten") or ["0"])[0] == "1",
-                                            rundgang if rundgang in BERICHT_RUNDGANG else "checkpoints"))
+                                            rundgang if rundgang in BERICHT_RUNDGANG else "checkpoints",
+                                            schl if schl in BERICHT_SCHLUESSEL else "buch"))
         if erstes == "vorgaenge" and len(teile) == 2 and not teile[1].isdigit():
             d = self.body() if m == "POST" else {}
             oid_roh = d.get("objekt_id") if m == "POST" else (q.get("objekt_id") or [""])[0]

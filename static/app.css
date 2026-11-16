@@ -1040,6 +1040,8 @@ html[data-theme="dark"] .sv-zus { background: rgba(230,55,19,.12); }
 .sl-k:has(input:checked) { border-color: var(--orange, #E63713); background: color-mix(in srgb, var(--orange, #E63713) 7%, transparent); }
 .sl-k.weg { opacity: .5; cursor: not-allowed; }
 .sl-k > span { flex: 1; }
+.formular label.sl-k { flex-direction: row; align-items: center; gap: 10px; }      /* Haken links, Text daneben, auch im Formular */
+.formular label.sl-k input[type=checkbox] { width: auto; min-height: 0; flex: none; margin: 0; }
 .sl-anz { width: 64px !important; min-height: 34px !important; }
 .sl-us { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 @media (max-width: 760px) { .sl-us { grid-template-columns: 1fr; } }

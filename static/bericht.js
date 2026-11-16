@@ -11,7 +11,7 @@ const BERICHT_TEILE = [
   ["checklisten", "Checklisten und Rundgänge", "Durchgänge, Rundgänge mit Checkpoints, Abweichungen"],
   ["zaehler", "Zähler und Verbrauch", "Verbrauch je Zähler im Zeitraum"],
   ["vertraege", "Verträge", "Laufende Verträge und Kündigungsfristen"],
-  ["schluessel", "Schlüssel und Transponder", "Übergaben, ausgegeben, verloren"],
+  ["schluessel", "Schlüssel und Transponder", "An wen jeder Schlüssel ging, Übergaben, verloren"],
   ["dokumente", "Dokumente", "Im Zeitraum abgelegte Dokumente"],
 ];
 
@@ -29,10 +29,14 @@ function berichtZeitraum(art) {
   return r ? [iso(r[0]), iso(r[1])] : null;
 }
 
+/* Teilbereiche, die dieser Zugang im Bericht wählen kann: Schlüssel sieht ein Eigentümer-Zugang nicht */
+const berichtTeile = () => BERICHT_TEILE.filter(([k]) => k !== "schluessel" || (S.ich && S.ich.rolle !== "eigentuemer"));
+
 async function berichtDialog(o) {
+  const TEILE = berichtTeile(), mitSchluessel = TEILE.some(([k]) => k === "schluessel");
   let gemerkt = {};
   try { gemerkt = JSON.parse(localStorage.getItem("cafm-bericht") || "{}"); } catch (e) { gemerkt = {}; }
-  const gewaehlt = new Set(gemerkt.teile || BERICHT_TEILE.map((t) => t[0]));
+  const gewaehlt = new Set(gemerkt.teile || TEILE.map((t) => t[0]));
   const zr = gemerkt.zeitraum || "quartal_letztes";
   const [v0, b0] = berichtZeitraum(zr === "eigen" ? "quartal_letztes" : zr);
   const html = `<div class="dfehler"></div><form class="formular" onsubmit="return false">
@@ -43,10 +47,13 @@ async function berichtDialog(o) {
     <label><span>von</span><input type="date" name="von" value="${zr === "eigen" && gemerkt.von ? gemerkt.von : v0}"></label>
     <label><span>bis</span><input type="date" name="bis" value="${zr === "eigen" && gemerkt.bis ? gemerkt.bis : b0}"></label>
     <div class="breit"><div class="bt-kopf"><span class="sl-titel">Teilbereiche</span><button type="button" class="knopf klein" data-alle="1">Alle</button><button type="button" class="knopf klein" data-alle="0">Keine</button></div>
-      <div class="bt-wahl">${BERICHT_TEILE.map(([k, t, b]) => `<label class="sl-k"><input type="checkbox" data-teil="${k}" ${gewaehlt.has(k) ? "checked" : ""}><span><b>${esc(t)}</b><br><span class="klein">${esc(b)}</span></span></label>`).join("")}</div></div>
+      <div class="bt-wahl">${TEILE.map(([k, t, b]) => `<label class="sl-k"><input type="checkbox" data-teil="${k}" ${gewaehlt.has(k) ? "checked" : ""}><span><b>${esc(t)}</b><br><span class="klein">${esc(b)}</span></span></label>`).join("")}</div></div>
     <label class="breit"><span>Rundgänge im Bericht</span><select name="rundgang">
       ${[["checkpoints", "Mit Checkpoints: jeder Rundgang mit Scan-Zeiten je Station und den Abweichungen"], ["voll", "Vollständig: zusätzlich alle Prüfpunkte je Rundgang"], ["kurz", "Kurz: nur die Liste der Durchgänge"]]
         .map(([w, t]) => `<option value="${w}" ${w === (gemerkt.rundgang || "checkpoints") ? "selected" : ""}>${t}</option>`).join("")}</select></label>
+    <label class="breit" ${mitSchluessel ? "" : "hidden"}><span>Schlüssel im Bericht</span><select name="schluessel">
+      ${[["buch", "Mit Schlüsselbuch: je Schlüssel, an wen er gegangen ist"], ["voll", "Vollständig: zusätzlich jedes Übergabeprotokoll mit allen Angaben und der Bestand"], ["kurz", "Kurz: nur die Übersicht der Übergaben"]]
+        .map(([w, t]) => `<option value="${w}" ${w === (gemerkt.schluessel || "buch") ? "selected" : ""}>${t}</option>`).join("")}</select></label>
     <label class="check breit"><input type="checkbox" name="kosten" ${gemerkt.kosten ? "checked" : ""}> Beträge und Kosten zeigen (Störungskosten, Vertragsbeträge). Für Berichte an Auftraggeber meist aus.</label>
     <label class="breit"><span>Anmerkung im Bericht (optional)</span><textarea name="anmerkung" rows="3" placeholder="z. B. Besonderheiten im Berichtszeitraum">${esc(gemerkt.anmerkung || "")}</textarea></label>
   </form>`;
@@ -56,9 +63,9 @@ async function berichtDialog(o) {
       const teile = [...hg.querySelectorAll("[data-teil]:checked")].map((c) => c.dataset.teil);
       if (!teile.length) throw new Error("Bitte mindestens einen Teilbereich auswählen.");
       if (!fm.von.value || !fm.bis.value || fm.bis.value < fm.von.value) throw new Error("Bitte einen gültigen Zeitraum wählen.");
-      const einst = { teile, zeitraum: fm.zeitraum.value, von: fm.von.value, bis: fm.bis.value, kosten: fm.kosten.checked, rundgang: fm.rundgang.value, titel: fm.titel.value.trim() || "Objektbericht", anmerkung: fm.anmerkung.value.trim() };
+      const einst = { teile, zeitraum: fm.zeitraum.value, von: fm.von.value, bis: fm.bis.value, kosten: fm.kosten.checked, rundgang: fm.rundgang.value, schluessel: fm.schluessel.value, titel: fm.titel.value.trim() || "Objektbericht", anmerkung: fm.anmerkung.value.trim() };
       try { localStorage.setItem("cafm-bericht", JSON.stringify({ ...einst, anmerkung: "" })); } catch (e) { /* egal */ }
-      const daten = await api("GET", `objekte/${o.id}/bericht?${new URLSearchParams({ von: einst.von, bis: einst.bis, teile: teile.join(","), kosten: einst.kosten ? "1" : "0", rundgang: einst.rundgang })}`);
+      const daten = await api("GET", `objekte/${o.id}/bericht?${new URLSearchParams({ von: einst.von, bis: einst.bis, teile: teile.join(","), kosten: einst.kosten ? "1" : "0", rundgang: einst.rundgang, schluessel: einst.schluessel })}`);
       berichtDrucken(daten, einst);
       return true;
     },
@@ -197,10 +204,34 @@ function berichtDrucken(d, e) {
   if (d.schluessel) {
     const s = d.schluessel;
     const liste = (u) => u.schluessel.map((k) => `${k.art === "Transponder" ? "Transponder " : ""}${k.nummer}`).join(", ");
+    const zeitp = (iso) => (iso ? `${dat(iso)} ${h(String(iso).slice(11, 16))}` : "");
+    const wer = (u) => `<b>${h(u.empfaenger_name)}</b>${u.empfaenger_firma ? `<br><small>${h(u.empfaenger_firma)}</small>` : ""}`;
+    const zurueck = (u) => (u.rueckgabe_zeit ? `${zeitp(u.rueckgabe_zeit)}${u.rueckgabe_von ? `<br><small>zurückgenommen von ${h(u.rueckgabe_von)}</small>` : ""}${u.spaet ? `<br>${marke("zu spät", "gelb")}` : ""}`
+      : u.spaet ? marke("überfällig", "rot") : marke("noch aus", "gelb"));
+    const artWort = (k) => (k.art === "Transponder" ? "Transponder" : "Schlüssel");
+    /* Schlüsselbuch: je Schlüssel, an wen er gegangen ist. Grundlage sind die Übergabeprotokolle, die im Zeitraum liefen. */
+    const buch = !s.buch ? "" : `<h3>Schlüsselbuch: an wen ist welcher Schlüssel gegangen</h3>
+      <p class="rgz"><b>${s.buch.length}</b> ${s.buch.length === 1 ? "Schlüssel oder Transponder" : "Schlüssel und Transponder"} mit Ausgabe im Zeitraum${s.buch.length ? ` · ausgegeben an <b>${s.empfaenger}</b> ${s.empfaenger === 1 ? "Person" : "Personen"}` : ""} · <b>${s.ohne_ausgabe}</b> im Bestand ohne Ausgabe</p>
+      ${s.buch.length ? `<table class="sbt"><thead><tr><th>Erhalten von</th><th>Ausgegeben am</th><th>Zweck</th><th>Rückgabe bis</th><th>Zurück am</th><th>Protokoll</th></tr></thead><tbody>${s.buch.map((k) =>
+        `<tr class="g"><td colspan="6">${artWort(k)} ${h(k.nummer)} · ${h(k.bezeichnung)} <small>${h([k.anzahl > 1 ? `${k.anzahl} Exemplare` : "", k.schliessanlage, k.status && k.status !== "aktiv" ? `Zustand: ${k.status}` : ""].filter(Boolean).join(" · "))}</small></td></tr>`
+        + k.uebergaben.map((u) => `<tr><td>${wer(u)}${u.anzahl > 1 ? `<br><small>${u.anzahl} Stück</small>` : ""}</td><td class="nw">${zeitp(u.ausgabe_zeit)}<br><small>von ${h(u.ausgeber_name)}</small></td><td>${h(u.zweck || "")}</td><td class="nw">${zeitp(u.rueckgabe_bis)}</td><td>${zurueck(u)}</td><td class="nw">${h(u.protokoll)}</td></tr>`).join("")).join("")}</tbody></table>`
+        : '<p class="leer">Im Zeitraum war kein Schlüssel ausgegeben.</p>'}`;
+    /* Vollständig: jedes Übergabeprotokoll mit allen Angaben, danach der Bestand */
+    const protokolle = !s.protokolle ? "" : `<h3>Übergabeprotokolle <small>alle, die im Zeitraum liefen</small></h3>${s.protokolle.length ? s.protokolle.map((u) => `<div class="spk">
+        <h4>${h(u.nummer)} · Ausgabe am ${zeitp(u.ausgabe_zeit)} Uhr <small>${u.status === "ausgegeben" ? (u.spaet ? "überfällig, noch nicht zurück" : "noch ausgegeben") : `zurück am ${zeitp(u.rueckgabe_zeit)} Uhr${u.spaet ? ", zu spät" : ""}`}</small></h4>
+        <div class="spm"><div><small>Erhalten von</small><b>${h(u.empfaenger_name)}</b>${u.empfaenger_firma ? `, ${h(u.empfaenger_firma)}` : ""}</div><div><small>Ausgegeben von</small>${h(u.ausgeber_name)}</div><div><small>Zweck</small>${h(u.zweck || "–")}</div>
+          <div><small>Rückgabe bis</small>${zeitp(u.rueckgabe_bis)} Uhr</div><div><small>Zurückgenommen</small>${u.rueckgabe_zeit ? `${zeitp(u.rueckgabe_zeit)} Uhr${u.rueckgabe_von ? ` von ${h(u.rueckgabe_von)}` : ""}` : "–"}</div>
+          <div><small>Unterschriften und Fotos</small>${h([u.sig_empfaenger ? "Empfang" : "", u.sig_ausgeber ? "Ausgabe" : "", u.sig_rueckgabe ? "Rücknahme" : ""].filter(Boolean).join(", ") || "keine Unterschrift")} · ${u.fotos_ausgabe + u.fotos_rueckgabe} ${u.fotos_ausgabe + u.fotos_rueckgabe === 1 ? "Foto" : "Fotos"}</div>
+          ${u.bemerkung ? `<div class="breit"><small>Bemerkung bei Ausgabe</small>${h(u.bemerkung)}</div>` : ""}${u.rueckgabe_bemerkung ? `<div class="breit"><small>Bemerkung bei Rückgabe</small>${h(u.rueckgabe_bemerkung)}</div>` : ""}</div>
+        <table class="rgp"><thead><tr><th>Art</th><th>Nr.</th><th>Bezeichnung</th><th>Anzahl</th></tr></thead><tbody>${u.schluessel.map((k) => `<tr><td>${artWort(k)}</td><td><b>${h(k.nummer)}</b></td><td>${h(k.bezeichnung)}</td><td>${k.anzahl || 1}</td></tr>`).join("")}</tbody></table></div>`).join("")
+      : '<p class="leer">Im Zeitraum lief kein Übergabeprotokoll.</p>'}`;
+    const bestand = !s.bestand_liste ? "" : `<h3>Bestand</h3>${tabelle(["Art", "Nr.", "Bezeichnung", "Schließanlage", "Anzahl", "Aufbewahrung", "Zustand", "Derzeit bei"], s.bestand_liste.map((k) => [artWort(k), `<b>${h(k.nummer)}</b>`, h(k.bezeichnung), h(k.schliessanlage), k.anzahl || 1, h(k.aufbewahrung), k.status && k.status !== "aktiv" ? marke(k.status, k.status === "verloren" ? "rot" : "grau") : h(k.status || "aktiv"), k.bei.length ? h(k.bei.join(", ")) : ""]), "Kein Schlüssel im Bestand.")}`;
     teile.push(abschnitt("Schlüssel und Transponder", kacheln([[s.bestand, "im Bestand"], [s.zeitraum.length, "Übergaben im Zeitraum"], [s.offen.length, "derzeit ausgegeben", s.offen.length ? "orange" : "gruen"], [s.zu_spaet, "zu spät zurück", s.zu_spaet ? "rot" : "gruen"], [s.verloren.length, "verloren", s.verloren.length ? "rot" : "gruen"]])
-      + (s.offen.length ? `<h3>Derzeit ausgegeben</h3>${tabelle(["Protokoll", "Ausgegeben", "Erhalten von", "Rückgabe bis"], s.offen.map((u) => [h(u.nummer), h(liste(u)), `<b>${h(u.empfaenger_name)}</b>${u.empfaenger_firma ? `<br><small>${h(u.empfaenger_firma)}</small>` : ""}`, `${dat(u.rueckgabe_bis)} ${h(u.rueckgabe_bis.slice(11, 16))}`]))}` : "")
+      + buch
+      + (s.offen.length ? `<h3>Derzeit ausgegeben</h3>${tabelle(["Protokoll", "Ausgegeben", "Erhalten von", "Rückgabe bis"], s.offen.map((u) => [h(u.nummer), h(liste(u)), `<b>${h(u.empfaenger_name)}</b>${u.empfaenger_firma ? `<br><small>${h(u.empfaenger_firma)}</small>` : ""}`, `${dat(u.rueckgabe_bis)} ${h(u.rueckgabe_bis.slice(11, 16))}${u.spaet ? ` ${marke("überfällig", "rot")}` : ""}`]))}` : "")
       + (s.verloren.length ? `<h3>Als verloren gemeldet</h3>${tabelle(["Nr.", "Art", "Bezeichnung"], s.verloren.map((k) => [h(k.nummer), h(k.art || "Schlüssel"), h(k.bezeichnung)]))}` : "")
-      + `<h3>Übergaben im Zeitraum</h3>${tabelle(["Protokoll", "Ausgabe", "Erhalten von", "Zurück"], s.zeitraum.map((u) => [h(u.nummer), `${dat(u.ausgabe_zeit)}<br><small>${h(liste(u))}</small>`, `<b>${h(u.empfaenger_name)}</b>${u.empfaenger_firma ? `<br><small>${h(u.empfaenger_firma)}</small>` : ""}`, u.rueckgabe_zeit ? `${dat(u.rueckgabe_zeit)} ${h(u.rueckgabe_zeit.slice(11, 16))}` : marke("noch aus", "gelb")]), "Im Zeitraum keine Übergaben.")}`));
+      + (s.protokolle ? protokolle + bestand
+        : `<h3>Übergaben im Zeitraum</h3>${tabelle(["Protokoll", "Ausgabe", "Erhalten von", "Zurück"], s.zeitraum.map((u) => [h(u.nummer), `${dat(u.ausgabe_zeit)}<br><small>${h(liste(u))}</small>`, `<b>${h(u.empfaenger_name)}</b>${u.empfaenger_firma ? `<br><small>${h(u.empfaenger_firma)}</small>` : ""}`, u.rueckgabe_zeit ? `${dat(u.rueckgabe_zeit)} ${h(u.rueckgabe_zeit.slice(11, 16))}${u.spaet ? ` ${marke("zu spät", "gelb")}` : ""}` : u.spaet ? marke("überfällig", "rot") : marke("noch aus", "gelb")]), "Im Zeitraum keine Übergaben.")}`)));
   }
   if (d.dokumente) {
     teile.push(abschnitt("Dokumente", tabelle(["Datum", "Titel", "Kategorie"], d.dokumente.map((x) => [dat(x.hochgeladen_am), `<b>${h(x.titel)}</b><br><small>${h(x.dateiname)}</small>`, h(x.kategorie)]), "Im Zeitraum keine Dokumente abgelegt.")));
@@ -261,7 +292,7 @@ function berichtDrucken(d, e) {
     .zaehler { break-inside: avoid; margin-bottom: 4mm; }
     h4 { font-size: 9.5pt; margin: 4mm 0 1.5mm; break-after: avoid; } h4 small { font-weight: 400; }
     .rg { margin: 0 0 7mm; padding-top: 1mm; } .rg > h3 { border-left: 1.2mm solid #E63713; padding-left: 3mm; margin-top: 6mm; }
-    .rgz { margin: 0 0 2.5mm; font-size: 9pt; color: #626366; } .rgz b { color: #3C3C3B; }
+    .rgz { margin: 0 0 2.5mm; font-size: 9pt; color: #626366; break-after: avoid; } .rgz b { color: #3C3C3B; }
     table.cpt th.cps, table.cpt td.cps { text-align: center; padding-left: 1mm; padding-right: 1mm; }
     table.cpt th.cps { font-size: 7.6pt; line-height: 1.15; font-weight: 700; overflow-wrap: anywhere; }
     .cpj, .cpf, .cpn { display: inline-block; min-width: 11mm; padding: .3mm 1.6mm; border-radius: 3mm; font-size: 8pt; font-weight: 700; white-space: nowrap; }
@@ -269,6 +300,10 @@ function berichtDrucken(d, e) {
     .cpl { display: flex; flex-wrap: wrap; gap: 1mm; }
     .rgd { margin-bottom: 4mm; } .rgd h4 { margin-top: 3mm; }
     .nw, table.rgt td:first-child { white-space: nowrap; }
+    table.sbt tr.g { break-after: avoid; } table.sbt tr.g td { background: #FBEEE5; color: #B82C0F; font-weight: 700; } table.sbt tr.g small { color: #B82C0F; font-weight: 400; }
+    .spk { margin-bottom: 5mm; } .spk h4 { margin-top: 4mm; border-left: 1.2mm solid #E63713; padding-left: 3mm; }
+    .spm { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5mm 6mm; margin: 0 0 2mm; font-size: 9pt; break-inside: avoid; }
+    .spm small { display: block; font-size: 7.4pt; text-transform: uppercase; letter-spacing: .06em; } .spm .breit { grid-column: 1 / -1; }
     table.rgp { font-size: 8.5pt; } table.rgp th { background: #626366; }
     table.rgp tr.g { break-after: avoid; } table.rgp tr.g td { background: #FBEEE5; color: #B82C0F; font-weight: 700; } table.rgp tr.g small { color: #B82C0F; font-weight: 400; }
     table.rgp tr.a td { background: #FBE4E1; }
