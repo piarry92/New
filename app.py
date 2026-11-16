@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import katalog_daten
 import ki
+import testobjekt
 import versand
 import base64
 import binascii
@@ -49,7 +50,7 @@ WD_PFAD = DATEN / "winterdienstfotos"
 PROFIL_PFAD = DATEN / "profilbilder"
 MAX_SYMBOL = 2 * 1024 * 1024
 MAX_UPLOAD = 25 * 1024 * 1024
-VERSION = "2026.11.16-8"  # muss zu VERSION in static/app.js passen
+VERSION = "2026.11.16-9"  # muss zu VERSION in static/app.js passen
 SITZUNG_TAGE = 7
 
 GEWERKE = [
@@ -4370,6 +4371,31 @@ class Handler(BaseHTTPRequestHandler):
                 return self.plan_hochladen(con, b, pid)
             if teile[2] == "anlagen" and m == "GET":
                 return self.json(plan_anlagen(con, pid))
+        if erstes == "einstellungen" and len(teile) == 2 and teile[1] == "testobjekt":
+            # Testobjekt: ein zusätzliches Objekt mit erfundenen Daten zum Ausprobieren. Nur für Administratoren.
+            if b["rolle"] != "admin":
+                raise Fehler(403, "Das Testobjekt kann nur ein Administrator anlegen oder entfernen.")
+            if m == "GET":
+                return self.json(testobjekt.status(con))
+            if m == "POST":
+                return self.json(testobjekt.anlegen(sys.modules[__name__], con, b), 201)
+            if m == "DELETE":
+                if not testobjekt.status(con)["vorhanden"]:
+                    raise Fehler(404, "Es gibt kein Testobjekt.")
+                sicherung = db_sichern("vor_testobjekt_entfernen")
+                if not sicherung:
+                    raise Fehler(500, "Die Sicherung vor dem Entfernen hat nicht geklappt. Es wurde nichts geändert.")
+                ergebnis, weg = testobjekt.entfernen(sys.modules[__name__], con, b)
+
+                def testdateien_loeschen():  # erst nach dem Speichern: Pläne, Dokumente und Fotos des Testobjekts löschen
+                    for datei in weg:
+                        try:
+                            datei.unlink()
+                        except OSError:
+                            pass
+                self._spaeter = testdateien_loeschen
+                return self.json({**ergebnis, "sicherung": sicherung})
+            raise Fehler(405, "Nicht erlaubt.")
         if erstes == "einstellungen" and len(teile) == 2 and teile[1] == "testmail" and m == "POST":
             an = str(self.body().get("an") or b["email"]).strip()
             if "@" not in an:

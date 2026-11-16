@@ -28,6 +28,7 @@ Es läuft im Browser und braucht nur Python, sonst nichts.
 | Objektauswahl | Oben in der Seitenleiste wird das Objekt gewählt (beim ersten Start Pflicht, mit Suche). Danach zeigen Übersicht, Pläne, Anlagen, Wartungsplan, SV-Prüfplan, Störungen, Checklisten, Winterdienst, Kalender, Vorgangsliste, Verträge, Zähler, Dokumente und die Suche nur dieses Objekt; „Objekt“ im Menü öffnet direkt das gewählte Objekt. „Alle Objekte“ für die Gesamtübersicht (nicht für Eigentümer). Die Wahl bleibt gespeichert. Der Server filtert dabei jede Abfrage, nie über die eigenen Rechte hinaus |
 | Zugänge & Rechte | Anmeldung für alle. Vier Rollen: Administrator (darf alles), Objektleiter (sieht und bearbeitet nur seine zugewiesenen Objekte inkl. Pläne, Anlagen, Wartungsplan, Verträge; zugewiesen über „Objektleiter (Zugang)“ in den Stammdaten oder unter Zugänge › Objekte; keine Zugänge, Einstellungen oder neuen Objekte), Benutzer (Störungen, Wartungen erledigen, Zähler, Dokumente, Schlüssel; Pläne und Anlagen nur ansehen), Zuschauer (sieht alles, ändert nichts), Eigentümer (sieht nur die zugewiesenen Objekte und ändert nichts; anlegen direkt auf der Objektseite unter „Eigentümer-Zugang“ mit Einladungslink, der Server filtert dabei jede Abfrage auf diese Objekte). Benutzer aus Datei importieren (Excel/CSV, Spalten Name; E-Mail; Rolle). Rechte je Rolle per Häkchen an- und abwählen, zusätzlich je Zugang eigene Rechte. Sperren, Passwort setzen, Liste der letzten Änderungen |
 | Einstellungen | Eigenes Passwort, eigene Rechte ansehen, eigene Symbole, Adresse für QR-Codes |
+| Testobjekt | Ein zusätzliches Objekt mit erfundenen Daten, in dem jeder Bereich gefüllt ist: zum Ausprobieren und für einen Probe-Bericht. Anlegen und Entfernen unter Einstellungen, ganz unten (siehe „Testobjekt zum Ausprobieren“) |
 
 Jede Liste lässt sich mit einem Klick als Excel-Liste (CSV) speichern. Die Suche oben findet alles.
 
@@ -376,11 +377,43 @@ Die neue ZIP-Datei am besten **über den alten Ordner entpacken** (Dateien erset
 Einträgen bleibt dabei erhalten. Wer in einen neuen Ordner entpackt, kopiert den Ordner `daten` aus dem alten
 Ordner hinein. Die Datenbank wird beim Start automatisch auf den neuen Stand gebracht.
 
+## Testobjekt zum Ausprobieren
+
+- Unter **Einstellungen**, ganz unten, steht die Karte **„Testobjekt“** (nur für Administratoren). „Testobjekt
+  anlegen“ legt ein zusätzliches Objekt **TEST · Testobjekt Musterpark** an, in dem jeder Bereich gefüllt ist.
+  Die echten Objekte bleiben unverändert.
+- Inhalt: zwei Gebäude und Außenanlagen mit zehn gezeichneten Grundrissen (ein Geschoss mit zwei Teilplänen),
+  126 Anlagen mit Katalog, Symbolen und Platz im Plan (fünf davon noch ohne Plan), 97 Wartungen und Prüfungen mit
+  zwei Jahren Verlauf, SV-Prüfungen mit Berichten, SV-Mängeln und einer noch nicht übernommenen Auswertung, Mängel
+  und Störungen in allen Zuständen, drei Rundgänge (mit Checkpoints, mit ausgelassenen Stationen, noch nie
+  durchgeführt) und drei Checklisten, sieben Zähler mit je 25 Ablesungen, zehn Verträge mit Kündigungsfristen,
+  zwölf Schlüssel und Transponder mit 23 Übergabeprotokollen (pünktlich, zu spät, überfällig, verloren),
+  Winterdienst-Einsätze mit Vorher- und Nachher-Fotos, elf Vorgänge von offen bis abgerechnet, Dokumente und Fotos.
+- Alles hängt am Tag des Anlegens: Es gibt immer Überfälliges, bald Fälliges und Erledigtes. So ist jeder
+  Berichtszeitraum gefüllt, vom letzten Monat bis zum letzten Jahr. In der Karte führt „Objektbericht erstellen“
+  direkt zum Bericht.
+- Alle Angaben sind erfunden. Firmen tragen den Zusatz „(Test)“, Nummern den Baustein „TEST“, Bilder den Stempel
+  „TESTBILD“, Dokumente den Hinweis „Testdokument“. E-Mail-Adressen enden auf `.example` und sind nicht zustellbar.
+- Es gehen keine E-Mails raus: Die Schlüsselübergaben sind ohne Quittung und ohne Erinnerung angelegt, die Hinweise
+  in der Glocke gelten als schon verschickt.
+- Solange das Testobjekt da ist, zählt es in der Gesamtübersicht „Alle Objekte“ mit, und die neun Testfirmen
+  stehen in der Dienstleisterliste. Wer oben links ein einzelnes Objekt wählt, sieht nur dessen Zahlen.
+  Eigentümer und Objektleiter sehen das Testobjekt nicht, solange es ihnen nicht zugewiesen ist.
+- **Entfernen:** in derselben Karte „Testobjekt entfernen“. Vorher legt das Programm eine Sicherung der Datenbank
+  an. Gelöscht wird nur, was zum Testobjekt gehört, auch was dort selbst eingetragen wurde. Hängen Einträge aus
+  anderen Objekten daran, wird nichts gelöscht, und das Programm nennt sie. Testfirmen, die in echten Einträgen
+  stehen, bleiben erhalten.
+- Die laufenden Nummern für Meldungen (S-…), Schlüsselprotokolle (SÜ-…) und Winterdienst (WD-…) gehen nach dem
+  Entfernen dort weiter, wo sie vor dem Anlegen standen. Nur wenn in der Zwischenzeit echte Einträge dazugekommen
+  sind, bleibt in der Nummernfolge eine Lücke.
+- Technik: `testobjekt.py` (Inhalt, Anlegen, Entfernen) und `testobjekt_zeichnen.py` (Grundrisse als SVG, Bilder
+  als PNG, Dokumente als PDF, alles ohne Zusatzprogramme).
+
 ## Wo die Daten liegen
 
 Alles liegt im Ordner `daten/`: die Datenbank `cafm.sqlite` und die hochgeladenen Dateien unter
 `dokumente/`, die Grundrisse unter `plaene/`. Unter `sicherung/` legt das Programm vor dem Ersetzen von Plänen
-eine Kopie der Datenbank ab. Zum Sichern diesen Ordner kopieren. Mit der Umgebungsvariable `CAFM_DATEN` lässt sich
+und vor dem Entfernen des Testobjekts eine Kopie der Datenbank ab. Zum Sichern diesen Ordner kopieren. Mit der Umgebungsvariable `CAFM_DATEN` lässt sich
 ein anderer Ort wählen.
 
 ## Technik in Kürze

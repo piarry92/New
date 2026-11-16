@@ -206,6 +206,7 @@ td.zahl, th.zahl { text-align: right; white-space: nowrap; }
 .liste-einfach a { text-decoration: none; color: var(--anthrazit); }
 .liste-einfach a:hover { color: var(--orange-dunkel); }
 .liste-einfach .rechts { margin-left: auto; white-space: nowrap; }
+@media (max-width: 700px) { .liste-einfach li { flex-wrap: wrap; } }   /* schmale Ansicht: Der Knopf rutscht unter den Text, statt über den Rand zu ragen */
 .klein { font-size: 13px; color: var(--grau); }
 .balkenreihe { display: flex; height: 12px; border-radius: 6px; overflow: hidden; background: var(--zartgrau); margin: 8px 0 10px; }
 .legende { display: flex; gap: 14px; flex-wrap: wrap; font-size: 13px; }
@@ -1612,3 +1613,11 @@ html[data-theme="dark"] .pv-et.an { color: #fff; }
   .plan-layout.pv.vollbild { padding: 8px; }
   .plan-layout.pv.vollbild .pv-dock, .plan-layout.pv.vollbild .plan-leiste { display: none; }
 }
+
+/* ---------- Testobjekt (Karte in den Einstellungen) ---------- */
+.to-liste { margin: 6px 0 12px; padding-left: 20px; }
+.to-liste li { margin: 3px 0; }
+.to-zahlen { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; }
+.to-zahlen span { background: var(--zartgrau); border: 1px solid var(--hellgrau); border-radius: 999px; padding: 3px 12px; font-size: 13.5px; }
+.to-zahlen b { font-weight: 700; }
+html[data-theme="dark"] .to-zahlen span { background: rgba(255,255,255,.06); border-color: rgba(255,255,255,.14); }
