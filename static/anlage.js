@@ -96,24 +96,114 @@ async function fotosHochladen(a) {
   input.type = "file"; input.accept = "image/*"; input.multiple = true; input.setAttribute("capture", "environment");
   const dateien = await new Promise((ok) => { input.onchange = () => ok([...input.files]); input.click(); });
   if (!dateien.length) return false;
-  let n = 0;
-  for (const d of dateien) {
-    try {
-      const url = URL.createObjectURL(d);
-      const img = await new Promise((ok, nein) => { const i = new Image(); i.onload = () => ok(i); i.onerror = nein; i.src = url; });
-      const f = Math.min(1, 2000 / Math.max(img.naturalWidth, img.naturalHeight));
-      const c = document.createElement("canvas");
-      c.width = Math.round(img.naturalWidth * f); c.height = Math.round(img.naturalHeight * f);
-      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
-      URL.revokeObjectURL(url);
-      const daten = c.toDataURL("image/jpeg", 0.85).split(",")[1];
-      await api("POST", "dokumente", { titel: d.name.replace(/\.[^.]+$/, ""), kategorie: "Foto", objekt_id: a.objekt_id, anlage_id: a.id, dateiname: d.name.replace(/\.[^.]+$/, "") + ".jpg", inhalt: daten });
-      n++;
-    } catch (e) { melde(`${d.name} ließ sich nicht hochladen.`, true); }
-  }
-  if (n) melde(n === 1 ? "Foto hinzugefügt." : `${n} Fotos hinzugefügt.`);
-  return n > 0;
+  return anlageDateienAblegen(a, dateien);
 }
+
+/* Dateien an eine Anlage hängen: Fotos kommen verkleinert in die Galerie, alles andere zu den Dokumenten der Anlage.
+   Gilt für Ziehen und Ablegen (auch aus dem Explorer, aus SharePoint-Ordnern, die mit OneDrive verbunden sind),
+   für Strg+V und für „Foto hinzufügen“. */
+const IST_BILD = (d) => /^image\/(jpe?g|png|webp|gif|bmp)$/i.test(d.type) || /\.(jpe?g|png|webp|gif|bmp)$/i.test(d.name || "");
+function dokKategorieRaten(name) {
+  const n = String(name || "").toLowerCase();
+  for (const [muster, kat] of [[/pr(ü|ue|u)f|sachverst|\bsv[-_ ]|abnahme/, "Prüfbericht"], [/wartung/, "Wartungsprotokoll"], [/rechnung|\bre[-_ ]?\d/, "Rechnung"],
+    [/angebot/, "Angebot"], [/auftragsbest/, "Auftragsbestätigung"], [/auftrag|bestellung/, "Auftrag"], [/vertrag/, "Vertrag"],
+    [/protokoll/, "Protokoll"], [/\.(dwg|dxf)$|grundriss|lageplan|\bplan\b|schema/, "Plan"]]) if (muster.test(n)) return kat;
+  return "Sonstiges";
+}
+const dateiAlsText = (d) => new Promise((ok, nein) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(",")[1] || ""); r.onerror = () => nein(new Error("lesen")); r.readAsDataURL(d); });
+
+async function anlageDateienAblegen(a, dateien) {
+  dateien = [...dateien].filter((d) => d && d.size !== undefined);
+  if (!dateien.length) return false;
+  if (!darf("dokumente_hochladen")) { melde("Dir fehlt das Recht, Fotos und Dokumente hochzuladen.", true); return false; }
+  let fotos = 0, doks = 0;
+  const fehler = [];
+  melde(dateien.length === 1 ? `${dateien[0].name || "Datei"} wird gespeichert …` : `${dateien.length} Dateien werden gespeichert …`);
+  for (const d of dateien) {
+    const name = d.name || `Bild ${new Date().toLocaleString("de-DE")}.png`;
+    const ohneEndung = name.replace(/\.[^.]+$/, "");
+    try {
+      if (d.size > 25 * 1024 * 1024) throw new Error("zu groß (höchstens 25 MB)");
+      if (IST_BILD(d)) {
+        let inhalt = null;
+        try { inhalt = await bildVerkleinern(d, 2000); } catch (e) { inhalt = null; }
+        if (inhalt) {
+          await api("POST", "dokumente", { titel: ohneEndung, kategorie: "Foto", objekt_id: a.objekt_id, anlage_id: a.id, dateiname: ohneEndung + ".jpg", inhalt });
+          fotos++;
+          continue;
+        }
+      }
+      await api("POST", "dokumente", { titel: ohneEndung, kategorie: dokKategorieRaten(name), objekt_id: a.objekt_id, anlage_id: a.id, dateiname: name, inhalt: await dateiAlsText(d) });
+      doks++;
+    } catch (e) { fehler.push(`${name}: ${e.message === "lesen" ? "ließ sich nicht lesen. Liegt die Datei nur in der Cloud, öffne den Ordner einmal im Explorer und versuch es noch einmal" : e.message}`); }
+  }
+  const teile = [];
+  if (fotos) teile.push(fotos === 1 ? "1 Foto" : `${fotos} Fotos`);
+  if (doks) teile.push(doks === 1 ? "1 Dokument" : `${doks} Dokumente`);
+  if (teile.length) { cacheLeeren(); melde(`${teile.join(" und ")} gespeichert.`); }
+  if (fehler.length) melde(`Nicht gespeichert: ${fehler.join(" · ")}`, true);
+  return fotos + doks > 0;
+}
+
+/* Gezogen wurde nur ein Link (zum Beispiel aus SharePoint im Browser): Die Datei selbst gibt der Browser dann nicht heraus. */
+async function anlageLinkAblegen(a, url) {
+  try {
+    const r = await fetch(url);
+    if (!r.ok) throw new Error();
+    const blob = await r.blob();
+    if (!/^image\//.test(blob.type)) throw new Error();
+    const name = decodeURIComponent((new URL(url).pathname.split("/").pop() || "Bild").split("?")[0]) || "Bild";
+    return anlageDateienAblegen(a, [new File([blob], /\.\w{3,4}$/.test(name) ? name : name + ".jpg", { type: blob.type })]);
+  } catch (e) { /* SharePoint gibt die Datei nur nach Anmeldung heraus */ }
+  await dialog("Datei direkt aus SharePoint ablegen", `<p>Aus SharePoint im Browser gibt der Browser nur den Link weiter, nicht die Datei. So geht es ohne Herunterladen:</p>
+    <ol class="to-liste">
+      <li><b>Über den Explorer:</b> In SharePoint im Ordner oben auf <b>Synchronisieren</b> oder <b>Verknüpfung zu „Meine Dateien“ hinzufügen</b> klicken. Der Ordner erscheint dann im Windows-Explorer links unter Casa Concept Consulting. Von dort ziehst du Fotos und PDFs direkt auf die Anlage.</li>
+      <li><b>Für ein Foto:</b> Das Bild in SharePoint öffnen, mit der rechten Maustaste <b>Bild kopieren</b>, dann hier auf der Anlage <b>Strg+V</b> drücken.</li>
+    </ol>`, [{ text: "Verstanden", klasse: "haupt-k" }]);
+  return false;
+}
+
+function anlageAblageVerdrahten(el, a) {
+  if (!darf("dokumente_hochladen")) return;
+  const zone = el.querySelector(".akte") || el;
+  let tiefe = 0;
+  const hatInhalt = (e) => [...(e.dataTransfer && e.dataTransfer.types || [])].some((t) => t === "Files" || t === "text/uri-list");
+  zone.addEventListener("dragenter", (e) => { if (!hatInhalt(e)) return; e.preventDefault(); tiefe++; zone.classList.add("ablage-akte"); });
+  zone.addEventListener("dragover", (e) => { if (!hatInhalt(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = "copy"; });
+  zone.addEventListener("dragleave", () => { tiefe = Math.max(0, tiefe - 1); if (!tiefe) zone.classList.remove("ablage-akte"); });
+  zone.addEventListener("drop", async (e) => {
+    if (!hatInhalt(e)) return;
+    e.preventDefault(); tiefe = 0; zone.classList.remove("ablage-akte");
+    const dateien = [...(e.dataTransfer.files || [])];
+    let ok = false;
+    if (dateien.length) ok = await anlageDateienAblegen(a, dateien);
+    else {
+      const url = (e.dataTransfer.getData("text/uri-list") || e.dataTransfer.getData("text/plain") || "").split(/\r?\n/).find((z) => /^https?:\/\//.test(z.trim()));
+      if (url) ok = await anlageLinkAblegen(a, url.trim());
+    }
+    if (ok) route();
+  });
+  /* Strg+V: kopiertes Bild oder kopierte Datei einfügen, solange die Anlage offen ist */
+  if (window._anlageEinfuegen) document.removeEventListener("paste", window._anlageEinfuegen);
+  window._anlageEinfuegen = async (e) => {
+    if (!location.hash.startsWith(`#/anlagen/${a.id}`) || document.querySelector(".dialog-hg")) return;
+    if (/^(INPUT|TEXTAREA|SELECT)$/.test((e.target || {}).tagName || "") || (e.target && e.target.isContentEditable)) return;
+    const dateien = [...((e.clipboardData && e.clipboardData.files) || [])];
+    if (!dateien.length) return;
+    e.preventDefault();
+    if (await anlageDateienAblegen(a, dateien)) route();
+  };
+  document.addEventListener("paste", window._anlageEinfuegen);
+}
+
+/* Was neben einer Ablagefläche fallen gelassen wird, öffnet der Browser sonst selbst und verlässt das Programm */
+window.addEventListener("dragover", (e) => { if ([...(e.dataTransfer && e.dataTransfer.types || [])].includes("Files")) e.preventDefault(); });
+window.addEventListener("drop", (e) => {
+  if (e.defaultPrevented || ![...(e.dataTransfer && e.dataTransfer.types || [])].includes("Files")) return;
+  if (e.target && e.target.closest && e.target.closest('input[type="file"]')) return;      // Feld „Datei“ in einem Fenster: dort ablegen ist erlaubt
+  e.preventDefault();
+  melde("Hier lässt sich nichts ablegen. Zieh die Datei auf eine Anlage, ein Objektbild oder in ein Fenster zum Hochladen.", true);
+});
 
 function standortHolen() {
   return new Promise((ok, nein) => {
@@ -230,7 +320,7 @@ DETAIL.anlagen = async (el, id, q) => {
   const nrReihe = /^\d{2,4}$/.test(String((katVon(a.kategorie_id) || {}).nummernkreis || "").trim()) ? String(katVon(a.kategorie_id).nummernkreis).trim() : "900";
   const nrSoll = nrObjekt && nrObjekt.inventar_kuerzel ? `${nrObjekt.inventar_kuerzel}-${nrReihe}-` : "";
   const nrPasst = !!nrSoll && new RegExp(`^${nrSoll.replace(/[-]/g, "\\-")}\\d{5}$`).test(a.nummer || "");
-  const titelbild = fotos.length ? "" : `<div class="galerie-leer">${symbolVon(a, 72)}<span>${darf("dokumente_hochladen") ? "Noch kein Foto. Tippe auf +, um eins hinzuzufügen." : "Noch kein Foto."}</span></div>`;
+  const titelbild = fotos.length ? "" : `<div class="galerie-leer">${symbolVon(a, 72)}<span>${darf("dokumente_hochladen") ? "Noch kein Foto. Tippe auf + oder zieh Fotos und Dateien hierher, auch direkt aus dem Explorer." : "Noch kein Foto."}</span></div>`;
 
   el.innerHTML = `<a class="zurueck" href="#/objekte/${a.objekt_id}">← ${esc(refText("objekte", a.objekt_id))}</a>
   <div class="akte">
@@ -332,6 +422,8 @@ DETAIL.anlagen = async (el, id, q) => {
     try { await api("PUT", `anlagen/${id}`, { [c.dataset.schalter]: c.checked ? 1 : 0 }); melde("Gespeichert."); cacheLeeren(); route(); }
     catch (err) { melde(err.message, true); c.checked = !c.checked; }
   }));
+
+  anlageAblageVerdrahten(el, a);
 
   /* Plus-Menü */
   const plus = el.querySelector("#aplus"), menue = el.querySelector("#pmenue");

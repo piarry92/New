@@ -338,6 +338,12 @@ Kevox-Bildschirmfotos. Die übrigen Hersteller sind bekannte Anbieter. Die Liste
 Herstellertyp hinterlegt ist, stehen allgemeine Bauarten oder Klassen (z. B. T30-1). Intervalle sind Vorschläge.
 Pflegen dürfen nur Zugänge mit dem Recht „Katalog pflegen“.
 
+## Fotos und Dateien an eine Anlage hängen
+
+Auf der Seite einer Anlage Fotos oder Dateien einfach hineinziehen, auch mehrere auf einmal. Fotos kommen in die Galerie, andere Dateien (PDF, Word, Excel) zu den Dokumenten der Anlage. Die Art des Dokuments wird aus dem Dateinamen erraten (Prüfbericht, Wartungsprotokoll, Rechnung …). Ein kopiertes Bild lässt sich mit Strg+V einfügen.
+
+SharePoint ohne Herunterladen: den Ordner in SharePoint mit „Synchronisieren“ oder „Verknüpfung zu Meine Dateien hinzufügen“ in den Windows-Explorer holen und von dort ziehen. Aus SharePoint im Browser gibt der Browser nur den Link weiter, nicht die Datei.
+
 ## Inventarnummern
 
 - **Aufbau:** `OPT-204-00012` ist das Kürzel des Objekts (Options), die Reihe der Kategorie (204 Brandschutztüren) und die

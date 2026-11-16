@@ -1628,3 +1628,10 @@ html[data-theme="dark"] .to-zahlen span { background: rgba(255,255,255,.06); bor
 .nv-tab th { text-align: left; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--dunkelgrau); padding: 6px 8px; border-bottom: 2px solid var(--hellgrau); }
 .nv-tab td { padding: 6px 8px; border-bottom: 1px solid var(--zartgrau); vertical-align: top; }
 #nvTafel { max-height: 46vh; overflow: auto; }
+
+/* Anlage: Fotos und Dateien hineinziehen */
+.akte { position: relative; }
+.akte.ablage-akte { outline: 3px dashed var(--orange); outline-offset: 6px; border-radius: 18px; }
+.akte.ablage-akte::after { content: "Hier ablegen: Fotos kommen in die Galerie, andere Dateien zu den Dokumenten der Anlage"; position: absolute; inset: 0;
+  display: flex; align-items: flex-start; justify-content: center; text-align: center; padding: 200px 24px 24px; font-weight: 700; font-size: 1.25rem;
+  color: var(--orange); background: color-mix(in srgb, var(--weiss) 85%, transparent); border-radius: 18px; z-index: 50; pointer-events: none; }
