@@ -270,6 +270,15 @@ einen Leser aus dem Internet.
   und Prüfungen, SV-Prüfplan, SV-Mängel, Mängel und Störungen, Checklisten und Rundgänge, Zähler und Verbrauch,
   Verträge, Schlüssel und Transponder, Dokumente.
 - „Beträge und Kosten zeigen“ ist standardmäßig aus, damit Berichte an Auftraggeber keine Kosten enthalten.
+- **Rundgänge mit Checkpoints:** Im Teilbereich „Checklisten und Rundgänge“ steht jeder Rundgang des Objekts mit
+  seinen Durchgängen. Je Durchgang zeigt der Bericht Datum, Beginn und Ende, Dauer, wer gegangen ist und die
+  **Scan-Zeit jeder Station** (grün mit Uhrzeit, rot „fehlt“). Bis acht Stationen als Raster mit einer Spalte je
+  Station, darüber als Marken in einer Zeile. Dazu Kennzahlen (Checkpoints gescannt in Prozent, alle Stationen
+  gescannt bei wie vielen Durchgängen, Dauer im Schnitt), die Abweichungen mit Station, Prüfpunkt, Messwert oder
+  Notiz und der Nummer des angelegten Mangels, die Bemerkungen und Rückfragen der Objektleitung. Aktive Rundgänge
+  ohne Durchgang im Zeitraum werden genannt. Grundlage ist, was beim Abschluss des Durchgangs festgehalten wurde.
+- Unter **„Rundgänge im Bericht“** lässt sich wählen: „Mit Checkpoints“ (Vorgabe), „Vollständig“ (zusätzlich alle
+  Prüfpunkte je Durchgang, nach Stationen geordnet) oder „Kurz“ (nur die Liste der Durchgänge wie bisher).
 - Der Bericht öffnet sich im Casa-Design mit Deckblatt (Objektbild, Zeitraum, Inhalt), Kennzahlen, Diagrammen,
   Tabellen und Seitenzahlen. Im Druckfenster „Als PDF speichern“ wählen. Die Auswahl merkt sich das Programm.
 

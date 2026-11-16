@@ -8,7 +8,7 @@ const BERICHT_TEILE = [
   ["sv", "SV-Prüfplan", "Sicherheitsrelevante Anlagen und Prüftermine"],
   ["svmaengel", "SV-Mängel", "Offene und behobene Mängel aus SV-Prüfungen"],
   ["tickets", "Mängel und Störungen", "Meldungen im Zeitraum, offene Meldungen"],
-  ["checklisten", "Checklisten und Rundgänge", "Durchgeführte Rundgänge und Abweichungen"],
+  ["checklisten", "Checklisten und Rundgänge", "Durchgänge, Rundgänge mit Checkpoints, Abweichungen"],
   ["zaehler", "Zähler und Verbrauch", "Verbrauch je Zähler im Zeitraum"],
   ["vertraege", "Verträge", "Laufende Verträge und Kündigungsfristen"],
   ["schluessel", "Schlüssel und Transponder", "Übergaben, ausgegeben, verloren"],
@@ -44,6 +44,9 @@ async function berichtDialog(o) {
     <label><span>bis</span><input type="date" name="bis" value="${zr === "eigen" && gemerkt.bis ? gemerkt.bis : b0}"></label>
     <div class="breit"><div class="bt-kopf"><span class="sl-titel">Teilbereiche</span><button type="button" class="knopf klein" data-alle="1">Alle</button><button type="button" class="knopf klein" data-alle="0">Keine</button></div>
       <div class="bt-wahl">${BERICHT_TEILE.map(([k, t, b]) => `<label class="sl-k"><input type="checkbox" data-teil="${k}" ${gewaehlt.has(k) ? "checked" : ""}><span><b>${esc(t)}</b><br><span class="klein">${esc(b)}</span></span></label>`).join("")}</div></div>
+    <label class="breit"><span>Rundgänge im Bericht</span><select name="rundgang">
+      ${[["checkpoints", "Mit Checkpoints: jeder Rundgang mit Scan-Zeiten je Station und den Abweichungen"], ["voll", "Vollständig: zusätzlich alle Prüfpunkte je Rundgang"], ["kurz", "Kurz: nur die Liste der Durchgänge"]]
+        .map(([w, t]) => `<option value="${w}" ${w === (gemerkt.rundgang || "checkpoints") ? "selected" : ""}>${t}</option>`).join("")}</select></label>
     <label class="check breit"><input type="checkbox" name="kosten" ${gemerkt.kosten ? "checked" : ""}> Beträge und Kosten zeigen (Störungskosten, Vertragsbeträge). Für Berichte an Auftraggeber meist aus.</label>
     <label class="breit"><span>Anmerkung im Bericht (optional)</span><textarea name="anmerkung" rows="3" placeholder="z. B. Besonderheiten im Berichtszeitraum">${esc(gemerkt.anmerkung || "")}</textarea></label>
   </form>`;
@@ -53,9 +56,9 @@ async function berichtDialog(o) {
       const teile = [...hg.querySelectorAll("[data-teil]:checked")].map((c) => c.dataset.teil);
       if (!teile.length) throw new Error("Bitte mindestens einen Teilbereich auswählen.");
       if (!fm.von.value || !fm.bis.value || fm.bis.value < fm.von.value) throw new Error("Bitte einen gültigen Zeitraum wählen.");
-      const einst = { teile, zeitraum: fm.zeitraum.value, von: fm.von.value, bis: fm.bis.value, kosten: fm.kosten.checked, titel: fm.titel.value.trim() || "Objektbericht", anmerkung: fm.anmerkung.value.trim() };
+      const einst = { teile, zeitraum: fm.zeitraum.value, von: fm.von.value, bis: fm.bis.value, kosten: fm.kosten.checked, rundgang: fm.rundgang.value, titel: fm.titel.value.trim() || "Objektbericht", anmerkung: fm.anmerkung.value.trim() };
       try { localStorage.setItem("cafm-bericht", JSON.stringify({ ...einst, anmerkung: "" })); } catch (e) { /* egal */ }
-      const daten = await api("GET", `objekte/${o.id}/bericht?${new URLSearchParams({ von: einst.von, bis: einst.bis, teile: teile.join(","), kosten: einst.kosten ? "1" : "0" })}`);
+      const daten = await api("GET", `objekte/${o.id}/bericht?${new URLSearchParams({ von: einst.von, bis: einst.bis, teile: teile.join(","), kosten: einst.kosten ? "1" : "0", rundgang: einst.rundgang })}`);
       berichtDrucken(daten, einst);
       return true;
     },
@@ -140,9 +143,48 @@ function berichtDrucken(d, e) {
       + `<h3>Meldungen im Zeitraum</h3>${tabelle(["Nr.", "Meldung", "Gemeldet", "Erledigt", "Status", ...(e.kosten ? ["Kosten"] : [])], t.zeitraum.map((x) => [h(x.nummer), `<b>${h(x.titel)}</b>${x.gewerk ? `<br><small>${h(x.gewerk)}</small>` : ""}`, dat(x.gemeldet_am), dat(x.erledigt_am), h(x.status), ...(e.kosten ? [x.kosten ? geld(x.kosten) : ""] : [])]), "Im Zeitraum keine Meldungen.")}`));
   }
   if (d.checklisten) {
-    const c = d.checklisten;
-    teile.push(abschnitt("Checklisten und Rundgänge", kacheln([[c.liste.length, "durchgeführt"], [c.abweichungen, "Abweichungen", c.abweichungen ? "orange" : "gruen"], [c.geprueft, "vom Objektleiter bestätigt", "gruen"], [c.listen, "aktive Listen"]])
-      + tabelle(["Datum", "Liste", "Durchgeführt von", "Ergebnis", "Prüfung"], c.liste.map((x) => [`${dat(x.zeit)} ${h(x.zeit.slice(11, 16))}`, `<b>${h(x.titel)}</b><br><small>${h(x.art)}</small>`, h(x.wer), x.abweichungen ? marke(`${x.abweichungen} Abweichung${x.abweichungen > 1 ? "en" : ""}`, "rot") : marke("alles i. O.", "gruen"), h({ bestaetigt: "bestätigt", rueckfrage: "Rückfrage", offen: "offen" }[x.pruef_status] || "")]), "Im Zeitraum keine Durchgänge.")));
+    const c = d.checklisten, rg = c.rundgaenge;
+    const pruefText = (x) => ({ bestaetigt: "bestätigt", rueckfrage: "Rückfrage", offen: "offen" }[x.pruef_status] || "");
+    const uhr = (iso) => h(String(iso || "").slice(11, 16));
+    const dauer = (min) => (min == null ? "" : min < 1 ? "unter 1 Min." : min < 60 ? `${min} Min.` : `${Math.floor(min / 60)} Std. ${min % 60} Min.`);
+    const quote = (a, b) => (b ? `${Math.round((a / b) * 100)} %` : "–");
+    /* Ein Rundgang: Kennzahlen, je Durchgang die Scan-Zeiten der Checkpoints, darunter die Abweichungen */
+    const rundgang = (r) => {
+      const kopf = `<h3>Rundgang: ${h(r.titel)} <small>${h([r.rhythmus, r.zustaendig, r.stationen.length ? `${r.stationen.length} Stationen` : "", r.stationen.length ? (r.pflicht ? "Scannen ist Pflicht" : "Scannen freiwillig") : "", r.aktiv ? "" : "nicht mehr aktiv"].filter(Boolean).join(" · "))}</small></h3>`;
+      if (!r.durchgaenge.length) return `<div class="rg">${kopf}<p class="leer">Im Zeitraum kein Durchgang.</p></div>`;
+      const zahlen = `<p class="rgz"><b>${r.durchgaenge.length}</b> ${r.durchgaenge.length === 1 ? "Durchgang" : "Durchgänge"}${r.mit_checkpoints ? ` · Checkpoints gescannt: <b>${r.gescannt} von ${r.soll}</b> (${quote(r.gescannt, r.soll)}) · alle Stationen gescannt bei <b>${r.vollstaendig} von ${r.mit_checkpoints}</b>` : ""} · Abweichungen: <b>${r.abweichungen}</b>${r.dauer_min != null ? ` · Dauer im Schnitt ${dauer(r.dauer_min)}` : ""}</p>`;
+      const zeit = (x, s) => { const cp = x.checkpoints.find((k) => k.bereich === s); return !cp ? '<span class="cpn">–</span>' : cp.zeit ? `<span class="cpj">${uhr(cp.zeit)}</span>` : '<span class="cpf">fehlt</span>'; };
+      const erg = (x) => `${x.abweichungen ? marke(`${x.abweichungen} Abw.`, "rot") : marke("i. O.", "gruen")}${x.pruef_status ? `<br><small>${h(pruefText(x))}</small>` : ""}`;
+      const wann = (x) => `<b>${dat(x.zeit)}</b><br><small>${x.beginn ? `${uhr(x.beginn)} bis ${uhr(x.zeit)}` : uhr(x.zeit)}${x.dauer_min != null ? ` · ${dauer(x.dauer_min)}` : ""}</small>`;
+      /* Bis acht Stationen als Raster (eine Spalte je Station), darüber als Zeile mit Marken. Ohne Checkpoints nur die Durchgänge. */
+      const raster = !r.mit_checkpoints ? tabelle(["Datum", "Durchgeführt von", "Ergebnis"], r.durchgaenge.map((x) => [`<div class="nw">${wann(x)}</div>`, h(x.wer), erg(x)]))
+        : r.stationen.length <= 8
+        ? `<table class="cpt rgt"><thead><tr><th>Datum</th><th>Durchgeführt von</th>${r.stationen.map((s) => `<th class="cps">${h(s)}</th>`).join("")}<th>Ergebnis</th></tr></thead><tbody>${r.durchgaenge.map((x) =>
+          `<tr><td>${wann(x)}</td><td>${h(x.wer)}</td>${x.checkpoints.length ? r.stationen.map((s) => `<td class="cps">${zeit(x, s)}</td>`).join("") : `<td class="cps" colspan="${r.stationen.length}"><small>ohne Checkpoints erfasst</small></td>`}<td>${erg(x)}</td></tr>`).join("")}</tbody></table>`
+        : tabelle(["Datum", "Durchgeführt von", "Checkpoints", "Ergebnis"], r.durchgaenge.map((x) => [`<div class="nw">${wann(x)}</div>`, h(x.wer), x.checkpoints.length ? `<div class="cpl">${x.checkpoints.map((k) => `<span class="${k.zeit ? "cpj" : "cpf"}">${h(k.bereich)} ${k.zeit ? uhr(k.zeit) : "fehlt"}</span>`).join("")}</div>` : "<small>ohne Checkpoints erfasst</small>", erg(x)]));
+      const abw = r.durchgaenge.flatMap((x) => x.abw.map((a) => [dat(x.zeit), h(a.bereich), `<b>${h(a.text)}</b>`, h(a.befund), h(a.ticket)]));
+      const hinweise = r.durchgaenge.filter((x) => x.bemerkung || (x.pruef_kommentar && x.pruef_status !== "offen")).map((x) => [dat(x.zeit), h(x.wer), `${x.bemerkung ? h(x.bemerkung) : ""}${x.pruef_kommentar && x.pruef_status !== "offen" ? `${x.bemerkung ? "<br>" : ""}<small>${h(pruefText(x))} durch ${h(x.geprueft_von || "")}: ${h(x.pruef_kommentar)}</small>` : ""}`]);
+      /* Vollständig: jeder Durchgang mit allen Prüfpunkten, nach Stationen geordnet */
+      const voll = r.durchgaenge.some((x) => x.punkte) ? r.durchgaenge.map((x) => {
+        let bereich = null;
+        const zeilen = x.punkte.map((e) => {
+          const gruppe = e.bereich && e.bereich !== bereich ? `<tr class="g"><td colspan="3">${h(e.bereich)}${(() => { const cp = x.checkpoints.find((k) => k.bereich === e.bereich); return cp ? ` <small>${cp.zeit ? `gescannt um ${uhr(cp.zeit)}` : "nicht gescannt"}</small>` : ""; })()}</td></tr>` : "";
+          bereich = e.bereich || bereich;
+          const wert = e.status === "na" ? "entfällt" : e.typ === "haken" ? (e.status === "ok" ? "i. O." : e.status === "mangel" ? "Mangel" : "–")
+            : e.typ === "zahl" ? (e.wert == null ? "–" : `${zahl(e.wert, Number(e.wert) % 1 ? 2 : 0)} ${h(e.einheit || "")}`) : h(e.wert || "–");
+          const soll = e.typ === "zahl" && (e.min != null || e.max != null) ? `${e.min ?? "…"} bis ${e.max ?? "…"} ${h(e.einheit || "")}` : "";
+          return `${gruppe}<tr class="${e.abweichung ? "a" : ""}"><td>${h(e.text)}${e.notiz ? `<br><small>${h(e.notiz)}</small>` : ""}</td><td>${soll}</td><td><b>${wert}</b></td></tr>`;
+        }).join("");
+        return `<div class="rgd"><h4>${dat(x.zeit)}, ${uhr(x.zeit)} Uhr · ${h(x.wer)} <small>${x.unterschrieben ? `unterschrieben${x.unterschrift_name ? " von " + h(x.unterschrift_name) : ""}` : "ohne Unterschrift"}${x.pruef_status ? ` · Prüfung ${h(pruefText(x))}` : ""}</small></h4>
+          <table class="rgp"><thead><tr><th>Prüfpunkt</th><th>Soll</th><th>Ergebnis</th></tr></thead><tbody>${zeilen}</tbody></table></div>`;
+      }).join("") : "";
+      return `<div class="rg">${kopf}${zahlen}${raster}${abw.length ? `<h4>Abweichungen</h4>${tabelle(["Datum", "Station", "Prüfpunkt", "Festgestellt", "Mangel-Nr."], abw)}` : ""}${hinweise.length ? `<h4>Bemerkungen</h4>${tabelle(["Datum", "Von", "Bemerkung"], hinweise)}` : ""}${voll ? `<h4>Alle Prüfpunkte je Durchgang</h4>${voll}` : ""}</div>`;
+    };
+    teile.push(abschnitt("Checklisten und Rundgänge", kacheln([[c.liste.length, "durchgeführt"], [c.abweichungen, "Abweichungen", c.abweichungen ? "orange" : "gruen"], [c.geprueft, "vom Objektleiter bestätigt", "gruen"], [c.listen, "aktive Listen"],
+      ...(rg && rg.mit_checkpoints ? [[quote(rg.gescannt, rg.soll), `Checkpoints gescannt (${rg.gescannt} von ${rg.soll})`, rg.gescannt === rg.soll ? "gruen" : "orange"]] : []),
+      ...(rg && rg.ohne_durchgang ? [[rg.ohne_durchgang, rg.ohne_durchgang === 1 ? "Rundgang ohne Durchgang" : "Rundgänge ohne Durchgang", "orange"]] : [])])
+      + (rg && rg.liste.length ? `${rg.liste.map(rundgang).join("")}<h3>Alle Durchgänge im Zeitraum</h3>` : "")
+      + tabelle(["Datum", "Liste", "Durchgeführt von", "Ergebnis", "Prüfung"], c.liste.map((x) => [`${dat(x.zeit)} ${h(x.zeit.slice(11, 16))}`, `<b>${h(x.titel)}</b><br><small>${h(x.art)}</small>`, h(x.wer), x.abweichungen ? marke(`${x.abweichungen} Abweichung${x.abweichungen > 1 ? "en" : ""}`, "rot") : marke("alles i. O.", "gruen"), h(pruefText(x))]), "Im Zeitraum keine Durchgänge.")));
   }
   if (d.zaehler) {
     teile.push(abschnitt("Zähler und Verbrauch", d.zaehler.length ? d.zaehler.map((z) => `<div class="zaehler"><h3>${h(z.medium)} · ${h(z.bezeichnung || z.nummer)} <small>${h(z.nummer)}${z.standort ? " · " + h(z.standort) : ""}</small></h3>
@@ -217,6 +259,19 @@ function berichtDrucken(d, e) {
     .bz { font-size: 7.5pt; font-weight: 700; margin-top: 1mm; white-space: nowrap; } .bl { font-size: 7.2pt; color: #8A8C8F; white-space: nowrap; }
     .anm { margin-top: 5mm; background: #FBEEE5; border-left: 1.2mm solid #E63713; padding: 3mm 4mm; }
     .zaehler { break-inside: avoid; margin-bottom: 4mm; }
+    h4 { font-size: 9.5pt; margin: 4mm 0 1.5mm; break-after: avoid; } h4 small { font-weight: 400; }
+    .rg { margin: 0 0 7mm; padding-top: 1mm; } .rg > h3 { border-left: 1.2mm solid #E63713; padding-left: 3mm; margin-top: 6mm; }
+    .rgz { margin: 0 0 2.5mm; font-size: 9pt; color: #626366; } .rgz b { color: #3C3C3B; }
+    table.cpt th.cps, table.cpt td.cps { text-align: center; padding-left: 1mm; padding-right: 1mm; }
+    table.cpt th.cps { font-size: 7.6pt; line-height: 1.15; font-weight: 700; overflow-wrap: anywhere; }
+    .cpj, .cpf, .cpn { display: inline-block; min-width: 11mm; padding: .3mm 1.6mm; border-radius: 3mm; font-size: 8pt; font-weight: 700; white-space: nowrap; }
+    .cpj { background: #E6F0DA; color: #3E6A16; } .cpf { background: #FBE4E1; color: #B42318; } .cpn { color: #BCBEC0; }
+    .cpl { display: flex; flex-wrap: wrap; gap: 1mm; }
+    .rgd { margin-bottom: 4mm; } .rgd h4 { margin-top: 3mm; }
+    .nw, table.rgt td:first-child { white-space: nowrap; }
+    table.rgp { font-size: 8.5pt; } table.rgp th { background: #626366; }
+    table.rgp tr.g { break-after: avoid; } table.rgp tr.g td { background: #FBEEE5; color: #B82C0F; font-weight: 700; } table.rgp tr.g small { color: #B82C0F; font-weight: 400; }
+    table.rgp tr.a td { background: #FBE4E1; }
     .stand { margin-top: 10mm; font-size: 8pt; color: #939598; }
   </style></head><body>
     <div class="deckblatt">

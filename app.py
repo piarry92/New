@@ -49,7 +49,7 @@ WD_PFAD = DATEN / "winterdienstfotos"
 PROFIL_PFAD = DATEN / "profilbilder"
 MAX_SYMBOL = 2 * 1024 * 1024
 MAX_UPLOAD = 25 * 1024 * 1024
-VERSION = "2026.11.16-6"  # muss zu VERSION in static/app.js passen
+VERSION = "2026.11.16-7"  # muss zu VERSION in static/app.js passen
 SITZUNG_TAGE = 7
 
 GEWERKE = [
@@ -2675,11 +2675,106 @@ BERICHT_TEILE = ["ueberblick", "anlagen", "wartung", "sv", "svmaengel", "tickets
                  "vertraege", "schluessel", "dokumente"]
 
 
-def objekt_bericht(con, oid: int, von: str, bis: str, teile: list, kosten: bool) -> dict:
+BERICHT_RUNDGANG = ("kurz", "checkpoints", "voll")   # wie ausführlich die Rundgänge im Bericht stehen
+
+
+def _befund(e: dict) -> str:
+    """Was bei einer Abweichung festgestellt wurde: Messwert mit Soll, eingetragener Text, Notiz."""
+    teile = []
+    z = lambda x: f"{x:g}".replace(".", ",")  # noqa: E731
+    if e.get("typ") == "zahl" and isinstance(e.get("wert"), (int, float)):
+        einheit = (e.get("einheit") or "").strip()
+        lo, hi = e.get("min"), e.get("max")
+        soll = (f"{z(lo)} bis {z(hi)}" if lo is not None and hi is not None else f"mindestens {z(lo)}" if lo is not None
+                else f"höchstens {z(hi)}" if hi is not None else "")
+        teile.append(f'Messwert {z(e["wert"])} {einheit}'.strip() + (f" (Soll {soll} {einheit}".rstrip() + ")" if soll else ""))
+    elif e.get("typ") == "text" and e.get("wert"):
+        teile.append(str(e["wert"]))
+    if e.get("notiz"):
+        teile.append(str(e["notiz"]))
+    return " · ".join(teile) or "Mangel"
+
+
+def bericht_rundgaenge(con, oid: int, durchgaenge: list[dict], voll: bool) -> dict:
+    """Rundgänge für den Bericht: je Rundgang die Durchgänge mit den Scan-Zeiten der Checkpoints, der Dauer,
+    den Abweichungen und den daraus angelegten Mängeln. Grundlage ist, was beim Abschluss des Durchgangs
+    festgehalten wurde. Mit voll=True stehen zusätzlich alle Prüfpunkte je Durchgang dabei."""
+    tickets: dict[int, list[str]] = {}
+    for t in con.execute("SELECT nummer, mangel FROM tickets WHERE objekt_id=? AND mangel LIKE 'Durchgang %' ORDER BY id", (oid,)):
+        m = re.match(r"^Durchgang (\d+)$", t["mangel"] or "")
+        if m:
+            tickets.setdefault(int(m.group(1)), []).append(t["nummer"])
+    liste = []
+    for c in con.execute("SELECT id, titel, rhythmus, zustaendig, checkpoints_pflicht, punkte, aktiv FROM checklisten "
+                         "WHERE objekt_id=? AND art='Rundgang' ORDER BY titel COLLATE NOCASE", (oid,)):
+        eigene = [d for d in durchgaenge if d["checkliste_id"] == c["id"]]
+        if not eigene and not c["aktiv"]:
+            continue
+        stationen = []
+        for p in json.loads(c["punkte"] or "[]"):
+            b = (p.get("bereich") or "").strip()
+            if b and b not in stationen:
+                stationen.append(b)
+        dgs = []
+        for d in eigene:
+            cps = [x for x in json.loads(d["checkpoints"] or "[]") if isinstance(x, dict) and x.get("bereich")]
+            for x in cps:                                        # Stationen früherer Durchgänge, die es heute nicht mehr gibt
+                if x["bereich"] not in stationen:
+                    stationen.append(x["bereich"])
+            zeiten = [x["zeit"] for x in cps if x.get("zeit")]
+            beginn = min(zeiten) if zeiten else (d.get("start") or None)
+            dauer = None
+            try:
+                if beginn:
+                    minuten = round((dt.datetime.fromisoformat(d["zeit"]) - dt.datetime.fromisoformat(beginn)).total_seconds() / 60)
+                    dauer = minuten if 0 <= minuten <= 12 * 60 else None
+            except ValueError:
+                dauer = None
+            erg = json.loads(d["ergebnisse"] or "[]")
+            abw = [e for e in erg if e.get("abweichung")]
+            nummern = tickets.get(d["id"], [])
+            je_abw = len(nummern) == len(abw)                    # je Abweichung wurde ein Mangel angelegt: Nummern zuordnen
+            eintrag = {
+                "id": d["id"], "zeit": d["zeit"], "beginn": beginn if dauer is not None else None, "dauer_min": dauer, "wer": d["wer"],
+                "abweichungen": d["abweichungen"] or 0, "pruef_status": d["pruef_status"], "geprueft_von": d["geprueft_von"],
+                "geprueft_am": d["geprueft_am"], "pruef_kommentar": d["pruef_kommentar"], "bemerkung": d["bemerkung"],
+                "unterschrieben": bool(d["unterschrieben"]), "unterschrift_name": d["unterschrift_name"],
+                "checkpoints": [{"bereich": x["bereich"], "zeit": x.get("zeit")} for x in cps],
+                "abw": [{"bereich": e.get("bereich") or "", "text": e.get("text") or "", "befund": _befund(e),
+                         "ticket": nummern[i] if je_abw else (", ".join(nummern) if i == 0 else "")} for i, e in enumerate(abw)],
+                "tickets": nummern,
+            }
+            if voll:
+                eintrag["punkte"] = [{k: e.get(k) for k in ("bereich", "text", "typ", "status", "wert", "einheit", "min", "max", "notiz", "abweichung")}
+                                     for e in erg]
+            dgs.append(eintrag)
+        mit = [x for x in dgs if x["checkpoints"]]
+        dauern = [x["dauer_min"] for x in dgs if x["dauer_min"] is not None]
+        liste.append({
+            "id": c["id"], "titel": c["titel"], "rhythmus": c["rhythmus"], "zustaendig": c["zustaendig"], "aktiv": bool(c["aktiv"]),
+            "pflicht": bool(c["checkpoints_pflicht"]), "stationen": stationen, "durchgaenge": dgs,
+            "mit_checkpoints": len(mit), "soll": sum(len(x["checkpoints"]) for x in mit),
+            "gescannt": sum(1 for x in mit for cp in x["checkpoints"] if cp["zeit"]),
+            "vollstaendig": sum(1 for x in mit if all(cp["zeit"] for cp in x["checkpoints"])),
+            "abweichungen": sum(x["abweichungen"] for x in dgs),
+            "dauer_min": round(sum(dauern) / len(dauern)) if dauern else None,
+        })
+    liste.sort(key=lambda r: (not r["durchgaenge"], r["titel"].lower()))     # Rundgänge ohne Durchgang stehen am Ende
+    alle = [x for r in liste for x in r["durchgaenge"]]
+    dauern = [x["dauer_min"] for x in alle if x["dauer_min"] is not None]
+    return {"liste": liste, "durchgaenge": len(alle), "mit_checkpoints": sum(r["mit_checkpoints"] for r in liste),
+            "soll": sum(r["soll"] for r in liste), "gescannt": sum(r["gescannt"] for r in liste),
+            "vollstaendig": sum(r["vollstaendig"] for r in liste), "abweichungen": sum(r["abweichungen"] for r in liste),
+            "ohne_durchgang": sum(1 for r in liste if r["aktiv"] and not r["durchgaenge"]),
+            "dauer_min": round(sum(dauern) / len(dauern)) if dauern else None}
+
+
+def objekt_bericht(con, oid: int, von: str, bis: str, teile: list, kosten: bool, rundgang: str = "checkpoints") -> dict:
     o = zeile(con.execute("SELECT * FROM objekte WHERE id=?", (oid,)).fetchone())
     if not o:
         raise Fehler(404, "Objekt nicht gefunden.")
     o.pop("qr_token", None)
+    o.pop("wd_token", None)                                      # Zugangsschlüssel gehören nicht in den Bericht
     hs = heute().isoformat()
     bis_ende = bis + "T23:59:59"
     aus = {"objekt": o, "von": von, "bis": bis, "erstellt": jetzt(), "teile": teile, "kosten": kosten}
@@ -2751,11 +2846,17 @@ def objekt_bericht(con, oid: int, von: str, bis: str, teile: list, kosten: bool)
             aus["tickets"]["kosten"] = round(sum(t.get("kosten") or 0 for t in zr), 2)
     if "checklisten" in teile:
         dg = [dict(r) for r in con.execute(
-            "SELECT d.zeit, d.wer, d.abweichungen, d.pruef_status, d.anlage_id, c.titel, c.art FROM checklisten_durchgaenge d "
+            "SELECT d.id, d.checkliste_id, d.zeit, d.start, d.wer, d.abweichungen, d.pruef_status, d.geprueft_von, d.geprueft_am, "
+            "d.pruef_kommentar, d.anlage_id, d.bemerkung, d.checkpoints, d.ergebnisse, d.unterschrift_name, "
+            "(d.unterschrift IS NOT NULL) AS unterschrieben, c.titel, c.art FROM checklisten_durchgaenge d "
             "JOIN checklisten c ON c.id=d.checkliste_id WHERE d.objekt_id=? AND d.zeit BETWEEN ? AND ? ORDER BY d.zeit", (oid, von, bis_ende))]
-        aus["checklisten"] = {"liste": dg, "abweichungen": sum(d["abweichungen"] or 0 for d in dg),
+        kurz = ("zeit", "wer", "abweichungen", "pruef_status", "anlage_id", "titel", "art")
+        aus["checklisten"] = {"liste": [{k: d[k] for k in kurz} for d in dg], "abweichungen": sum(d["abweichungen"] or 0 for d in dg),
                               "geprueft": sum(1 for d in dg if d["pruef_status"] == "bestaetigt"),
                               "listen": con.execute("SELECT COUNT(*) FROM checklisten WHERE objekt_id=? AND aktiv=1", (oid,)).fetchone()[0]}
+        if rundgang != "kurz":
+            aus["checklisten"]["rundgaenge"] = bericht_rundgaenge(con, oid, dg, rundgang == "voll")
+        aus["rundgang"] = rundgang
     if "zaehler" in teile:
         zl = []
         for z in con.execute("SELECT * FROM zaehler WHERE objekt_id=? ORDER BY medium, nummer", (oid,)):
@@ -4428,7 +4529,9 @@ class Handler(BaseHTTPRequestHandler):
             teile_ = [t for t in (q.get("teile") or [""])[0].split(",") if t in BERICHT_TEILE]
             if not teile_:
                 raise Fehler(400, "Bitte mindestens einen Teilbereich auswählen.")
-            return self.json(objekt_bericht(con, self.id(teile[1]), von, bis, teile_, (q.get("kosten") or ["0"])[0] == "1"))
+            rundgang = (q.get("rundgang") or ["checkpoints"])[0]
+            return self.json(objekt_bericht(con, self.id(teile[1]), von, bis, teile_, (q.get("kosten") or ["0"])[0] == "1",
+                                            rundgang if rundgang in BERICHT_RUNDGANG else "checkpoints"))
         if erstes == "vorgaenge" and len(teile) == 2 and not teile[1].isdigit():
             d = self.body() if m == "POST" else {}
             oid_roh = d.get("objekt_id") if m == "POST" else (q.get("objekt_id") or [""])[0]
