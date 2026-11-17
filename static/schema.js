@@ -27,7 +27,9 @@ async function schemaZeichnen(ziel, k) {
   const { d, objektId } = k, aendern = darf("plaene_bearbeiten"), AMPEL = { rot: "#ff4d6d", gelb: "#ffd23f", gruen: "#2ee6a8" };
   let liste = [], akt = null, wahl = null;
   let modus = "3d", lauf = null;
-  const kam = { dreh: -0.62, neig: 0.5, zoom: 1 };                 // Blickwinkel der 3D-Ansicht, bleibt beim Wechseln erhalten
+  const kam = { dreh: -0.62, neig: 0.5, zoom: 1, px: 0, py: 0 };
+  const flach = {};                                              // Ausschnitt des flachen Schemas je Schema: [x, y, Breite, Höhe]
+  let flachBewegt = false;                 // Blickwinkel der 3D-Ansicht, bleibt beim Wechseln erhalten
   try { if (localStorage.getItem("cafm-schema-modus") === "flach") modus = "flach"; } catch (e) { /* egal */ }
   const el = document.createElement("div");
   ziel.replaceChildren(el);
@@ -92,7 +94,8 @@ async function schemaZeichnen(ziel, k) {
         <text class="sch-t" x="${-bw / 2 + 54}" y="-5">${esc(n.titel)}</text><text class="sch-u" x="${-bw / 2 + 54}" y="13">${esc(n.text || "")}</text>
         ${a ? `<circle class="sch-ampel" cx="${bw / 2 - 12}" cy="${-bh / 2 + 12}" r="5" style="fill:${farbe}"/>` : ""}</g>`;
     }).join("");
-    return `<svg class="sch-svg" viewBox="0 0 ${b} ${h}" role="img" aria-label="${esc(sch.titel || "Anlagenschema")}">${zonen}${leit}${knoten}</svg>`;
+    const sicht = flach[akt] || [0, 0, b, h];
+    return `<svg class="sch-svg" viewBox="${sicht.join(" ")}" data-voll="${b} ${h}" role="img" aria-label="${esc(sch.titel || "Anlagenschema")}">${zonen}${leit}${knoten}</svg>`;
   };
 
   const seite = (sch, eintrag) => {
@@ -115,6 +118,33 @@ async function schemaZeichnen(ziel, k) {
     return `<div class="g3-wahl sch-info"><b>${esc(n.titel)}</b><small>${esc(n.text || "")}</small><div class="sch-daten">${zeilen}</div>${zustand}${wahlfeld}</div>${legende}${quelle}`;
   };
 
+  /* Flaches Schema: mit dem Mausrad an der Stelle des Mauszeigers vergrößern, durch Ziehen verschieben */
+  const flachSetzen = (svg, sicht) => {
+    const [vb, vh] = svg.dataset.voll.split(" ").map(Number);
+    const w = Math.max(vb / 12, Math.min(vb * 1.5, sicht[2])), hh = w * vh / vb;
+    const x = Math.max(-w * 0.6, Math.min(vb - w * 0.4, sicht[0])), y = Math.max(-hh * 0.6, Math.min(vh - hh * 0.4, sicht[1]));
+    flach[akt] = [x, y, w, hh]; svg.setAttribute("viewBox", flach[akt].join(" "));
+  };
+  const flachZoom = (svg, faktor, fx = 0.5, fy = 0.5) => {
+    const [x, y, w, h] = flach[akt] || svg.getAttribute("viewBox").split(" ").map(Number);
+    flachSetzen(svg, [x + w * fx * (1 - faktor), y + h * fy * (1 - faktor), w * faktor, h * faktor]);
+  };
+  const flachVerdrahten = (svg) => {
+    if (!svg) return;
+    let zug = null;
+    svg.addEventListener("wheel", (e) => { e.preventDefault(); const r = svg.getBoundingClientRect(); flachZoom(svg, e.deltaY < 0 ? 0.87 : 1.15, (e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height); }, { passive: false });
+    svg.addEventListener("pointerdown", (e) => { zug = { x: e.clientX, y: e.clientY, s: flach[akt] || svg.getAttribute("viewBox").split(" ").map(Number) }; flachBewegt = false; });
+    svg.addEventListener("pointermove", (e) => {
+      if (!zug || !e.buttons) { zug = null; return; }
+      const dx = e.clientX - zug.x, dy = e.clientY - zug.y;
+      if (Math.abs(dx) + Math.abs(dy) > 5) flachBewegt = true;
+      if (!flachBewegt) return;
+      const r = svg.getBoundingClientRect();
+      flachSetzen(svg, [zug.s[0] - dx * zug.s[2] / r.width, zug.s[1] - dy * zug.s[3] / r.height, zug.s[2], zug.s[3]]);
+    });
+    svg.addEventListener("pointerup", () => { zug = null; setTimeout(() => { flachBewegt = false; }, 0); });   // der Klick direkt nach dem Verschieben zählt nicht, der nächste wieder
+  };
+
   const zeichnen = () => {
     if (!liste.length) {
       el.innerHTML = `<div class="karte leer"><b>Für dieses Objekt gibt es noch kein Anlagenschema.</b><br>Ein Schema zeigt die Geräte einer Anlage mit ihren Leitungen, zum Beispiel die Kälte mit Kältemaschinen, Kühltürmen und Kältekreisen.
@@ -126,10 +156,13 @@ async function schemaZeichnen(ziel, k) {
         <div class="g3-kopf"><div class="g3-ort">${icon("plaene")} <b>${esc(eintrag.titel)}</b></div>
           ${liste.length > 1 ? `<div class="g3-geb">${liste.map((s) => `<button type="button" data-sch-id="${s.id}" class="${s.id === akt ? "an" : ""}">${esc(s.titel)}</button>`).join("")}</div>` : ""}</div>
         <div class="sch-modus"><div class="g3-geb"><button type="button" data-modus="3d" class="${modus === "3d" ? "an" : ""}">3D-Ansicht</button><button type="button" data-modus="flach" class="${modus === "flach" ? "an" : ""}">Schema</button></div>
-          ${modus === "3d" ? "<span>Ziehen dreht die Anlage, das Mausrad ändert die Größe. Ein Klick auf ein Gerät zeigt seine Daten.</span>" : ""}</div>
+          <div class="sch-kn"><button type="button" data-kam="plus" title="Größer">+</button><button type="button" data-kam="minus" title="Kleiner">−</button>
+            ${modus === "3d" ? '<button type="button" data-kam="oben">Von oben</button><button type="button" data-kam="vorn">Von vorn</button><button type="button" data-kam="unten">Von unten</button>' : ""}<button type="button" data-kam="reset">Zurücksetzen</button></div>
+          <span>${modus === "3d" ? "Ziehen dreht die Anlage rundherum, auch über Kopf. Mit der rechten Maustaste oder Umschalt-Taste verschiebst du sie. Das Mausrad ändert die Größe." : "Ziehen verschiebt das Schema, das Mausrad vergrößert die Stelle unter dem Mauszeiger."}</span></div>
         <div class="sch-rahmen">${modus === "3d" ? '<canvas class="sch-3d" id="sch3d"></canvas>' : bild(sch)}</div></div>
       <div class="g3-rechts">${seite(sch, eintrag)}</div></div>`;
     if (lauf) { lauf.stop(); lauf = null; }
+    if (modus !== "3d") flachVerdrahten(el.querySelector(".sch-svg"));
     if (modus === "3d") lauf = schema3d(el.querySelector("#sch3d"), sch, kam, anlageVon, () => wahl, (id) => {
       wahl = wahl === id ? null : id;
       el.querySelector(".g3-rechts").innerHTML = seite(sch, eintrag);
@@ -137,6 +170,25 @@ async function schemaZeichnen(ziel, k) {
   };
 
   el.addEventListener("click", async (e) => {
+    if (flachBewegt) { flachBewegt = false; return; }           // das war ein Verschieben, kein Klick
+    const km = e.target.closest("[data-kam]");
+    if (km) {
+      const was = km.dataset.kam, svg = el.querySelector(".sch-svg");
+      if (modus === "3d") {
+        if (was === "plus") kam.zoom = Math.min(4, kam.zoom * 1.2);
+        if (was === "minus") kam.zoom = Math.max(0.4, kam.zoom / 1.2);
+        if (was === "oben") { kam.neig = 1.45; kam.dreh = 0; }
+        if (was === "vorn") { kam.neig = 0.06; kam.dreh = 0; }
+        if (was === "unten") { kam.neig = -0.75; kam.dreh = -0.62; }
+        if (was === "reset") Object.assign(kam, { dreh: -0.62, neig: 0.5, zoom: 1, px: 0, py: 0 });
+        if (lauf) lauf.neu();
+      } else if (svg) {
+        if (was === "plus") flachZoom(svg, 0.8);
+        if (was === "minus") flachZoom(svg, 1.25);
+        if (was === "reset") { const [b2, h2] = svg.dataset.voll.split(" ").map(Number); flachSetzen(svg, [0, 0, b2, h2]); }
+      }
+      return;
+    }
     const kn = e.target.closest("[data-knoten]"), sc = e.target.closest("[data-sch]"), id = e.target.closest("[data-sch-id]");
     if (kn) { wahl = wahl === kn.dataset.knoten ? null : kn.dataset.knoten; zeichnen(); return; }
     if (id) { akt = Number(id.dataset.schId); wahl = null; zeichnen(); return; }
@@ -222,7 +274,7 @@ function schema3d(canvas, sch, kam, anlageVon, wahlHolen, wahlSetzen) {
   const zeichne = () => {
     if (!breit) groesse();
     const cd = Math.cos(kam.dreh), sd = Math.sin(kam.dreh), cn = Math.cos(kam.neig), sn = Math.sin(kam.neig), mass = Math.min(breit / 1750, hoch / 1150) * kam.zoom, FERN = 3200;
-    const pr = ([x, h, t]) => { const x1 = x * cd - t * sd, t1 = x * sd + t * cd, y2 = h * cn - t1 * sn, t2 = h * sn + t1 * cn, k = FERN / (FERN + t2); return [breit / 2 + x1 * mass * k, hoch * 0.52 - y2 * mass * k, t2, mass * k]; };
+    const pr = ([x, h, t]) => { const x1 = x * cd - t * sd, t1 = x * sd + t * cd, y2 = h * cn - t1 * sn, t2 = h * sn + t1 * cn, k = FERN / (FERN + t2); return [breit / 2 + kam.px + x1 * mass * k, hoch * 0.52 + kam.py - y2 * mass * k, t2, mass * k]; };
     const teile = [];
     for (const p of platten) { const e = p.ecken.map(pr); teile.push({ art: "platte", e, tiefe: Math.max(...e.map((q) => q[2])) + 400, titel: p.titel }); }
     for (const r of rohre) { const a = pr(r.p), b = pr(r.r); teile.push({ art: "rohr", a, b, r, tiefe: (a[2] + b[2]) / 2 }); }
@@ -276,24 +328,32 @@ function schema3d(canvas, sch, kam, anlageVon, wahlHolen, wahlSetzen) {
   };
   const schleife = () => { if (!an || !canvas.isConnected) { an = false; return; } zeichne(); if (zug) requestAnimationFrame(schleife); };
   const neu = () => { if (an) requestAnimationFrame(zeichne); };
-  canvas.addEventListener("pointerdown", (e) => { zug = { x: e.clientX, y: e.clientY, d: kam.dreh, n: kam.neig }; bewegt = false; canvas.setPointerCapture(e.pointerId); });
-  canvas.addEventListener("pointermove", (e) => {
+  canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+  canvas.addEventListener("pointerdown", (e) => {
+    zug = { x: e.clientX, y: e.clientY, d: kam.dreh, n: kam.neig, px: kam.px, py: kam.py, schieben: e.button === 2 || e.button === 1 || e.shiftKey }; bewegt = false;
+    try { canvas.setPointerCapture(e.pointerId); } catch (x) { /* egal */ }
+    e.preventDefault();
+  });
+  const beiZug = (e) => {
     if (!zug) return;
     const dx = e.clientX - zug.x, dy = e.clientY - zug.y;
     if (Math.abs(dx) + Math.abs(dy) > 5) bewegt = true;
     if (!bewegt) return;
-    kam.dreh = zug.d + dx * 0.008; kam.neig = Math.max(0.08, Math.min(1.35, zug.n + dy * 0.006)); neu();
-  });
-  canvas.addEventListener("pointerup", (e) => {
+    if (zug.schieben) { kam.px = zug.px + dx; kam.py = zug.py + dy; }
+    else { kam.dreh = zug.d + dx * 0.008; kam.neig = Math.max(-1.5, Math.min(1.5, zug.n + dy * 0.007)); }   // rundherum, von oben bis von unten
+    neu();
+  };
+  const beiEnde = (e) => {
     const war = zug; zug = null;
-    if (!war || bewegt) return;
+    if (!war || bewegt || war.schieben || e.target !== canvas) return;
     const r = canvas.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
     const nah = treffer.map((t) => ({ t, d: Math.hypot(t.x - x, t.y - y) })).filter((q) => q.d <= q.t.r).sort((a, b) => a.d - b.d)[0];
     if (nah) { wahlSetzen(nah.t.id); neu(); }
-  });
-  canvas.addEventListener("wheel", (e) => { e.preventDefault(); kam.zoom = Math.max(0.5, Math.min(3, kam.zoom * (e.deltaY < 0 ? 1.09 : 0.92))); neu(); }, { passive: false });
+  };
+  window.addEventListener("pointermove", beiZug); window.addEventListener("pointerup", beiEnde);
+  canvas.addEventListener("wheel", (e) => { e.preventDefault(); kam.zoom = Math.max(0.4, Math.min(4, kam.zoom * (e.deltaY < 0 ? 1.09 : 0.92))); neu(); }, { passive: false });
   const beiGroesse = () => { if (canvas.isConnected) { groesse(); neu(); } };
   window.addEventListener("resize", beiGroesse);
   groesse(); zeichne(); void takt; void ruhig; void schleife;
-  return { stop: () => { an = false; window.removeEventListener("resize", beiGroesse); }, neu };
+  return { stop: () => { an = false; window.removeEventListener("resize", beiGroesse); window.removeEventListener("pointermove", beiZug); window.removeEventListener("pointerup", beiEnde); }, neu };
 }
