@@ -348,6 +348,8 @@ Die Ansicht entsteht aus den vorhandenen Grundrissen. Echte 3D-Modelle von Masch
 
 Unter **Standorte & Pläne** oben auf **Schema** umschalten. Ein Schema zeigt die Geräte einer Anlage mit ihren Leitungen, zum Beispiel die Kälte mit Kältemaschinen, Kühltürmen, Wärmetauschern und Kältekreisen. Die Leitungen sind nach Medium gefärbt. Ein Klick auf ein Gerät zeigt seine Daten. Jedes Gerät lässt sich mit einer Anlage aus dem Programm verknüpfen und zeigt dann deren Zustand, mit Sprung zur Akte. Geräte, die so heißen wie eine Anlage, verknüpft das Programm von selbst.
 
+Jedes Schema gibt es in zwei Ansichten, umschaltbar oben links: **3D-Ansicht** (die Bereiche als Ebenen übereinander, Geräte als Körper, Leitungen als Rohre; Ziehen dreht, das Mausrad ändert die Größe) und **Schema** (flach). Die 3D-Ansicht entsteht aus dem Schema und ist eine Prinzip-Ansicht, kein vermessenes Modell des Gebäudes.
+
 Ein Schema kommt als Datei (Endung .json) über „Schema-Datei wählen“ ins Programm. Die Datei gehört zum Objekt und liegt nicht im Programmordner.
 
 ## Fotos und Dateien an eine Anlage hängen

@@ -1694,3 +1694,7 @@ html[data-theme="dark"] .to-zahlen span { background: rgba(255,255,255,.06); bor
 .sch-anl { border-left: 3px solid var(--c); background: rgba(255,255,255,.06); border-radius: 0 10px 10px 0; padding: 9px 11px; margin-top: 8px; } .sch-anl b { display: block; color: #fff; } .sch-anl span { display: block; font-size: .78rem; color: #cfdcff; }
 .sch-wahl { display: block; margin-top: 12px; } .sch-wahl select { width: 100%; margin-top: 4px; background: #14245c; color: #fff; border: 1px solid rgba(160,190,255,.35); border-radius: 8px; padding: 7px; }
 @media (max-width: 1180px) { .g3.sch { grid-template-columns: 1fr; } }
+
+/* Schema in 3D */
+.sch-modus { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-top: 10px; font-size: .78rem; color: #9fb6ee; }
+.sch-3d { display: block; width: 100%; height: min(72vh, 760px); min-height: 460px; cursor: grab; touch-action: none; } .sch-3d:active { cursor: grabbing; }
