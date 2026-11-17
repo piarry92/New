@@ -1655,7 +1655,7 @@ html[data-theme="dark"] .to-zahlen span { background: rgba(255,255,255,.06); bor
 .g3-geb { display: flex; gap: 6px; flex-wrap: wrap; } .g3-geb button { border: 1px solid rgba(160,190,255,.3); background: rgba(255,255,255,.06); color: #dfe8ff; border-radius: 999px; padding: 6px 14px; cursor: pointer; font-size: .82rem; } .g3-geb button.an { background: #3d7bff; border-color: #3d7bff; color: #fff; font-weight: 700; }
 .g3-buehne { position: relative; flex: 1; min-height: 560px; overflow: hidden; perspective: 2200px; cursor: grab; touch-action: none; user-select: none; } .g3-buehne:active { cursor: grabbing; }
 .g3-welt { position: absolute; left: 54%; top: 50%; width: 0; height: 0; transform-style: preserve-3d; }
-.g3-ebene { position: absolute; left: 0; top: 0; display: flex; gap: 14px; transform-style: preserve-3d; transition: opacity .25s; cursor: pointer; }
+.g3-ebene { position: absolute; left: 0; top: 0; display: flex; gap: 14px; transform-style: preserve-3d; transition: transform .38s ease; cursor: pointer; }
 .g3-plan { position: relative; height: 100%; background: rgba(214,226,255,.9); border: 2px solid color-mix(in srgb, var(--c) 80%, #fff); box-shadow: 0 0 0 1px rgba(8,15,43,.5), 0 0 26px color-mix(in srgb, var(--c) 60%, transparent), 10px 10px 0 rgba(8,15,43,.55); overflow: hidden; }
 .g3-plan::after { content: ""; position: absolute; inset: 0; background: color-mix(in srgb, var(--c) 24%, transparent); mix-blend-mode: multiply; pointer-events: none; }
 .z-leer .g3-plan::after { background: rgba(120,140,190,.25); } .z-leer .g3-plan { box-shadow: 0 0 0 1px rgba(8,15,43,.5), 10px 10px 0 rgba(8,15,43,.55); }

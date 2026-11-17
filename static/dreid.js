@@ -54,12 +54,16 @@ function dreidZeichnen(ziel, k) {
   const el = document.createElement("div");
   el.className = "g3";
   ziel.replaceChildren(el);
-  const stellen = () => {
+  let mitteJetzt = 0, zoomVor = null, nachlauf = 0;
+  const stellen = (mitteFest) => {
     const welt = el.querySelector("#g3Welt");
     if (!welt) return;
     welt.style.transform = `scale(${zoom}) rotateX(${neigung}deg) rotateZ(${drehung}deg)`;
     welt.style.setProperty("--gegen", `${-drehung}deg`);          // die Fähnchen drehen sich zum Betrachter
-    welt.querySelectorAll(".g3-ebene").forEach((e) => { e.style.transform = `translateZ(${Number(e.dataset.i) * abstand}px)`; });
+    const gew = wahl && [...welt.children].find((x) => x.dataset.ebene === wahl);
+    const mitte = mitteFest != null ? mitteFest : gew ? Number(gew.dataset.i) : 0;      // die gewählte Etage rückt in die Mitte: Größer und kleiner wirkt dann auf sie
+    mitteJetzt = mitte;
+    welt.querySelectorAll(".g3-ebene").forEach((e) => { e.style.transform = `translateZ(${(Number(e.dataset.i) - mitte) * abstand}px)`; });
     const rahmen = el.querySelector(".g3-buehne").getBoundingClientRect();
     el.querySelectorAll("#g3Schilder button").forEach((s) => {
       const e = [...welt.children].find((x) => x.dataset.ebene === s.dataset.ebene);
@@ -70,6 +74,7 @@ function dreidZeichnen(ziel, k) {
     });
   };
   const zeichnen = () => {
+    const mitteAlt = mitteJetzt;
     el.innerHTML = `<div class="g3-links">${links()}</div>
       <div class="g3-mitte">
         <div class="g3-kopf"><div class="g3-ort">${icon("objekte")} <b>${esc(k.o.kuerzel || k.o.name)}</b> ${wahl ? "› " + esc(name(zellen.get(wahl))) : ""}</div>
@@ -79,7 +84,8 @@ function dreidZeichnen(ziel, k) {
           <span>Ziehen dreht das Gebäude. Ein Klick auf eine Etage wählt sie aus, ein Klick auf ein Symbol zeigt die Anlage.</span></div>
       </div>
       <div class="g3-rechts">${rechts()}</div>`;
-    stellen();
+    stellen(mitteAlt);                                     // erst der alte Stand, dann gleitet die gewählte Etage in die Mitte
+    requestAnimationFrame(() => { stellen(); clearTimeout(nachlauf); nachlauf = setTimeout(() => { if (el.isConnected) stellen(); }, 420); });
     el.querySelectorAll(".g3-plan img").forEach((b) => b.addEventListener("load", stellen, { once: true }));
   };
 
@@ -100,6 +106,11 @@ function dreidZeichnen(ziel, k) {
       <div class="g3-kn"><a class="knopf haupt-k" href="#/anlagen/${a.id}">Akte öffnen →</a>${a.plan_id ? `<a class="knopf" href="#/plaene/${a.plan_id}?anlage=${a.id}">Im Plan zeigen</a>` : ""}</div>`;
   };
 
+  const waehlen = (k2) => {
+    if (k2 && !wahl) { zoomVor = zoom; zoom = Math.max(zoom, 1.1); }          // Etage gewählt: etwas näher heran
+    if (!k2 && zoomVor != null) { zoom = zoomVor; zoomVor = null; }           // Auswahl aufgehoben: zurück zur Übersicht
+    wahl = k2; zeichnen();
+  };
   let zug = null, bewegt = false;
   el.addEventListener("pointerdown", (e) => { if (e.target.closest(".g3-buehne") && !e.target.closest(".g3-info")) { zug = { x: e.clientX, y: e.clientY, d: drehung, n: neigung }; bewegt = false; } });
   window.addEventListener("pointermove", (e) => {
@@ -121,9 +132,9 @@ function dreidZeichnen(ziel, k) {
     const pkt = e.target.closest("[data-anl]"), eb = e.target.closest("[data-ebene]"), gb = e.target.closest("[data-geb]"), kn = e.target.closest("[data-g3]");
     if (pkt) { info(pkt.dataset.anl); return; }
     if (kn && kn.dataset.g3 === "zu") { el.querySelector("#g3Info").hidden = true; return; }
-    if (kn && kn.dataset.g3 === "alle") { wahl = null; zeichnen(); return; }
-    if (gb) { g = gb.dataset.geb; wahl = null; merken(); zeichnen(); return; }
-    if (eb) { wahl = wahl === eb.dataset.ebene ? null : eb.dataset.ebene; zeichnen(); }
+    if (kn && kn.dataset.g3 === "alle") { waehlen(null); return; }
+    if (gb) { g = gb.dataset.geb; mitteJetzt = 0; merken(); waehlen(null); return; }
+    if (eb) waehlen(wahl === eb.dataset.ebene ? null : eb.dataset.ebene);
   });
   window.addEventListener("resize", () => { if (el.isConnected) stellen(); });
   zeichnen();
