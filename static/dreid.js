@@ -44,8 +44,10 @@ function dreidZeichnen(ziel, k) {
       const hoch = 300, teile = z.plaene.map((p) => ({ p, b: Math.max(160, Math.min(760, hoch * ((p.breite || 4) / (p.hoehe || 3)))) }));
       const breit = teile.reduce((s, t) => s + t.b, 0) + (teile.length - 1) * 14;
       return `<div class="g3-ebene z-${z.zustand} ${wahl === z.k ? "an" : wahl ? "blass" : ""}" data-ebene="${esc(z.k)}" data-i="${i - (n - 1) / 2}" style="--c:${FARBE[z.zustand]};width:${breit}px;height:${hoch}px;margin:${-hoch / 2}px 0 0 ${-breit / 2}px">
-        ${teile.map((t) => `<div class="g3-plan" style="width:${t.b}px"><img src="/api/plaene/${t.p.id}/bild" alt="" draggable="false" onerror="this.remove()">
-          ${t.p.anlagen.filter((a) => a.plan_x != null && a.plan_y != null).map((a) => `<i class="g3-pkt" data-anl="${a.id}" title="${esc(a.bezeichnung)}" style="left:${a.plan_x * 100}%;top:${a.plan_y * 100}%;--c:${AMPEL[a.ampel] || AMPEL.gruen}"></i>`).join("")}</div>`).join("")}</div>`; }).join("")}</div>
+        ${teile.map((t) => `<div class="g3-plan" style="width:${t.b}px"><img src="/api/plaene/${t.p.id}/bild" alt="" draggable="false" onerror="this.remove()"></div>`).join("")}
+        ${teile.map((t, nr) => { const links = teile.slice(0, nr).reduce((s, x) => s + x.b + 14, 0);      // Anlagen stehen als Fähnchen auf dem Plan
+          return t.p.anlagen.filter((a) => a.plan_x != null && a.plan_y != null).map((a) => `<span class="g3-fuss" style="left:${links + a.plan_x * t.b}px;top:${a.plan_y * hoch}px;--c:${AMPEL[a.ampel] || AMPEL.gruen}">
+            <i class="g3-pin" data-anl="${a.id}" title="${esc(a.bezeichnung)}"><b>${symbolVon(a, 26)}</b></i></span>`).join(""); }).join("")}</div>`; }).join("")}</div>
       <div class="g3-schilder" id="g3Schilder">${liste.map((z) => `<button type="button" data-ebene="${esc(z.k)}" class="${wahl === z.k ? "an" : ""}" style="--c:${FARBE[z.zustand]}">${esc(name(z))}${z.auff.length ? `<em>${z.auff.length}</em>` : ""}</button>`).join("")}</div>`;
   };
 
@@ -56,6 +58,7 @@ function dreidZeichnen(ziel, k) {
     const welt = el.querySelector("#g3Welt");
     if (!welt) return;
     welt.style.transform = `scale(${zoom}) rotateX(${neigung}deg) rotateZ(${drehung}deg)`;
+    welt.style.setProperty("--gegen", `${-drehung}deg`);          // die Fähnchen drehen sich zum Betrachter
     welt.querySelectorAll(".g3-ebene").forEach((e) => { e.style.transform = `translateZ(${Number(e.dataset.i) * abstand}px)`; });
     const rahmen = el.querySelector(".g3-buehne").getBoundingClientRect();
     el.querySelectorAll("#g3Schilder button").forEach((s) => {
@@ -73,7 +76,7 @@ function dreidZeichnen(ziel, k) {
           ${geb.length > 1 ? `<div class="g3-geb">${geb.map((x) => `<button type="button" data-geb="${esc(x)}" class="${x === g ? "an" : ""}">${esc(gebName(x))}</button>`).join("")}</div>` : ""}</div>
         <div class="g3-buehne">${buehne()}<div class="g3-info" id="g3Info" hidden></div></div>
         <div class="g3-regler"><label>Abstand <input type="range" id="g3Abstand" min="14" max="170" value="${abstand}"></label><label>Größe <input type="range" id="g3Zoom" min="40" max="220" value="${Math.round(zoom * 100)}"></label>
-          <span>Ziehen dreht das Gebäude. Ein Klick auf eine Etage wählt sie aus, ein Klick auf einen Punkt zeigt die Anlage.</span></div>
+          <span>Ziehen dreht das Gebäude. Ein Klick auf eine Etage wählt sie aus, ein Klick auf ein Symbol zeigt die Anlage.</span></div>
       </div>
       <div class="g3-rechts">${rechts()}</div>`;
     stellen();

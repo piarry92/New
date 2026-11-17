@@ -1660,7 +1660,7 @@ html[data-theme="dark"] .to-zahlen span { background: rgba(255,255,255,.06); bor
 .g3-plan::after { content: ""; position: absolute; inset: 0; background: color-mix(in srgb, var(--c) 24%, transparent); mix-blend-mode: multiply; pointer-events: none; }
 .z-leer .g3-plan::after { background: rgba(120,140,190,.25); } .z-leer .g3-plan { box-shadow: 0 0 0 1px rgba(8,15,43,.5), 10px 10px 0 rgba(8,15,43,.55); }
 .g3-plan img { width: 100%; height: 100%; object-fit: fill; display: block; opacity: .92; pointer-events: none; }
-.g3-ebene.blass { opacity: .22; } .g3-ebene.an .g3-plan { border-width: 4px; box-shadow: 0 0 0 1px #fff, 0 0 46px var(--c), 10px 10px 0 rgba(8,15,43,.55); }
+.g3-ebene.blass .g3-plan, .g3-ebene.blass .g3-fuss { opacity: .2; } .g3-ebene.an .g3-plan { border-width: 4px; box-shadow: 0 0 0 1px #fff, 0 0 46px var(--c), 10px 10px 0 rgba(8,15,43,.55); }
 .g3-pkt { position: absolute; width: 16px; height: 16px; margin: -8px 0 0 -8px; border-radius: 50%; background: var(--c); border: 2px solid #0b1640; box-shadow: 0 0 10px var(--c); z-index: 2; cursor: pointer; } .g3-pkt:hover { transform: scale(1.6); }
 .g3-schilder button { position: absolute; border: 0; background: none; color: #dfe8ff; font-weight: 700; font-size: .92rem; cursor: pointer; white-space: nowrap; padding: 2px 4px; text-shadow: 0 1px 6px #080f2b; border-left: 3px solid var(--c); }
 .g3-schilder button.an { color: #fff; font-size: 1.05rem; } .g3-schilder em { font-style: normal; margin-left: 6px; font-size: .7rem; background: var(--c); color: #0b1640; border-radius: 9px; padding: 1px 6px; }
@@ -1698,3 +1698,11 @@ html[data-theme="dark"] .to-zahlen span { background: rgba(255,255,255,.06); bor
 /* Schema in 3D */
 .sch-modus { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-top: 10px; font-size: .78rem; color: #9fb6ee; }
 .sch-3d { display: block; width: 100%; height: min(72vh, 760px); min-height: 460px; cursor: grab; touch-action: none; } .sch-3d:active { cursor: grabbing; }
+
+/* 3D-Ansicht: Anlagen ragen als Fähnchen mit ihrem Symbol aus dem Plan */
+.g3-fuss { position: absolute; width: 0; height: 0; transform-style: preserve-3d; z-index: 3; }
+.g3-fuss::before { content: ""; position: absolute; left: -6px; top: -6px; width: 12px; height: 12px; border-radius: 50%; background: var(--c); box-shadow: 0 0 10px var(--c); opacity: .85; }
+.g3-pin { position: absolute; left: -19px; bottom: 0; width: 38px; height: 84px; transform-origin: 50% 100%; transform: rotateZ(var(--gegen, 38deg)) rotateX(-90deg); cursor: pointer; display: block; }
+.g3-pin::after { content: ""; position: absolute; left: 17px; top: 36px; bottom: 0; width: 4px; border-radius: 2px; background: linear-gradient(var(--c), color-mix(in srgb, var(--c) 35%, transparent)); }
+.g3-pin b { position: absolute; left: 0; top: 0; width: 38px; height: 38px; display: grid; place-items: center; background: #fff; border: 3px solid var(--c); border-radius: 11px; box-shadow: 0 0 14px var(--c), 0 4px 10px rgba(0,0,0,.45); }
+.g3-pin b > * { width: 26px; height: 26px; } .g3-pin:hover b { transform: scale(1.25); }
