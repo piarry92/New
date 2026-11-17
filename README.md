@@ -350,7 +350,7 @@ Unter **Standorte & Pläne** oben auf **Schema** umschalten. Ein Schema zeigt di
 
 Jedes Schema gibt es in zwei Ansichten, umschaltbar oben links: **3D-Ansicht** (die Bereiche als Ebenen übereinander, Geräte als Körper, Leitungen als Rohre; Ziehen dreht, das Mausrad ändert die Größe) und **Schema** (flach). Die 3D-Ansicht entsteht aus dem Schema und ist eine Prinzip-Ansicht, kein vermessenes Modell des Gebäudes.
 
-Ein Schema kommt als Datei (Endung .json) über „Schema-Datei wählen“ ins Programm. Die Datei gehört zum Objekt und liegt nicht im Programmordner.
+Ein Schema kommt als Datei (Endung .json) ins Programm: über „Schema-Datei wählen“ oder indem man die Datei auf die Seite zieht. Eine Datei kann mehrere Schemata enthalten, etwa Kälte, Heizung und Lüftung. Wer eine Datei noch einmal einspielt, ersetzt die gleichnamigen Schemata, die Verknüpfungen mit Anlagen bleiben. Die Datei gehört zum Objekt und liegt nicht im Programmordner.
 
 ## Fotos und Dateien an eine Anlage hängen
 

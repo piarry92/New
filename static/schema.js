@@ -5,7 +5,9 @@
 const SCH_MEDIEN = {
   kaltV: ["#4db8ff", "Kaltwasser Vorlauf"], kaltR: ["#a9b8ff", "Kaltwasser Rücklauf"],
   kuehlV: ["#2ee6a8", "Kühlwasser zu den Kältemaschinen"], kuehlR: ["#ff5fa2", "Kühlwasser zu den Kühltürmen"],
-  glykol: ["#c58bff", "Wasser-Glykol-Gemisch"], heizV: ["#ff7a59", "Heizung Vorlauf"], heizR: ["#ffb199", "Heizung Rücklauf"], druck: ["#8fa3c8", "Anschluss Druckhaltung"], sonst: ["#8fa3c8", "Sonstiges"] };
+  glykol: ["#c58bff", "Wasser-Glykol-Gemisch"], heizV: ["#ff7a59", "Heizung Vorlauf"], heizR: ["#ffb199", "Heizung Rücklauf"],
+  fernV: ["#ff3d6e", "Fernwärme Vorlauf"], fernR: ["#ff9db5", "Fernwärme Rücklauf"],
+  zuluft: ["#38d6c4", "Zuluft"], abluft: ["#ffb347", "Abluft"], kvs: ["#c58bff", "Wärmerückgewinnung (Kreislaufverbund)"], druck: ["#8fa3c8", "Anschluss Druckhaltung"], sonst: ["#8fa3c8", "Sonstiges"] };
 const SCH_ZEICHEN = {
   kaeltemaschine: '<rect x="-17" y="-9" width="34" height="18" rx="9"/><circle cx="-7" cy="0" r="4"/><circle cx="7" cy="0" r="4"/>',
   kuehlturm: '<path d="M-14 12 L-9 -12 H9 L14 12 Z"/><path d="M-6 -4 H6 M-8 4 H8"/>',
@@ -14,6 +16,11 @@ const SCH_ZEICHEN = {
   druckhaltung: '<rect x="-9" y="-14" width="18" height="28" rx="9"/><path d="M-9 0 H9"/>',
   wasser: '<path d="M0 -14 C8 -3 11 2 11 6 A11 11 0 0 1 -11 6 C-11 2 -8 -3 0 -14 Z"/>',
   verbraucher: '<rect x="-14" y="-11" width="28" height="22" rx="3"/><path d="M-8 -4 H8 M-8 2 H8 M-8 8 H2"/>',
+  lueftung: '<circle r="12"/><path d="M0 0 C2 -8 8 -8 8 -3 C8 0 3 1 0 0 C8 2 8 8 3 8 C0 8 -1 3 0 0 C-2 8 -8 8 -8 3 C-8 0 -3 -1 0 0 C-8 -2 -8 -8 -3 -8 C0 -8 1 -3 0 0 Z"/>',
+  bereich: '<path d="M-13 12 V-4 L0 -13 L13 -4 V12 Z"/><path d="M-4 12 V3 H4 V12"/>',
+  quelle: '<circle r="12"/><path d="M-6 3 H6 M2 -3 L7 3 L2 9"/>',
+  zaehler: '<circle r="12"/><path d="M0 0 L6 -6 M-7 5 A9 9 0 1 1 7 5"/>',
+  verteiler: '<rect x="-15" y="-6" width="30" height="12" rx="3"/><path d="M-9 -6 V-13 M0 -6 V-13 M9 -6 V-13"/>',
   kessel: '<rect x="-12" y="-14" width="24" height="28" rx="4"/><path d="M0 8 C-5 2 0 -1 0 -7 C5 -2 5 3 0 8 Z"/>' };
 
 async function schemaZeichnen(ziel, k) {
@@ -33,18 +40,40 @@ async function schemaZeichnen(ziel, k) {
     return d.anlagen.find((a) => muster.some((m) => m && String(a.bezeichnung || "").toLowerCase().includes(m))) || null;
   };
 
+  /* Eine Datei kann ein Schema oder mehrere enthalten ({"schemata": [...]}). Gleichnamige Schemata werden ersetzt. */
+  const einspielen = async (dateien) => {
+    let n = 0, erstes = null;
+    for (const datei of dateien) {
+      try {
+        const inhalt = JSON.parse(await datei.text());
+        const neue = Array.isArray(inhalt.schemata) ? inhalt.schemata : [inhalt];
+        for (const sch of neue) {
+          if (!sch || !Array.isArray(sch.knoten)) throw new Error("Das ist keine Schema-Datei für Casa CAFM.");
+          const titel = String(sch.titel || datei.name.replace(/\.json$/i, "")).slice(0, 120), alt = liste.find((x) => x.titel === titel);
+          if (alt) {                                             // Verknüpfungen mit Anlagen aus dem alten Stand behalten
+            const vorher = Object.fromEntries(daten(alt).knoten.filter((x) => x.anlage_id).map((x) => [x.id, x.anlage_id]));
+            sch.knoten.forEach((x) => { if (vorher[x.id] && !x.anlage_id) x.anlage_id = vorher[x.id]; });
+          }
+          const erg = alt ? await api("PUT", `schemata/${alt.id}`, { daten: JSON.stringify(sch) }) : await api("POST", "schemata", { objekt_id: objektId, titel, daten: JSON.stringify(sch) });
+          if (!erstes) erstes = alt ? alt.id : erg.id;
+          n++;
+        }
+      } catch (e) { melde(e instanceof SyntaxError ? `${datei.name} lässt sich nicht lesen. Bitte die Schema-Datei (Endung .json) wählen.` : e.message, true); }
+    }
+    if (!n) return;
+    akt = erstes; wahl = null; melde(n === 1 ? "Schema gespeichert." : `${n} Schemata gespeichert.`); await laden(); akt = erstes; zeichnen();
+  };
   const importieren = async () => {
     const input = document.createElement("input");
-    input.type = "file"; input.accept = ".json,application/json";
-    const datei = await new Promise((ok) => { input.onchange = () => ok(input.files[0]); input.click(); });
-    if (!datei) return;
-    try {
-      const sch = JSON.parse(await datei.text());
-      if (!sch || !Array.isArray(sch.knoten)) throw new Error("Das ist keine Schema-Datei für Casa CAFM.");
-      const neu = await api("POST", "schemata", { objekt_id: objektId, titel: String(sch.titel || datei.name.replace(/\.json$/i, "")).slice(0, 120), daten: JSON.stringify(sch) });
-      akt = neu.id; wahl = null; melde("Schema gespeichert."); await laden(); zeichnen();
-    } catch (e) { melde(e instanceof SyntaxError ? "Die Datei lässt sich nicht lesen. Bitte die Schema-Datei (Endung .json) wählen." : e.message, true); }
+    input.type = "file"; input.accept = ".json,application/json"; input.multiple = true;
+    const dateien = await new Promise((ok) => { input.onchange = () => ok([...input.files]); input.click(); });
+    if (dateien.length) einspielen(dateien);
   };
+  if (aendern) {
+    el.addEventListener("dragover", (e) => { if ([...(e.dataTransfer.types || [])].includes("Files")) { e.preventDefault(); el.classList.add("sch-ablage"); } });
+    el.addEventListener("dragleave", () => el.classList.remove("sch-ablage"));
+    el.addEventListener("drop", (e) => { if (![...(e.dataTransfer.types || [])].includes("Files")) return; e.preventDefault(); el.classList.remove("sch-ablage"); einspielen([...e.dataTransfer.files]); });
+  }
 
   const bild = (sch) => {
     const b = sch.breite || 1600, h = sch.hoehe || 900;
@@ -73,7 +102,7 @@ async function schemaZeichnen(ziel, k) {
     const verkn = sch.knoten.filter((x) => x.typ !== "pumpe"), mit = verkn.filter(anlageVon).length;
     const quelle = `<div class="g3-karte"><h4>Stand</h4><p class="g3-leer">${mit} von ${verkn.length} Geräten sind mit einer Anlage im Programm verknüpft. Verknüpfte Geräte zeigen ihren Zustand als Farbe.</p>
       ${sch.quelle ? `<p class="g3-leer"><b>Quelle:</b> ${esc(sch.quelle)}</p>` : ""}${sch.hinweis ? `<p class="g3-leer">${esc(sch.hinweis)}</p>` : ""}
-      ${aendern ? `<div class="g3-kn"><button class="knopf" type="button" data-sch="import">Weiteres Schema</button><button class="knopf" type="button" data-sch="weg">Schema löschen</button></div>` : ""}</div>`;
+      ${aendern ? `<div class="g3-kn"><button class="knopf" type="button" data-sch="import">Schema-Datei einspielen</button><button class="knopf" type="button" data-sch="weg">Schema löschen</button></div>` : ""}</div>`;
     if (!n) return `<div class="g3-karte"><h4>Gerät</h4><p class="g3-leer">Klick auf ein Gerät im Schema. Dann stehen hier seine Daten und sein Zustand.</p></div>${legende}${quelle}`;
     const a = anlageVon(n);
     const zeilen = (n.daten || []).map(([l, w]) => `<div><small>${esc(l)}</small><b>${esc(w)}</b></div>`).join("");
@@ -89,7 +118,7 @@ async function schemaZeichnen(ziel, k) {
   const zeichnen = () => {
     if (!liste.length) {
       el.innerHTML = `<div class="karte leer"><b>Für dieses Objekt gibt es noch kein Anlagenschema.</b><br>Ein Schema zeigt die Geräte einer Anlage mit ihren Leitungen, zum Beispiel die Kälte mit Kältemaschinen, Kühltürmen und Kältekreisen.
-        ${aendern ? '<div class="qr-knoepfe" style="justify-content:center;margin-top:14px"><button class="knopf haupt-k" type="button" data-sch="import">Schema-Datei wählen</button></div>' : ""}</div>`;
+        ${aendern ? '<p style="margin-top:10px">Die Schemata kommen als Datei ins Programm: Datei wählen oder einfach hierher ziehen.</p><div class="qr-knoepfe" style="justify-content:center;margin-top:14px"><button class="knopf haupt-k" type="button" data-sch="import">Schema-Datei wählen</button></div>' : ""}</div>`;
       return;
     }
     const eintrag = liste.find((s) => s.id === akt), sch = daten(eintrag);
@@ -162,7 +191,8 @@ function schema3d(canvas, sch, kam, anlageVon, wahlHolen, wahlSetzen) {
     }
     return [x - B / 2, h - hMitte, t - tMitte];
   };
-  const MASS = { kaeltemaschine: [130, 54, 60], kuehlturm: [84, 96, 84], waermetauscher: [40, 70, 64], druckhaltung: [42, 84, 42], wasser: [54, 60, 54], verbraucher: [110, 36, 70], kessel: [70, 84, 70], pumpe: [26, 26, 26] };
+  const MASS = { kaeltemaschine: [130, 54, 60], kuehlturm: [84, 96, 84], waermetauscher: [40, 70, 64], druckhaltung: [42, 84, 42], wasser: [54, 60, 54], verbraucher: [110, 36, 70], kessel: [70, 84, 70], pumpe: [26, 26, 26],
+    lueftung: [112, 46, 46], bereich: [124, 14, 54], quelle: [60, 60, 60], zaehler: [34, 34, 34], verteiler: [150, 30, 40] };
   const geraete = sch.knoten.map((n) => { const [x, h, t] = raum(n.x, n.y), m = MASS[n.typ] || MASS.verbraucher; return { n, x, h, t, m }; });
   /* Rohre: an den Kanten der Bereiche teilen (dort knickt die Leitung nach unten), lange Stücke für das Sortieren kürzen */
   const rohre = [];
